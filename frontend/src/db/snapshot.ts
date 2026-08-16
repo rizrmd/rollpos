@@ -6,7 +6,13 @@ import {
   type Database,
   TABLES,
 } from "@/db/database"
-import { isFloorRole, isStaffRole, type FloorRole, type StaffRole } from "@/lib/types"
+import {
+  isFloorRole,
+  isStaffRole,
+  productKindOf,
+  type FloorRole,
+  type StaffRole,
+} from "@/lib/types"
 import type {
   AssignmentRecord,
   AttendanceEventRecord,
@@ -17,6 +23,7 @@ import type {
   OutletSettingsRecord,
   PreferenceRecord,
   ProductRecord,
+  RecipeLineRecord,
   RoleRequirementRecord,
   SlotRecord,
   StaffRecord,
@@ -118,8 +125,24 @@ export function toProduct(row: ReturnType<typeof listRows>[number]): ProductReco
     sku: cellStr(row, "sku"),
     price: cellNum(row, "price"),
     stock: cellNum(row, "stock"),
+    kind: productKindOf(cellStr(row, "kind")),
+    category: cellStr(row, "category"),
+    unit: cellStr(row, "unit"),
+    note: cellStr(row, "note"),
+    isActive: !("isActive" in row) ? true : cellFlag(row, "isActive"),
+    lowStock: cellNum(row, "lowStock"),
     createdAt: cellNum(row, "createdAt"),
     updatedAt: cellNum(row, "updatedAt"),
+  }
+}
+
+export function toRecipeLine(row: ReturnType<typeof listRows>[number]): RecipeLineRecord {
+  return {
+    id: row.id,
+    productId: cellStr(row, "productId"),
+    ingredientId: cellStr(row, "ingredientId"),
+    qty: cellNum(row, "qty"),
+    createdAt: cellNum(row, "createdAt"),
   }
 }
 
@@ -242,4 +265,9 @@ export async function loadPreferences(
 export async function loadProducts(database: Database): Promise<ProductRecord[]> {
   await database.ready
   return listRows(database, TABLES.products).map(toProduct)
+}
+
+export async function loadRecipeLines(database: Database): Promise<RecipeLineRecord[]> {
+  await database.ready
+  return listRows(database, TABLES.recipeLines).map(toRecipeLine)
 }

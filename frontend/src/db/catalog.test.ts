@@ -3,10 +3,12 @@ import { describe, expect, test } from "bun:test"
 import {
   createProduct,
   deleteProduct,
+  seedCatalogIfEmpty,
+  setRecipe,
   updateProduct,
 } from "@/db/catalog"
 import { createRollposDatabase } from "@/db/database"
-import { loadProducts } from "@/db/snapshot"
+import { loadProducts, loadRecipeLines } from "@/db/snapshot"
 import { canManageProducts } from "@/lib/permissions"
 import { DEFAULT_OUTLET_ID, type StaffRecord, type StaffRole } from "@/lib/types"
 
@@ -102,5 +104,108 @@ describe("catalog product writes", () => {
     const rows = await loadProducts(database)
     expect(rows).toHaveLength(1)
     expect(rows[0]?.price).toBe(24_000)
+  })
+
+  test("menu baru otomatis dapat kategori dan SKU", async () => {
+    const database = await freshDb()
+    const actor = person(["owner"])
+    const created = await createProduct(database, actor, {
+      name: "Butter Croissant",
+      sku: "",
+      price: 18_000,
+      stock: 0,
+    })
+    expect(created.kind).toBe("menu")
+    expect(created.category).toBe("makanan")
+    expect(created.sku).toBe("RNB-BUT-CRO")
+    expect(created.isActive).toBe(true)
+  })
+
+  test("bahan bisa ditambah dan dipakai di resep", async () => {
+    const database = await freshDb()
+    const actor = person(["manager"])
+    const milk = await createProduct(database, actor, {
+      name: "Susu full cream",
+      sku: "BHN-SUS",
+      price: 0,
+      stock: 4000,
+      kind: "ingredient",
+      unit: "ml",
+      lowStock: 800,
+    })
+    const beans = await createProduct(database, actor, {
+      name: "Biji espresso",
+      sku: "BHN-ESP",
+      price: 0,
+      stock: 2000,
+      kind: "ingredient",
+      unit: "g",
+      lowStock: 400,
+    })
+    const latte = await createProduct(database, actor, {
+      name: "Cafe Latte",
+      sku: "RNB-LAT",
+      price: 28_000,
+      stock: 0,
+      kind: "menu",
+      category: "minuman",
+    })
+
+    const lines = await setRecipe(database, actor, latte.id, [
+      { ingredientId: beans.id, qty: 18 },
+      { ingredientId: milk.id, qty: 180 },
+    ])
+    expect(lines).toHaveLength(2)
+
+    await expect(deleteProduct(database, actor, milk)).rejects.toThrow(
+      "Tidak bisa hapus: dipakai di Cafe Latte."
+    )
+
+    await deleteProduct(database, actor, latte)
+    const leftover = await loadRecipeLines(database)
+    expect(leftover).toHaveLength(0)
+    await deleteProduct(database, actor, milk)
+    const remaining = await loadProducts(database)
+    expect(remaining.map((row) => row.id)).toEqual([beans.id])
+  })
+
+  test("SKU bentrok ditambahkan nomor", async () => {
+    const database = await freshDb()
+    const actor = person(["owner"])
+    await createProduct(database, actor, sample)
+    const second = await createProduct(database, actor, sample)
+    expect(second.sku).toBe("RNB-KS-2")
+  })
+
+  test("seed mengisi menu, bahan, dan resep", async () => {
+    const database = await freshDb()
+    const seeded = await seedCatalogIfEmpty(database)
+    expect(seeded).toBe(true)
+    const products = await loadProducts(database)
+    const recipes = await loadRecipeLines(database)
+    expect(products.filter((row) => row.kind === "menu")).toHaveLength(4)
+    expect(products.filter((row) => row.kind === "ingredient")).toHaveLength(5)
+    expect(recipes.length).toBeGreaterThan(0)
+    const latte = products.find((row) => row.sku === "RNB-LAT")
+    expect(latte?.category).toBe("minuman")
+    expect(recipes.filter((line) => line.productId === latte?.id)).toHaveLength(2)
+  })
+
+  test("backfill menambahkan bahan ke katalog lama", async () => {
+    const database = await freshDb()
+    const actor = person(["owner"])
+    await createProduct(database, actor, {
+      name: "Espresso",
+      sku: "RNB-ESP",
+      price: 18_000,
+      stock: 40,
+    })
+    const first = await seedCatalogIfEmpty(database)
+    expect(first).toBe(true)
+    const products = await loadProducts(database)
+    expect(products.some((row) => row.sku === "BHN-ESP")).toBe(true)
+    expect(products.find((row) => row.sku === "RNB-ESP")?.category).toBe("minuman")
+    const recipes = await loadRecipeLines(database)
+    expect(recipes.length).toBeGreaterThan(0)
   })
 })

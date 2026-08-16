@@ -13,14 +13,37 @@ export type FloorRole = (typeof FLOOR_ROLES)[number]
 
 export const DEFAULT_OUTLET_ID = "main"
 
+export const PRODUCT_KINDS = ["menu", "ingredient"] as const
+export type ProductKind = (typeof PRODUCT_KINDS)[number]
+
+export const MENU_CATEGORIES = ["minuman", "makanan"] as const
+export type MenuCategory = (typeof MENU_CATEGORIES)[number]
+
+export const INGREDIENT_UNITS = ["g", "ml", "pcs", "kg", "l"] as const
+export type IngredientUnit = (typeof INGREDIENT_UNITS)[number]
+
 export type ProductRecord = {
   id: string
   name: string
   sku: string
   price: number
   stock: number
+  kind: ProductKind
+  category: string
+  unit: string
+  note: string
+  isActive: boolean
+  lowStock: number
   createdAt: number
   updatedAt: number
+}
+
+export type RecipeLineRecord = {
+  id: string
+  productId: string
+  ingredientId: string
+  qty: number
+  createdAt: number
 }
 
 export type OutletSettingsRecord = {
@@ -177,4 +200,20 @@ export function isStaffRole(value: string): value is StaffRole {
 
 export function isFloorRole(value: string): value is FloorRole {
   return (FLOOR_ROLES as readonly string[]).includes(value)
+}
+
+export function isProductKind(value: string): value is ProductKind {
+  return (PRODUCT_KINDS as readonly string[]).includes(value)
+}
+
+export function productKindOf(value: string): ProductKind {
+  return value === "ingredient" ? "ingredient" : "menu"
+}
+
+export function isMenuCategory(value: string): value is MenuCategory {
+  return (MENU_CATEGORIES as readonly string[]).includes(value)
+}
+
+export function isIngredientUnit(value: string): value is IngredientUnit {
+  return (INGREDIENT_UNITS as readonly string[]).includes(value)
 }

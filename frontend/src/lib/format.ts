@@ -104,6 +104,23 @@ export function formatJakartaClock(at = new Date()): string {
   return formatClockFromMinutes(jakartaDateParts(at).minutes)
 }
 
+const rupiah = new Intl.NumberFormat("id-ID", {
+  style: "currency",
+  currency: "IDR",
+  maximumFractionDigits: 0,
+})
+
+const qtyId = new Intl.NumberFormat("id-ID")
+
+export function formatRupiah(amount: number): string {
+  return rupiah.format(amount)
+}
+
+export function formatQty(qty: number, unit = ""): string {
+  const n = qtyId.format(qty)
+  return unit ? `${n} ${unit}` : n
+}
+
 export function preferenceDeadlineLabel(
   weekday: number,
   minutes: number
