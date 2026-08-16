@@ -1,66 +1,93 @@
 import { useEffect, useState } from "react"
-import {
-  CalendarDays,
-  CalendarRange,
-  Clock3,
-  Lock,
-  LockOpen,
-  Package,
-  Settings,
-  SlidersHorizontal,
-  Users,
-} from "lucide-react"
 
+import { AppSidebar } from "@/components/app-sidebar"
+import { LiveNotice, PageHeader } from "@/components/page-header"
 import { PinDialog } from "@/components/pin-dialog"
 import { Button } from "@/components/ui/button"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { authenticateStaff } from "@/db/staffing-write"
 import { seedStaffingIfEmpty } from "@/db/seed"
+import { useLandscape } from "@/hooks/use-landscape"
 import { useStaffing } from "@/hooks/use-staffing"
 import { canManage } from "@/lib/permissions"
-import { cn } from "@/lib/utils"
+import {
+  formatIsoLong,
+  formatJakartaClock,
+  formatWeekRange,
+} from "@/lib/format"
 import type { StaffRecord } from "@/lib/types"
 import { CatalogScreen } from "@/screens/catalog-screen"
 import { ClockScreen } from "@/screens/clock-screen"
+import {
+  MANAGE_ITEMS,
+  MenuScreen,
+  type AppPage,
+} from "@/screens/menu-screen"
 import { PrefsScreen } from "@/screens/prefs-screen"
 import { SettingsScreen } from "@/screens/settings-screen"
 import { StaffScreen } from "@/screens/staff-screen"
 import { TodayScreen } from "@/screens/today-screen"
 import { WeekScreen } from "@/screens/week-screen"
 
-type Tab =
-  | "clock"
-  | "today"
-  | "week"
-  | "prefs"
-  | "staff"
-  | "settings"
-  | "catalog"
+const MANAGE_PAGES = new Set<AppPage>(MANAGE_ITEMS.map((item) => item.id))
 
-const PUBLIC_TABS: { id: Tab; label: string; icon: typeof Clock3 }[] = [
-  { id: "clock", label: "Clock", icon: Clock3 },
-  { id: "today", label: "Hari ini", icon: CalendarDays },
-  { id: "week", label: "Jadwal", icon: CalendarRange },
-  { id: "prefs", label: "Pref", icon: SlidersHorizontal },
-  { id: "catalog", label: "Katalog", icon: Package },
-]
-
-const MANAGE_TABS: { id: Tab; label: string; icon: typeof Clock3 }[] = [
-  { id: "staff", label: "Staff", icon: Users },
-  { id: "settings", label: "Atur", icon: Settings },
-]
+const PAGE_META: Record<
+  Exclude<AppPage, "menu">,
+  { title: string; description: (ctx: { today: string; weekStart: string }) => string }
+> = {
+  clock: {
+    title: "Masuk",
+    description: ({ today }) => `Clock-in / pulang · ${formatIsoLong(today)}`,
+  },
+  today: {
+    title: "Hari ini",
+    description: ({ today }) => formatIsoLong(today),
+  },
+  prefs: {
+    title: "Preferensi",
+    description: ({ weekStart }) => `Minggu depan · ${formatWeekRange(weekStart)}`,
+  },
+  week: {
+    title: "Jadwal",
+    description: () => "Papan minggu, inbox libur, dan publish",
+  },
+  staff: {
+    title: "Orang",
+    description: () => "Staff, role, dan PIN",
+  },
+  settings: {
+    title: "Outlet",
+    description: () => "Jam buka, slot shift, aturan adil",
+  },
+  catalog: {
+    title: "Katalog demo",
+    description: () => "Sementara, terpisah dari jadwal",
+  },
+}
 
 export function App() {
   const staffing = useStaffing()
+  const landscape = useLandscape()
   const [actor, setActor] = useState<StaffRecord | null>(null)
-  const [tab, setTab] = useState<Tab>("clock")
+  const [page, setPage] = useState<AppPage>("menu")
   const [unlockWho, setUnlockWho] = useState<StaffRecord | null>(null)
+  const [pickManager, setPickManager] = useState(false)
+  const [pendingPage, setPendingPage] = useState<Exclude<AppPage, "menu"> | null>(
+    null
+  )
   const [notice, setNotice] = useState<string | null>(null)
+  const [nowLabel, setNowLabel] = useState(() => formatJakartaClock())
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowLabel(formatJakartaClock()), 15_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     if (!staffing.ready) return
@@ -71,181 +98,248 @@ export function App() {
       )
   }, [staffing.database, staffing.ready, staffing.refresh])
 
+  useEffect(() => {
+    if (landscape && page === "menu") setPage("clock")
+  }, [landscape, page])
+
   const managers = staffing.staff.filter(
     (member) => member.isActive && canManage(member.roles)
   )
 
-  function lock() {
-    setActor(null)
-    if (tab === "staff" || tab === "settings") setTab("clock")
+  function goMenu() {
+    setPage("menu")
   }
 
-  const navItems = actor ? [...PUBLIC_TABS, ...MANAGE_TABS] : PUBLIC_TABS
+  function lock() {
+    setActor(null)
+    if (MANAGE_PAGES.has(page)) {
+      setPage(landscape ? "clock" : "menu")
+    }
+  }
+
+  function openPage(next: Exclude<AppPage, "menu">) {
+    if (MANAGE_PAGES.has(next) && !actor) {
+      setPendingPage(next)
+      startUnlock()
+      return
+    }
+    setPage(next)
+  }
+
+  function startUnlock() {
+    if (managers.length === 1) {
+      setUnlockWho(managers[0])
+      return
+    }
+    if (managers.length > 1) {
+      setPickManager(true)
+      return
+    }
+    setNotice("Belum ada owner atau manager.")
+  }
+
+  const meta = page === "menu" ? null : PAGE_META[page]
+  const content = !staffing.ready ? (
+    <p className="text-sm text-muted-foreground">Membuka database lokal…</p>
+  ) : page === "clock" ? (
+    <ClockScreen
+      database={staffing.database}
+      staff={staffing.staff}
+      slots={staffing.slots}
+      assignments={staffing.assignments}
+      attendance={staffing.attendance}
+      offs={staffing.offs}
+      openByStaff={staffing.openByStaff}
+      today={staffing.today}
+    />
+  ) : page === "today" ? (
+    <TodayScreen
+      today={staffing.today}
+      settings={staffing.settings}
+      staff={staffing.staff}
+      slots={staffing.slots}
+      assignments={staffing.assignments}
+      attendance={staffing.attendance}
+      offs={staffing.offs}
+      openByStaff={staffing.openByStaff}
+    />
+  ) : page === "week" && actor ? (
+    <WeekScreen
+      database={staffing.database}
+      actor={actor}
+      settings={staffing.settings}
+      staff={staffing.staff}
+      slots={staffing.slots}
+      requirements={staffing.requirements}
+      assignments={staffing.assignments}
+      suggestions={staffing.suggestions}
+      offs={staffing.offs}
+      preferences={staffing.preferences}
+      weekStart={staffing.thisWeekStart}
+    />
+  ) : page === "prefs" ? (
+    <PrefsScreen
+      database={staffing.database}
+      staff={staffing.staff}
+      slots={staffing.slots}
+      suggestions={staffing.suggestions}
+      preferences={staffing.preferences}
+      settings={staffing.settings}
+      weekStart={staffing.upcomingWeekStart}
+    />
+  ) : page === "staff" && actor ? (
+    <StaffScreen
+      database={staffing.database}
+      actor={actor}
+      staff={staffing.staff}
+    />
+  ) : page === "settings" && actor ? (
+    <SettingsScreen
+      database={staffing.database}
+      actor={actor}
+      settings={staffing.settings}
+      slots={staffing.slots}
+      requirements={staffing.requirements}
+      onOpenCatalog={() => setPage("catalog")}
+    />
+  ) : page === "catalog" ? (
+    <CatalogScreen />
+  ) : page === "menu" ? null : (
+    <p className="text-sm text-muted-foreground">Buka mode atur untuk melihat halaman ini.</p>
+  )
+
+  const managerPickDialog = (
+    <Dialog open={pickManager} onOpenChange={setPickManager}>
+      <DialogContent showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Siapa yang membuka mode atur?</DialogTitle>
+          <DialogDescription>Pilih owner atau manager, lalu masukkan PIN.</DialogDescription>
+        </DialogHeader>
+        <ul className="flex flex-col gap-2">
+          {managers.map((member) => (
+            <li key={member.id}>
+              <Button
+                type="button"
+                size="touch"
+                variant="outline"
+                className="w-full justify-start"
+                onClick={() => {
+                  setPickManager(false)
+                  setUnlockWho(member)
+                }}
+              >
+                {member.name}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </DialogContent>
+    </Dialog>
+  )
+
+  const pinDialog = (
+    <PinDialog
+      open={Boolean(unlockWho)}
+      title={unlockWho ? `Mode atur · ${unlockWho.name}` : "PIN"}
+      description="Owner atau manager tidak wajib sudah clock-in."
+      onOpenChange={(open) => {
+        if (!open) {
+          setUnlockWho(null)
+          setPendingPage(null)
+        }
+      }}
+      onSubmit={async (pin) => {
+        if (!unlockWho) return
+        const member = await authenticateStaff(
+          staffing.database,
+          unlockWho.id,
+          pin
+        )
+        if (!canManage(member.roles)) {
+          throw new Error(
+            "Hanya owner atau manager yang boleh membuka pengaturan."
+          )
+        }
+        setActor(member)
+        if (pendingPage) setPage(pendingPage)
+        else if (landscape) setPage("week")
+        setPendingPage(null)
+      }}
+    />
+  )
+
+  if (landscape) {
+    return (
+      <div className="flex h-svh bg-background">
+        <a href="#konten" className="skip-link">
+          Langsung ke konten
+        </a>
+        <AppSidebar
+          today={staffing.today}
+          nowLabel={nowLabel}
+          page={page}
+          actor={actor}
+          onOpen={openPage}
+          onUnlock={startUnlock}
+          onLock={lock}
+        />
+        <div className="flex min-w-0 flex-1 flex-col">
+          {meta ? (
+            <PageHeader
+              title={meta.title}
+              description={meta.description({
+                today: staffing.today,
+                weekStart: staffing.upcomingWeekStart,
+              })}
+            />
+          ) : null}
+          <main id="konten" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">
+            <div className="mx-auto w-full max-w-5xl px-4 py-4">
+              <LiveNotice message={notice ?? staffing.error} tone="error" />
+              {content}
+            </div>
+          </main>
+        </div>
+        {pinDialog}
+        {managerPickDialog}
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-svh flex-col bg-background">
-      <main className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto h-full w-full max-w-5xl px-4 py-4">
-          {notice ? (
-            <p className="mb-3 text-sm text-destructive">{notice}</p>
-          ) : null}
-          {staffing.error ? (
-            <p className="mb-3 text-sm text-destructive">{staffing.error}</p>
-          ) : null}
-          {!staffing.ready ? (
-            <p className="text-sm text-muted-foreground">
-              Membuka database lokal…
-            </p>
-          ) : tab === "clock" ? (
-            <ClockScreen
-              database={staffing.database}
-              staff={staffing.staff}
-              openByStaff={staffing.openByStaff}
-            />
-          ) : tab === "today" ? (
-            <TodayScreen
-              today={staffing.today}
-              settings={staffing.settings}
-              staff={staffing.staff}
-              slots={staffing.slots}
-              assignments={staffing.assignments}
-              attendance={staffing.attendance}
-              openByStaff={staffing.openByStaff}
-            />
-          ) : tab === "week" ? (
-            <WeekScreen
-              database={staffing.database}
-              actor={actor}
-              settings={staffing.settings}
-              staff={staffing.staff}
-              slots={staffing.slots}
-              requirements={staffing.requirements}
-              assignments={staffing.assignments}
-              suggestions={staffing.suggestions}
-              offs={staffing.offs}
-              preferences={staffing.preferences}
-              weekStart={staffing.thisWeekStart}
-            />
-          ) : tab === "prefs" ? (
-            <PrefsScreen
-              database={staffing.database}
-              staff={staffing.staff}
-              slots={staffing.slots}
-              weekStart={staffing.upcomingWeekStart}
-            />
-          ) : tab === "staff" && actor ? (
-            <StaffScreen
-              database={staffing.database}
-              actor={actor}
-              staff={staffing.staff}
-            />
-          ) : tab === "settings" && actor ? (
-            <SettingsScreen
-              database={staffing.database}
-              actor={actor}
-              settings={staffing.settings}
-              slots={staffing.slots}
-            />
-          ) : tab === "catalog" ? (
-            <CatalogScreen />
-          ) : null}
-        </div>
-      </main>
-
-      <nav className="shrink-0 border-t bg-background pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto flex max-w-5xl items-stretch gap-1 px-2 py-2">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const active = tab === item.id
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setTab(item.id)}
-                className={cn(
-                  "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[11px] font-medium transition-colors",
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <Icon className="size-5" />
-                <span className="truncate">{item.label}</span>
-              </button>
-            )
+      <a href="#konten" className="skip-link">
+        Langsung ke konten
+      </a>
+      {page === "menu" ? null : meta ? (
+        <PageHeader
+          title={meta.title}
+          description={meta.description({
+            today: staffing.today,
+            weekStart: staffing.upcomingWeekStart,
           })}
-
-          {actor ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-auto min-h-14 flex-col gap-1 px-3 text-[11px]"
-              onClick={lock}
-            >
-              <LockOpen className="size-5" />
-              <span className="truncate">{actor.nickname}</span>
-            </Button>
-          ) : managers.length === 1 ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-auto min-h-14 flex-col gap-1 px-3 text-[11px]"
-              onClick={() => setUnlockWho(managers[0])}
-            >
-              <Lock className="size-5" />
-              Atur
-            </Button>
-          ) : managers.length > 1 ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-auto min-h-14 flex-col gap-1 px-3 text-[11px]"
-                  />
-                }
-              >
-                <Lock className="size-5" />
-                Atur
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="end">
-                {managers.map((member) => (
-                  <DropdownMenuItem
-                    key={member.id}
-                    onClick={() => setUnlockWho(member)}
-                  >
-                    {member.nickname}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </div>
-      </nav>
-
-      <PinDialog
-        open={Boolean(unlockWho)}
-        title={unlockWho ? `Mode atur · ${unlockWho.name}` : "PIN"}
-        description="Owner atau manager tidak wajib sudah clock-in."
-        onOpenChange={(open) => {
-          if (!open) setUnlockWho(null)
-        }}
-        onSubmit={async (pin) => {
-          if (!unlockWho) return
-          const member = await authenticateStaff(
-            staffing.database,
-            unlockWho.id,
-            pin
-          )
-          if (!canManage(member.roles)) {
-            throw new Error(
-              "Hanya owner atau manager yang boleh membuka pengaturan."
-            )
-          }
-          setActor(member)
-        }}
-      />
+          onBack={goMenu}
+        />
+      ) : null}
+      <main id="konten" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">
+        {page === "menu" ? (
+          <MenuScreen
+            today={staffing.today}
+            nowLabel={nowLabel}
+            actor={actor}
+            onOpen={openPage}
+            onUnlock={startUnlock}
+            onLock={lock}
+          />
+        ) : (
+          <div className="mx-auto w-full max-w-5xl px-4 py-4">
+            <LiveNotice message={notice ?? staffing.error} tone="error" />
+            {content}
+          </div>
+        )}
+      </main>
+      {pinDialog}
+      {managerPickDialog}
     </div>
   )
 }

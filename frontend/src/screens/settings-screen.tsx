@@ -1,6 +1,7 @@
 import type { Database } from "@/db/database"
 import { useEffect, useState } from "react"
 
+import { LiveNotice } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -10,70 +11,92 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { saveOutletSettings, saveSlot } from "@/db/staffing-write"
+import { saveOutletSettings, saveRoleRequirements, saveSlot } from "@/db/staffing-write"
+import { WEEKDAY_LONG } from "@/lib/format"
 import { formatMinutes, parseMinutes } from "@/lib/time"
-import type { OutletSettingsRecord, SlotRecord, StaffRecord } from "@/lib/types"
+import { FLOOR_ROLES, type FloorRole, type OutletSettingsRecord, type RoleRequirementRecord, type SlotRecord, type StaffRecord } from "@/lib/types"
+
+const fieldClass = "min-h-12"
 
 export function SettingsScreen({
   database,
   actor,
   settings,
   slots,
+  requirements,
+  onOpenCatalog,
 }: {
   database: Database
   actor: StaffRecord
   settings: OutletSettingsRecord | null
   slots: SlotRecord[]
+  requirements: RoleRequirementRecord[]
+  onOpenCatalog?: () => void
 }) {
-  const [form, setForm] = useState({
-    open: settings ? formatMinutes(settings.openMinutes) : "",
-    close: settings ? formatMinutes(settings.closeMinutes) : "",
-    weekStartsOn: String(settings?.weekStartsOn ?? 1),
-    maxConsecutive: String(settings?.maxConsecutiveWorkDays ?? 6),
-    targetOff: String(settings?.targetDaysOffPerWeek ?? 1),
-    grace: String(settings?.graceLateMinutes ?? 10),
-    skew: String(settings?.hoursSkewPercent ?? 25),
-    weekend: settings?.weekendFairnessEnabled ?? true,
-  })
+  const [form, setForm] = useState(formFrom(settings))
+  const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!settings) return
-    setForm({
-      open: formatMinutes(settings.openMinutes),
-      close: formatMinutes(settings.closeMinutes),
-      weekStartsOn: String(settings.weekStartsOn),
-      maxConsecutive: String(settings.maxConsecutiveWorkDays),
-      targetOff: String(settings.targetDaysOffPerWeek),
-      grace: String(settings.graceLateMinutes),
-      skew: String(settings.hoursSkewPercent),
-      weekend: settings.weekendFairnessEnabled,
-    })
+    setForm(formFrom(settings))
   }, [settings])
 
   return (
     <div className="grid gap-4">
+      <LiveNotice message={notice} />
       <Card>
         <CardHeader>
-          <CardTitle>Jam operasional & ambang</CardTitle>
-          <CardDescription>
-            Semua angka tersimpan di pengaturan, bukan hardcode di aplikasi.
-          </CardDescription>
+          <CardTitle>Jam buka</CardTitle>
+          <CardDescription>Angka tersimpan di pengaturan, bukan di kode.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
-          <Field label="Buka" value={form.open} onChange={(open) => setForm({ ...form, open })} />
-          <Field label="Tutup" value={form.close} onChange={(close) => setForm({ ...form, close })} />
           <Field
-            label="Awal minggu (0=Min)"
-            value={form.weekStartsOn}
-            onChange={(weekStartsOn) => setForm({ ...form, weekStartsOn })}
+            label="Buka"
+            value={form.open}
+            onChange={(open) => setForm({ ...form, open })}
           />
           <Field
-            label="Maks hari beruntun"
+            label="Tutup"
+            value={form.close}
+            onChange={(close) => setForm({ ...form, close })}
+          />
+          <SelectField
+            label="Minggu mulai"
+            value={form.weekStartsOn}
+            onChange={(weekStartsOn) => setForm({ ...form, weekStartsOn })}
+            options={WEEKDAY_LONG.map((name, index) => ({
+              value: String(index),
+              label: name,
+            }))}
+          />
+          <SelectField
+            label="Tutup pengisian preferensi"
+            value={form.deadlineDay}
+            onChange={(deadlineDay) => setForm({ ...form, deadlineDay })}
+            options={WEEKDAY_LONG.map((name, index) => ({
+              value: String(index),
+              label: name,
+            }))}
+          />
+          <Field
+            label="Jam tutup preferensi"
+            value={form.deadlineTime}
+            onChange={(deadlineTime) => setForm({ ...form, deadlineTime })}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Aturan adil</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Maks hari kerja beruntun"
             value={form.maxConsecutive}
             onChange={(maxConsecutive) => setForm({ ...form, maxConsecutive })}
           />
           <Field
-            label="Target libur / minggu"
+            label="Target libur per minggu"
             value={form.targetOff}
             onChange={(targetOff) => setForm({ ...form, targetOff })}
           />
@@ -83,34 +106,39 @@ export function SettingsScreen({
             onChange={(grace) => setForm({ ...form, grace })}
           />
           <Field
-            label="Ambang jam timpang (%)"
+            label="Jam timpang lebih dari (%)"
             value={form.skew}
             onChange={(skew) => setForm({ ...form, skew })}
           />
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex min-h-12 items-center gap-3 text-sm sm:col-span-2">
             <input
               type="checkbox"
+              className="size-5"
               checked={form.weekend}
               onChange={(event) => setForm({ ...form, weekend: event.target.checked })}
             />
-            Perata weekend
+            Giliran weekend adil
           </label>
           <Button
             type="button"
+            size="touch"
             className="sm:col-span-2"
-            onClick={() =>
-              void saveOutletSettings(database, actor, {
+            onClick={async () => {
+              await saveOutletSettings(database, actor, {
                 outletId: settings?.outletId,
                 openMinutes: parseMinutes(form.open),
                 closeMinutes: parseMinutes(form.close),
                 weekStartsOn: Number(form.weekStartsOn),
+                preferenceDeadlineWeekday: Number(form.deadlineDay),
+                preferenceDeadlineMinutes: parseMinutes(form.deadlineTime),
                 maxConsecutiveWorkDays: Number(form.maxConsecutive),
                 targetDaysOffPerWeek: Number(form.targetOff),
                 graceLateMinutes: Number(form.grace),
                 hoursSkewPercent: Number(form.skew),
                 weekendFairnessEnabled: form.weekend,
               })
-            }
+              setNotice("Pengaturan tersimpan.")
+            }}
           >
             Simpan pengaturan
           </Button>
@@ -119,20 +147,26 @@ export function SettingsScreen({
 
       <Card>
         <CardHeader>
-          <CardTitle>Slot shift</CardTitle>
-          <CardDescription>Jumlah shift = jumlah baris aktif.</CardDescription>
+          <CardTitle>Shift harian</CardTitle>
+          <CardDescription>Jumlah baris aktif = jumlah shift dalam sehari.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {slots.map((slot) => (
             <SlotEditor
               key={slot.id}
               slot={slot}
-              onSave={(next) => void saveSlot(database, actor, next)}
+              requirements={requirements.filter((row) => row.templateId === slot.id)}
+              onSave={async (next, roles) => {
+                await saveSlot(database, actor, next)
+                await saveRoleRequirements(database, actor, slot.id, roles)
+                setNotice(`${next.name} tersimpan.`)
+              }}
             />
           ))}
           <Button
             type="button"
             variant="outline"
+            size="touch"
             onClick={() =>
               void saveSlot(database, actor, {
                 name: "Shift baru",
@@ -148,73 +182,172 @@ export function SettingsScreen({
           </Button>
         </CardContent>
       </Card>
+
+      {onOpenCatalog ? (
+        <Button type="button" variant="outline" size="touch" onClick={onOpenCatalog}>
+          Demo katalog (nanti jadi kasir)
+        </Button>
+      ) : null}
     </div>
   )
 }
 
 function SlotEditor({
   slot,
+  requirements,
   onSave,
 }: {
   slot: SlotRecord
-  onSave: (input: {
-    id: string
-    name: string
-    startMinutes: number
-    endMinutes: number
-    sortOrder: number
-    minStaffCount: number
-    isActive: boolean
-  }) => void
+  requirements: RoleRequirementRecord[]
+  onSave: (
+    input: {
+      id: string
+      name: string
+      startMinutes: number
+      endMinutes: number
+      sortOrder: number
+      minStaffCount: number
+      isActive: boolean
+    },
+    roles: { role: FloorRole; minCount: number }[]
+  ) => void
 }) {
   const [name, setName] = useState(slot.name)
   const [start, setStart] = useState(formatMinutes(slot.startMinutes))
   const [end, setEnd] = useState(formatMinutes(slot.endMinutes))
   const [minStaff, setMinStaff] = useState(String(slot.minStaffCount))
+  const [active, setActive] = useState(slot.isActive)
+  const [roles, setRoles] = useState<Record<FloorRole, string>>(() => {
+    const next = { kasir: "0", barista: "0", kitchen: "0" }
+    for (const row of requirements) next[row.role] = String(row.minCount)
+    return next
+  })
 
   return (
-    <div className="grid gap-2 rounded-lg border p-3 sm:grid-cols-5">
-      <Input value={name} onChange={(event) => setName(event.target.value)} />
-      <Input value={start} onChange={(event) => setStart(event.target.value)} />
-      <Input value={end} onChange={(event) => setEnd(event.target.value)} />
-      <Input
-        value={minStaff}
-        onChange={(event) => setMinStaff(event.target.value)}
-        aria-label="Min pegawai"
-      />
+    <fieldset className="grid gap-3 rounded-xl border p-4">
+      <legend className="px-1 text-sm font-medium">{slot.name}</legend>
+      <Field id={`${slot.id}-nama`} label="Nama" value={name} onChange={setName} />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field id={`${slot.id}-mulai`} label="Mulai" value={start} onChange={setStart} />
+        <Field id={`${slot.id}-selesai`} label="Selesai" value={end} onChange={setEnd} />
+        <Field id={`${slot.id}-min`} label="Min orang" value={minStaff} onChange={setMinStaff} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {FLOOR_ROLES.map((role) => (
+          <Field
+            key={role}
+            id={`${slot.id}-${role}`}
+            label={`Min ${role}`}
+            value={roles[role]}
+            onChange={(value) => setRoles({ ...roles, [role]: value })}
+          />
+        ))}
+      </div>
+      <label className="flex min-h-12 items-center gap-3 text-sm">
+        <input
+          type="checkbox"
+          className="size-5"
+          checked={active}
+          onChange={(event) => setActive(event.target.checked)}
+        />
+        Slot aktif
+      </label>
       <Button
         type="button"
+        size="touch"
         onClick={() =>
-          onSave({
-            id: slot.id,
-            name,
-            startMinutes: parseMinutes(start),
-            endMinutes: parseMinutes(end),
-            sortOrder: slot.sortOrder,
-            minStaffCount: Number(minStaff),
-            isActive: slot.isActive,
-          })
+          onSave(
+            {
+              id: slot.id,
+              name,
+              startMinutes: parseMinutes(start),
+              endMinutes: parseMinutes(end),
+              sortOrder: slot.sortOrder,
+              minStaffCount: Number(minStaff),
+              isActive: active,
+            },
+            FLOOR_ROLES.map((role) => ({
+              role,
+              minCount: Number(roles[role]) || 0,
+            }))
+          )
         }
       >
-        Simpan
+        Simpan slot
       </Button>
-    </div>
+    </fieldset>
   )
+}
+
+function formFrom(settings: OutletSettingsRecord | null) {
+  return {
+    open: settings ? formatMinutes(settings.openMinutes) : "",
+    close: settings ? formatMinutes(settings.closeMinutes) : "",
+    weekStartsOn: String(settings?.weekStartsOn ?? 1),
+    deadlineDay: String(settings?.preferenceDeadlineWeekday ?? 3),
+    deadlineTime: settings
+      ? formatMinutes(settings.preferenceDeadlineMinutes)
+      : "18:00",
+    maxConsecutive: String(settings?.maxConsecutiveWorkDays ?? 6),
+    targetOff: String(settings?.targetDaysOffPerWeek ?? 1),
+    grace: String(settings?.graceLateMinutes ?? 10),
+    skew: String(settings?.hoursSkewPercent ?? 25),
+    weekend: settings?.weekendFairnessEnabled ?? true,
+  }
 }
 
 function Field({
   label,
   value,
   onChange,
+  id: idProp,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
+  id?: string
 }) {
+  const id = idProp ?? label.replace(/\s+/g, "-").toLowerCase()
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
-      <Input value={value} onChange={(event) => onChange(event.target.value)} />
+    <label className="flex flex-col gap-1" htmlFor={id}>
+      <span className="text-sm font-medium">{label}</span>
+      <Input
+        id={id}
+        className={fieldClass}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  )
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  options: { value: string; label: string }[]
+}) {
+  const id = label.replace(/\s+/g, "-").toLowerCase()
+  return (
+    <label className="flex flex-col gap-1" htmlFor={id}>
+      <span className="text-sm font-medium">{label}</span>
+      <select
+        id={id}
+        className="min-h-12 rounded-lg border border-input bg-transparent px-2.5 text-base"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </label>
   )
 }

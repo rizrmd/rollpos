@@ -22,6 +22,7 @@ import type {
   AssignmentStatus,
   AttendanceType,
   DayOffSource,
+  FloorRole,
   OutletSettingsRecord,
   StaffRecord,
   StaffRole,
@@ -143,6 +144,35 @@ export async function saveSlot(
     outletId: input.outletId ?? DEFAULT_OUTLET_ID,
     createdAt: now,
     updatedAt: now,
+  })
+}
+
+export async function saveRoleRequirements(
+  database: Database,
+  actor: StaffRecord,
+  templateId: string,
+  items: { role: FloorRole; minCount: number }[]
+): Promise<void> {
+  if (!canEditSlots(actor.roles)) {
+    throw new Error("Lantai tidak boleh mengubah kebutuhan role.")
+  }
+  await database.ready
+  const now = Date.now()
+  transact(database, () => {
+    deleteMatching(
+      database,
+      TABLES.shiftRoleRequirements,
+      (row) => cellStr(row, "templateId") === templateId
+    )
+    for (const item of items) {
+      if (item.minCount <= 0) continue
+      addRow(database, TABLES.shiftRoleRequirements, {
+        templateId,
+        role: item.role,
+        minCount: item.minCount,
+        createdAt: now,
+      })
+    }
   })
 }
 

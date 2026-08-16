@@ -1,18 +1,27 @@
 import type { Database } from "@/db/database"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
+import { LiveNotice } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { upsertStaff } from "@/db/staffing-write"
-import { STAFF_ROLES, type StaffRecord, type StaffRole } from "@/lib/types"
+import { canGrantLeadership } from "@/lib/permissions"
+import {
+  FLOOR_ROLES,
+  STAFF_ROLES,
+  type StaffRecord,
+  type StaffRole,
+} from "@/lib/types"
 
 export function StaffScreen({
   database,
@@ -23,41 +32,106 @@ export function StaffScreen({
   actor: StaffRecord
   staff: StaffRecord[]
 }) {
+  const [query, setQuery] = useState("")
+  const [editing, setEditing] = useState<StaffRecord | "new" | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return staff.filter((member) => {
+      if (!needle) return true
+      return (
+        member.name.toLowerCase().includes(needle) ||
+        member.nickname.toLowerCase().includes(needle) ||
+        member.roles.some((role) => role.includes(needle))
+      )
+    })
+  }, [query, staff])
+
   return (
-    <div className="grid gap-4">
-      {staff.map((member) => (
-        <StaffEditor
-          key={member.id}
-          database={database}
-          actor={actor}
-          member={member}
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Label htmlFor="cari-orang" className="sr-only">
+          Cari orang
+        </Label>
+        <Input
+          id="cari-orang"
+          className="min-h-12"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Cari nama atau role"
         />
-      ))}
-      <Card>
-        <CardHeader>
-          <CardTitle>Tambah staff</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <StaffEditor database={database} actor={actor} />
-        </CardContent>
-      </Card>
+        <Button type="button" size="touch" onClick={() => setEditing("new")}>
+          Tambah
+        </Button>
+      </div>
+      <LiveNotice message={notice} />
+      <ul className="flex flex-col gap-2">
+        {filtered.map((member) => (
+          <li key={member.id}>
+            <button
+              type="button"
+              onClick={() => setEditing(member)}
+              className="flex min-h-16 w-full items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <span>
+                <span className="block font-medium">{member.name}</span>
+                <span className="block text-sm text-muted-foreground">
+                  {member.roles.join(" · ") || "tanpa role"}
+                  {member.isActive ? "" : " · nonaktif"}
+                </span>
+              </span>
+              <span className="text-sm text-muted-foreground">Ubah</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <StaffDialog
+        key={editing === "new" ? "new" : editing?.id ?? "closed"}
+        open={editing !== null}
+        member={editing === "new" ? undefined : (editing ?? undefined)}
+        actor={actor}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null)
+        }}
+        onSave={async (input) => {
+          await upsertStaff(database, actor, input)
+          setNotice(`${input.name} tersimpan.`)
+          setEditing(null)
+        }}
+      />
     </div>
   )
 }
 
-function StaffEditor({
-  database,
-  actor,
+function StaffDialog({
+  open,
   member,
+  actor,
+  onOpenChange,
+  onSave,
 }: {
-  database: Database
-  actor: StaffRecord
+  open: boolean
   member?: StaffRecord
+  actor: StaffRecord
+  onOpenChange: (open: boolean) => void
+  onSave: (input: {
+    id?: string
+    name: string
+    nickname: string
+    pin?: string
+    isActive: boolean
+    roles: StaffRole[]
+  }) => Promise<void>
 }) {
   const [name, setName] = useState(member?.name ?? "")
+  const [nickname, setNickname] = useState(member?.nickname ?? "")
   const [pin, setPin] = useState("")
+  const [active, setActive] = useState(member?.isActive ?? true)
   const [roles, setRoles] = useState<StaffRole[]>(member?.roles ?? ["kasir"])
-  const [notice, setNotice] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const canLead = canGrantLeadership(actor.roles)
 
   function toggle(role: StaffRole) {
     setRoles((current) =>
@@ -68,56 +142,122 @@ function StaffEditor({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{member ? member.name : "Staff baru"}</CardTitle>
-        <CardDescription>Satu orang boleh merangkap role.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Nama"
-        />
-        <Input
-          value={pin}
-          onChange={(event) => setPin(event.target.value)}
-          placeholder={member ? "PIN baru (opsional)" : "PIN"}
-        />
-        <div className="flex flex-wrap gap-3">
-          {STAFF_ROLES.map((role) => (
-            <label key={role} className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={roles.includes(role)}
-                onCheckedChange={() => toggle(role)}
-              />
-              {role}
-            </label>
-          ))}
-        </div>
-        <Button
-          type="button"
-          onClick={async () => {
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (next) {
+          setName(member?.name ?? "")
+          setNickname(member?.nickname ?? "")
+          setPin("")
+          setActive(member?.isActive ?? true)
+          setRoles(member?.roles ?? ["kasir"])
+          setError(null)
+        }
+        onOpenChange(next)
+      }}
+    >
+      <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>{member ? member.name : "Staff baru"}</DialogTitle>
+          <DialogDescription>Satu orang boleh merangkap role.</DialogDescription>
+        </DialogHeader>
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={async (event) => {
+            event.preventDefault()
             try {
-              await upsertStaff(database, actor, {
+              await onSave({
                 id: member?.id,
                 name,
-                nickname: name,
+                nickname: nickname || name,
                 pin: pin || undefined,
-                isActive: member?.isActive ?? true,
+                isActive: active,
                 roles,
               })
-              setNotice("Tersimpan.")
-              setPin("")
             } catch (err) {
-              setNotice(err instanceof Error ? err.message : String(err))
+              setError(err instanceof Error ? err.message : String(err))
             }
           }}
         >
-          Simpan
-        </Button>
-        {notice ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
-      </CardContent>
-    </Card>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="staff-name">Nama</Label>
+            <Input
+              id="staff-name"
+              className="min-h-12"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="staff-nick">Panggilan</Label>
+            <Input
+              id="staff-nick"
+              className="min-h-12"
+              value={nickname}
+              onChange={(event) => setNickname(event.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="staff-pin">
+              {member ? "PIN baru (opsional)" : "PIN"}
+            </Label>
+            <Input
+              id="staff-pin"
+              className="min-h-12"
+              inputMode="numeric"
+              autoComplete="off"
+              value={pin}
+              onChange={(event) => setPin(event.target.value)}
+              required={!member}
+            />
+          </div>
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium">Stasiun</legend>
+            <div className="flex flex-wrap gap-3">
+              {FLOOR_ROLES.map((role) => (
+                <label key={role} className="flex min-h-12 items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={roles.includes(role)}
+                    onCheckedChange={() => toggle(role)}
+                  />
+                  {role}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium">Pimpinan</legend>
+            <div className="flex flex-wrap gap-3">
+              {STAFF_ROLES.filter((role) => role === "owner" || role === "manager").map(
+                (role) => (
+                  <label key={role} className="flex min-h-12 items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={roles.includes(role)}
+                      disabled={!canLead}
+                      onCheckedChange={() => toggle(role)}
+                    />
+                    {role}
+                  </label>
+                )
+              )}
+            </div>
+          </fieldset>
+          <label className="flex min-h-12 items-center gap-2 text-sm">
+            <Checkbox
+              checked={active}
+              onCheckedChange={(checked) => setActive(Boolean(checked))}
+            />
+            Aktif
+          </label>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <DialogFooter>
+            <Button type="submit" size="touch">
+              Simpan
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

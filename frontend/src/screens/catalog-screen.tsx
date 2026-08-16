@@ -68,16 +68,22 @@ export function CatalogScreen() {
         <CardContent>
           <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
             <Input
+              aria-label="Nama produk"
+              className="min-h-12"
               placeholder="Nama"
               value={form.name}
               onChange={(event) => setForm({ ...form, name: event.target.value })}
             />
             <Input
+              aria-label="SKU"
+              className="min-h-12"
               placeholder="SKU"
               value={form.sku}
               onChange={(event) => setForm({ ...form, sku: event.target.value })}
             />
             <Input
+              aria-label="Harga"
+              className="min-h-12"
               placeholder="Harga"
               type="number"
               value={form.price ? String(form.price) : ""}
@@ -85,7 +91,7 @@ export function CatalogScreen() {
                 setForm({ ...form, price: Number(event.target.value) })
               }
             />
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" size="touch" disabled={busy}>
               {busy ? "Menyimpan…" : "Simpan"}
             </Button>
           </form>
