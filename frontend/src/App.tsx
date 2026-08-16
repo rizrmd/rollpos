@@ -32,6 +32,7 @@ import {
   DEFAULT_PAGE,
   MANAGE_PAGES,
   NAV_BY_ID,
+  canSeeNavItem,
   type AppPage,
 } from "@/lib/nav"
 
@@ -82,7 +83,8 @@ export function App() {
   }
 
   function openPage(next: Exclude<AppPage, "menu">) {
-    if (MANAGE_PAGES.has(next) && !actor) {
+    const target = NAV_BY_ID[next]
+    if (target && !canSeeNavItem(target, actor?.roles)) {
       setPendingPage(next)
       startUnlock()
       return

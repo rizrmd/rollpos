@@ -13,6 +13,9 @@ import {
   Users,
 } from "lucide-react"
 
+import { canManage } from "@/lib/permissions"
+import type { StaffRole } from "@/lib/types"
+
 export type AppPage =
   | "menu"
   | "kasir"
@@ -201,4 +204,20 @@ export const MANAGE_PAGES = new Set<AppPage>(
 
 export function isAppPage(value: string): value is Exclude<AppPage, "menu"> {
   return value in NAV_BY_ID
+}
+
+export function canSeeNavItem(
+  item: Pick<NavItem, "access">,
+  roles: readonly StaffRole[] | null | undefined
+): boolean {
+  return item.access === "public" || canManage(roles ?? [])
+}
+
+export function visibleNavGroups(
+  roles: readonly StaffRole[] | null | undefined
+): NavGroup[] {
+  return NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => canSeeNavItem(item, roles)),
+  })).filter((group) => group.items.length > 0)
 }

@@ -1,7 +1,7 @@
 import { ChevronRight, Lock, LockOpen } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { NAV_GROUPS, type AppPage, type NavItem } from "@/lib/nav"
+import { visibleNavGroups, type AppPage, type NavItem } from "@/lib/nav"
 import { cn } from "@/lib/utils"
 import type { StaffRecord } from "@/lib/types"
 
@@ -18,7 +18,7 @@ export function MenuScreen({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-6">
-      {NAV_GROUPS.map((group) => (
+      {visibleNavGroups(actor?.roles).map((group) => (
         <section key={group.id} aria-labelledby={`menu-${group.id}`}>
           <h2
             id={`menu-${group.id}`}

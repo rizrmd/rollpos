@@ -3,7 +3,7 @@ import { ChevronRight, Coffee, Lock, LockOpen } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { formatIsoLong } from "@/lib/format"
-import { NAV_BY_ID, NAV_GROUPS, type AppPage, type NavItem } from "@/lib/nav"
+import { NAV_BY_ID, visibleNavGroups, type AppPage, type NavItem } from "@/lib/nav"
 import { cn } from "@/lib/utils"
 import type { StaffRecord } from "@/lib/types"
 
@@ -84,7 +84,7 @@ export function AppSidebar({
         aria-label="Menu utama"
         className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-4"
       >
-        {NAV_GROUPS.map((group) => {
+        {visibleNavGroups(actor?.roles).map((group) => {
           const items = group.items.filter((item) => item.id !== "kasir")
           if (items.length === 0) return null
           return (
