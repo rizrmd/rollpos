@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { createRollposDatabase } from "@/db/database"
 import { seedCatalogIfEmpty } from "@/db/catalog"
+import { SEED_DEFAULTS, seedStaffingIfEmpty } from "@/db/seed"
 import {
   loadAssignments,
   loadAttendance,
@@ -115,6 +116,44 @@ describe("staffing persist + schedule", () => {
     const again = await loadStaff(database)
     const nia = again.find((row) => row.id === id)
     expect(nia?.roles.sort()).toEqual(["barista", "kitchen"])
+  })
+
+  test("demo seed includes a manager who cannot grant leadership", async () => {
+    expect(
+      SEED_DEFAULTS.staff.some((person) => person.roles.includes("manager"))
+    ).toBe(true)
+
+    const database = await freshDb()
+    await seedStaffingIfEmpty(database)
+    const people = await loadStaff(database)
+    const manager = people.find((row) => row.roles.includes("manager"))
+    const owner = people.find((row) => isOwner(row.roles))
+    if (!manager || !owner) throw new Error("seed missing manager or owner")
+
+    expect(isOwner(manager.roles)).toBe(false)
+    expect(canManage(manager.roles)).toBe(true)
+    expect(canEditSlots(manager.roles)).toBe(true)
+
+    const slotId = await saveSlot(database, manager, {
+      name: "Siang",
+      startMinutes: 200,
+      endMinutes: 400,
+      sortOrder: 3,
+      minStaffCount: 2,
+      isActive: true,
+    })
+    const slots = await loadSlots(database)
+    expect(slots.some((slot) => slot.id === slotId)).toBe(true)
+
+    await expect(
+      upsertStaff(database, manager, {
+        id: owner.id,
+        name: owner.name,
+        nickname: owner.nickname,
+        isActive: true,
+        roles: [...owner.roles, "kasir"],
+      })
+    ).rejects.toThrow(/Hanya owner/)
   })
 
   test("owner implies manager powers; floor cannot mutate slots", async () => {

@@ -38,7 +38,7 @@ export const SEED_DEFAULTS = {
       name: "Dimas",
       nickname: "Dimas",
       pin: "2222",
-      roles: ["kasir"] as StaffRole[],
+      roles: ["kasir", "manager"] as StaffRole[],
     },
     {
       name: "Nia",
