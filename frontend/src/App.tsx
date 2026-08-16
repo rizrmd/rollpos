@@ -168,8 +168,11 @@ export function App() {
       slots={staffing.slots}
       suggestions={staffing.suggestions}
       preferences={staffing.preferences}
+      assignments={staffing.assignments}
+      offs={staffing.offs}
       settings={staffing.settings}
       weekStart={staffing.upcomingWeekStart}
+      today={staffing.today}
     />
   ) : page === "pin" ? (
     <PinScreen database={staffing.database} staff={staffing.staff} />

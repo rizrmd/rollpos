@@ -87,6 +87,59 @@ export function weekDates(weekStart: string): string[] {
   return Array.from({ length: 7 }, (_, index) => addDays(weekStart, index))
 }
 
+export function parseIsoDate(iso: string): {
+  year: number
+  month: number
+  day: number
+} {
+  const [year, month, day] = iso.split("-").map(Number)
+  return { year, month, day }
+}
+
+export function monthStartOf(iso: string): string {
+  const { year, month } = parseIsoDate(iso)
+  return isoDate(year, month, 1)
+}
+
+export function addMonths(iso: string, months: number): string {
+  const { year, month } = parseIsoDate(iso)
+  const date = new Date(Date.UTC(year, month - 1 + months, 1))
+  return isoDate(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)
+}
+
+export function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
+
+export function monthEndOf(iso: string): string {
+  const { year, month } = parseIsoDate(iso)
+  return isoDate(year, month, daysInMonth(year, month))
+}
+
+export function inSameMonth(iso: string, monthIso: string): boolean {
+  const left = parseIsoDate(iso)
+  const right = parseIsoDate(monthIso)
+  return left.year === right.year && left.month === right.month
+}
+
+/** Sel kalender bulan, mulai dari awal minggu yang memuat tanggal 1. */
+export function monthGrid(
+  monthIso: string,
+  weekStartsOn: number
+): { date: string; inMonth: boolean }[] {
+  const first = monthStartOf(monthIso)
+  const last = monthEndOf(monthIso)
+  const start = weekStartOn(first, weekStartsOn)
+  const cells: { date: string; inMonth: boolean }[] = []
+  let cursor = start
+  while (cursor <= last || cells.length % 7 !== 0) {
+    cells.push({ date: cursor, inMonth: cursor >= first && cursor <= last })
+    cursor = addDays(cursor, 1)
+    if (cells.length >= 42) break
+  }
+  return cells
+}
+
 export function nextWeekStart(weekStartsOn: number, at: Date = new Date()): string {
   const today = todayJakarta(at)
   return addDays(weekStartOn(today, weekStartsOn), 7)

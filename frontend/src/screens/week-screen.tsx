@@ -23,6 +23,7 @@ import {
   removeOfficialOff,
   upsertAssignment,
 } from "@/db/staffing-write"
+import { MonthApprovals } from "@/screens/month-approvals"
 import {
   formatIsoWeekday,
   formatIsoWeekdayShort,
@@ -44,7 +45,7 @@ import {
   type CoverageTone,
   type DayHeat,
 } from "@/lib/schedule-board"
-import { addDays, formatMinutes, weekDates } from "@/lib/time"
+import { addDays, formatMinutes, monthStartOf, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import type {
   AssignmentRecord,
@@ -112,6 +113,8 @@ export function WeekScreen({
       suggestions,
     })
   )
+  const [boardView, setBoardView] = useState<"week" | "month">("week")
+  const [monthCursor, setMonthCursor] = useState(() => monthStartOf(thisWeekStart))
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [inboxOpen, setInboxOpen] = useState(false)
@@ -209,87 +212,116 @@ export function WeekScreen({
   return (
     <div className="flex flex-col gap-4">
       <header className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex justify-center gap-2">
           <Button
             type="button"
-            variant="outline"
-            size="icon-touch"
-            aria-label="Minggu sebelumnya"
-            onClick={() => setWeekStart(addDays(weekStart, -7))}
+            size="sm"
+            variant={boardView === "week" ? "secondary" : "outline"}
+            aria-pressed={boardView === "week"}
+            onClick={() => setBoardView("week")}
           >
-            <ChevronLeft className="size-5" />
+            Minggu
           </Button>
-          <div className="min-w-0 flex-1 text-center">
-            <p className="text-base font-medium">{formatWeekRange(weekStart)}</p>
-            <p className="text-sm text-muted-foreground">
-              {WEEK_LABEL[relation]} · {published ? "terbit" : "draft"}
-              {settings
-                ? ` · pref tutup ${preferenceDeadlineLabel(
-                    settings.preferenceDeadlineWeekday,
-                    settings.preferenceDeadlineMinutes
-                  )}`
-                : ""}
-            </p>
-          </div>
           <Button
             type="button"
-            variant="outline"
-            size="icon-touch"
-            aria-label="Minggu berikutnya"
-            onClick={() => setWeekStart(addDays(weekStart, 7))}
+            size="sm"
+            variant={boardView === "month" ? "secondary" : "outline"}
+            aria-pressed={boardView === "month"}
+            onClick={() => {
+              setMonthCursor(monthStartOf(weekStart))
+              setBoardView("month")
+            }}
           >
-            <ChevronRight className="size-5" />
+            Bulan
           </Button>
         </div>
+        {boardView === "week" ? (
+          <>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-touch"
+                aria-label="Minggu sebelumnya"
+                onClick={() => setWeekStart(addDays(weekStart, -7))}
+              >
+                <ChevronLeft className="size-5" />
+              </Button>
+              <div className="min-w-0 flex-1 text-center">
+                <p className="text-base font-medium">{formatWeekRange(weekStart)}</p>
+                <p className="text-sm text-muted-foreground">
+                  {WEEK_LABEL[relation]} · {published ? "terbit" : "draft"}
+                  {settings
+                    ? ` · pref tutup ${preferenceDeadlineLabel(
+                        settings.preferenceDeadlineWeekday,
+                        settings.preferenceDeadlineMinutes
+                      )}`
+                    : ""}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-touch"
+                aria-label="Minggu berikutnya"
+                onClick={() => setWeekStart(addDays(weekStart, 7))}
+              >
+                <ChevronRight className="size-5" />
+              </Button>
+            </div>
 
-        <div className="flex flex-wrap justify-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={relation === "current" ? "secondary" : "outline"}
-            onClick={() => setWeekStart(thisWeekStart)}
-          >
-            Minggu ini
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={relation === "next" ? "secondary" : "outline"}
-            onClick={() => setWeekStart(upcomingWeekStart)}
-          >
-            Minggu depan
-            {suggestions.some(
-              (row) =>
-                row.weekStart === upcomingWeekStart && row.status === "suggested"
-            )
-              ? ` · ${
-                  suggestions.filter(
-                    (row) =>
-                      row.weekStart === upcomingWeekStart &&
-                      row.status === "suggested"
-                  ).length
-                }`
-              : ""}
-          </Button>
-        </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={relation === "current" ? "secondary" : "outline"}
+                onClick={() => setWeekStart(thisWeekStart)}
+              >
+                Minggu ini
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={relation === "next" ? "secondary" : "outline"}
+                onClick={() => setWeekStart(upcomingWeekStart)}
+              >
+                Minggu depan
+                {suggestions.some(
+                  (row) =>
+                    row.weekStart === upcomingWeekStart && row.status === "suggested"
+                )
+                  ? ` · ${
+                      suggestions.filter(
+                        (row) =>
+                          row.weekStart === upcomingWeekStart &&
+                          row.status === "suggested"
+                      ).length
+                    }`
+                  : ""}
+              </Button>
+            </div>
+          </>
+        ) : null}
       </header>
 
       <LiveNotice message={notice} />
       <LiveNotice message={error} tone="error" />
 
-      <p className="text-sm text-muted-foreground">
-        {counts.understaffed > 0
-          ? `${counts.understaffed} sel kurang`
-          : "Semua sel aman"}
-        {" · "}
-        {counts.pileup > 0
-          ? `${counts.pileup} hari panas`
-          : "libur tidak menumpuk"}
-        {" · "}
-        {counts.noOff > 0
-          ? `${counts.noOff} orang belum libur`
-          : "libur sudah dibagi"}
-      </p>
+      {boardView === "week" ? (
+        <p className="text-sm text-muted-foreground">
+          {counts.understaffed > 0
+            ? `${counts.understaffed} sel kurang`
+            : "Semua sel aman"}
+          {" · "}
+          {counts.pileup > 0
+            ? `${counts.pileup} hari panas`
+            : "libur tidak menumpuk"}
+          {" · "}
+          {counts.noOff > 0
+            ? `${counts.noOff} orang belum libur`
+            : "libur sudah dibagi"}
+        </p>
+      ) : null}
 
       {actor ? (
         <ol className="grid gap-2 sm:grid-cols-3">
@@ -336,7 +368,23 @@ export function WeekScreen({
         </ol>
       ) : null}
 
-      {warnings.length > 0 ? (
+      {boardView === "month" ? (
+        <MonthApprovals
+          monthCursor={monthCursor}
+          onMonthChange={setMonthCursor}
+          weekStartsOn={settings?.weekStartsOn ?? 1}
+          today={todayJakarta()}
+          staff={activeStaff}
+          offs={offs}
+          suggestions={suggestions}
+          onPickDate={(date) => {
+            setWeekStart(weekStartOn(date, settings?.weekStartsOn ?? 1))
+            setBoardView("week")
+          }}
+        />
+      ) : null}
+
+      {boardView === "week" && warnings.length > 0 ? (
         <details className="rounded-none border bg-muted/30 px-3 py-2 text-sm">
           <summary className="cursor-pointer font-medium">
             {warnings.length} peringatan — ketuk untuk detail
@@ -351,6 +399,8 @@ export function WeekScreen({
         </details>
       ) : null}
 
+      {boardView === "week" ? (
+      <>
       <ol className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1">
         {dates.map((date) => {
           const daySuggest = pendingSuggest.filter((row) => row.workDate === date)
@@ -521,6 +571,8 @@ export function WeekScreen({
           })}
         </ul>
       </section>
+      </>
+      ) : null}
 
       <AssignDialog
         open={Boolean(cell && actor)}

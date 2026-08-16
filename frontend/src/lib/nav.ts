@@ -165,7 +165,7 @@ export const NAV_GROUPS: NavGroup[] = [
           {
             id: "prefs",
             label: "Shift & libur",
-            hint: "Urutan shift dan minta libur minggu depan",
+            hint: "Kalender approve sebulan dan minta libur minggu depan",
             icon: SlidersHorizontal,
             ready: true,
             access: "public",
@@ -185,7 +185,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "week",
         label: "Jadwal",
-        hint: "Papan minggu, inbox libur, publish",
+        hint: "Papan minggu, kalender approve sebulan, publish",
         icon: CalendarRange,
         ready: true,
         access: "manage",

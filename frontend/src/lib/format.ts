@@ -65,6 +65,18 @@ export function formatIsoWeekdayShort(iso: string): string {
   return `${WEEKDAY_SHORT[weekdayOf(iso)]} ${parseIso(iso).day}`
 }
 
+export function formatMonthYear(iso: string): string {
+  const { year, month } = parseIso(iso)
+  return `${MONTH_LONG[month - 1]} ${year}`
+}
+
+export function weekdayHeaders(weekStartsOn: number): string[] {
+  return Array.from(
+    { length: 7 },
+    (_, index) => WEEKDAY_SHORT[(weekStartsOn + index) % 7]
+  )
+}
+
 export function formatWeekRange(weekStart: string): string {
   const { year, month, day } = parseIso(weekStart)
   const end = new Date(Date.UTC(year, month - 1, day + 6))
