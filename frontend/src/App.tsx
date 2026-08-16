@@ -24,52 +24,19 @@ import {
 import type { StaffRecord } from "@/lib/types"
 import { CatalogScreen } from "@/screens/catalog-screen"
 import { ClockScreen } from "@/screens/clock-screen"
-import {
-  MANAGE_ITEMS,
-  MenuScreen,
-  type AppPage,
-} from "@/screens/menu-screen"
+import { ComingSoonScreen } from "@/screens/coming-soon-screen"
+import { MenuScreen } from "@/screens/menu-screen"
 import { PrefsScreen } from "@/screens/prefs-screen"
 import { SettingsScreen } from "@/screens/settings-screen"
 import { StaffScreen } from "@/screens/staff-screen"
 import { TodayScreen } from "@/screens/today-screen"
 import { WeekScreen } from "@/screens/week-screen"
-
-const MANAGE_PAGES = new Set<AppPage>(MANAGE_ITEMS.map((item) => item.id))
-
-const PAGE_META: Record<
-  Exclude<AppPage, "menu">,
-  { title: string; description: (ctx: { today: string; weekStart: string }) => string }
-> = {
-  clock: {
-    title: "Masuk",
-    description: ({ today }) => `Clock-in / pulang · ${formatIsoLong(today)}`,
-  },
-  today: {
-    title: "Hari ini",
-    description: ({ today }) => formatIsoLong(today),
-  },
-  prefs: {
-    title: "Preferensi",
-    description: ({ weekStart }) => `Minggu depan · ${formatWeekRange(weekStart)}`,
-  },
-  week: {
-    title: "Jadwal",
-    description: () => "Papan minggu, inbox libur, dan publish",
-  },
-  staff: {
-    title: "Orang",
-    description: () => "Staff, role, dan PIN",
-  },
-  settings: {
-    title: "Outlet",
-    description: () => "Jam buka, slot shift, aturan adil",
-  },
-  catalog: {
-    title: "Katalog demo",
-    description: () => "Sementara, terpisah dari jadwal",
-  },
-}
+import {
+  DEFAULT_PAGE,
+  MANAGE_PAGES,
+  NAV_BY_ID,
+  type AppPage,
+} from "@/lib/nav"
 
 export function App() {
   const staffing = useStaffing()
@@ -99,7 +66,7 @@ export function App() {
   }, [staffing.database, staffing.ready, staffing.refresh])
 
   useEffect(() => {
-    if (landscape && page === "menu") setPage("clock")
+    if (landscape && page === "menu") setPage(DEFAULT_PAGE)
   }, [landscape, page])
 
   const managers = staffing.staff.filter(
@@ -113,7 +80,7 @@ export function App() {
   function lock() {
     setActor(null)
     if (MANAGE_PAGES.has(page)) {
-      setPage(landscape ? "clock" : "menu")
+      setPage(landscape ? DEFAULT_PAGE : "menu")
     }
   }
 
@@ -138,7 +105,20 @@ export function App() {
     setNotice("Belum ada owner atau manager.")
   }
 
-  const meta = page === "menu" ? null : PAGE_META[page]
+  const item = page === "menu" ? null : NAV_BY_ID[page]
+  const meta = item
+    ? {
+        title: item.label,
+        description:
+          page === "clock"
+            ? `Clock-in / pulang · ${formatIsoLong(staffing.today)}`
+            : page === "today"
+              ? formatIsoLong(staffing.today)
+              : page === "prefs"
+                ? `Minggu depan · ${formatWeekRange(staffing.upcomingWeekStart)}`
+                : item.hint,
+      }
+    : null
   const content = !staffing.ready ? (
     <p className="text-sm text-muted-foreground">Membuka database lokal…</p>
   ) : page === "clock" ? (
@@ -200,12 +180,15 @@ export function App() {
       settings={staffing.settings}
       slots={staffing.slots}
       requirements={staffing.requirements}
-      onOpenCatalog={() => setPage("catalog")}
     />
-  ) : page === "catalog" ? (
+  ) : page === "products" ? (
     <CatalogScreen />
-  ) : page === "menu" ? null : (
+  ) : page === "menu" ? null : item && !item.ready ? (
+    <ComingSoonScreen item={item} />
+  ) : MANAGE_PAGES.has(page) && !actor ? (
     <p className="text-sm text-muted-foreground">Buka mode atur untuk melihat halaman ini.</p>
+  ) : (
+    <p className="text-sm text-muted-foreground">Halaman tidak ditemukan.</p>
   )
 
   const managerPickDialog = (
@@ -285,13 +268,7 @@ export function App() {
         />
         <div className="flex min-w-0 flex-1 flex-col">
           {meta ? (
-            <PageHeader
-              title={meta.title}
-              description={meta.description({
-                today: staffing.today,
-                weekStart: staffing.upcomingWeekStart,
-              })}
-            />
+            <PageHeader title={meta.title} description={meta.description} />
           ) : null}
           <main id="konten" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">
             <div className="mx-auto w-full max-w-5xl px-4 py-4">
@@ -314,10 +291,7 @@ export function App() {
       {page === "menu" ? null : meta ? (
         <PageHeader
           title={meta.title}
-          description={meta.description({
-            today: staffing.today,
-            weekStart: staffing.upcomingWeekStart,
-          })}
+          description={meta.description}
           onBack={goMenu}
         />
       ) : null}

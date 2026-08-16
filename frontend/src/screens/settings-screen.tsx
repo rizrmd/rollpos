@@ -24,14 +24,12 @@ export function SettingsScreen({
   settings,
   slots,
   requirements,
-  onOpenCatalog,
 }: {
   database: Database
   actor: StaffRecord
   settings: OutletSettingsRecord | null
   slots: SlotRecord[]
   requirements: RoleRequirementRecord[]
-  onOpenCatalog?: () => void
 }) {
   const [form, setForm] = useState(formFrom(settings))
   const [notice, setNotice] = useState<string | null>(null)
@@ -183,11 +181,6 @@ export function SettingsScreen({
         </CardContent>
       </Card>
 
-      {onOpenCatalog ? (
-        <Button type="button" variant="outline" size="touch" onClick={onOpenCatalog}>
-          Demo katalog (nanti jadi kasir)
-        </Button>
-      ) : null}
     </div>
   )
 }
