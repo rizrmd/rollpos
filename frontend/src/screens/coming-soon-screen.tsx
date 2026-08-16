@@ -2,7 +2,10 @@ import type { NavItem } from "@/lib/nav"
 
 export function ComingSoonScreen({ item }: { item: NavItem }) {
   return (
-    <section aria-labelledby="soon-heading" className="mx-auto flex max-w-lg flex-col gap-4">
+    <section
+      aria-labelledby="soon-heading"
+      className="mx-auto w-full max-w-lg"
+    >
       <div className="rounded-2xl border bg-card px-5 py-6">
         <p className="text-sm font-medium text-muted-foreground">Belum dibangun</p>
         <h2 id="soon-heading" className="mt-1 text-2xl font-semibold tracking-tight">

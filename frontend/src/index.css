@@ -146,3 +146,17 @@
 .skip-link:focus {
   top: 0.75rem;
 }
+
+/* Semua halaman: konten default di middle-center.
+   `safe` menjaga bagian atas tidak terpotong jika konten lebih tinggi dari viewport. */
+#konten {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  justify-content: safe center;
+  align-items: safe center;
+}
+
+#konten > * {
+  width: 100%;
+}
