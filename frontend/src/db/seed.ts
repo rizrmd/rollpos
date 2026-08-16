@@ -34,31 +34,31 @@ export const SEED_DEFAULTS = {
     {
       name: "Ayu",
       nickname: "Ayu",
-      pin: "0000",
+      pin: "000000",
       roles: ["owner", "barista"] as StaffRole[],
     },
     {
       name: "Dimas",
       nickname: "Dimas",
-      pin: "0000",
+      pin: "000000",
       roles: ["kasir", "manager"] as StaffRole[],
     },
     {
       name: "Nia",
       nickname: "Nia",
-      pin: "0000",
+      pin: "000000",
       roles: ["barista", "kitchen"] as StaffRole[],
     },
     {
       name: "Raka",
       nickname: "Raka",
-      pin: "0000",
+      pin: "000000",
       roles: ["kasir", "kitchen"] as StaffRole[],
     },
     {
       name: "Sinta",
       nickname: "Sinta",
-      pin: "0000",
+      pin: "000000",
       roles: ["barista"] as StaffRole[],
     },
   ],
@@ -236,7 +236,7 @@ async function backfillMissingSeedStaff(
 
 function seedPinForRow(row: StaffRow): string {
   const person = SEED_DEFAULTS.staff.find((candidate) => matchesSeedPerson(row, candidate))
-  return person?.pin ?? "0000"
+  return person?.pin ?? "000000"
 }
 
 async function resetStaffPinsToSeed(database: Database, existing: StaffRow[]): Promise<void> {
