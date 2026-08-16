@@ -77,11 +77,9 @@ export function seedStaffingIfEmpty(database: Database): Promise<void> {
 }
 
 type SeedPerson = (typeof SEED_DEFAULTS.staff)[number]
+type StaffRow = ReturnType<typeof listRows>[number]
 
-function matchesSeedPerson(
-  row: { name?: unknown; nickname?: unknown },
-  person: SeedPerson
-): boolean {
+function matchesSeedPerson(row: StaffRow, person: SeedPerson): boolean {
   const name = cellStr(row, "name").trim().toLowerCase()
   const nickname = cellStr(row, "nickname").trim().toLowerCase()
   const wantName = person.name.trim().toLowerCase()
@@ -205,7 +203,7 @@ async function seedFresh(database: Database): Promise<void> {
 
 async function backfillMissingSeedStaff(
   database: Database,
-  existing: ReturnType<typeof listRows>
+  existing: StaffRow[]
 ): Promise<void> {
   const now = Date.now()
   const missing = SEED_DEFAULTS.staff.filter(
