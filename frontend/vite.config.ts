@@ -11,4 +11,23 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    include: [
+      "@nozbe/watermelondb",
+      "@nozbe/watermelondb/adapters/lokijs",
+      "@nozbe/watermelondb/react",
+    ],
+  },
+  define: {
+    global: "globalThis",
+  },
+  server: {
+    host: true,
+    port: 3000,
+  },
+  preview: {
+    host: true,
+    port: 3000,
+    strictPort: true,
+  },
 })

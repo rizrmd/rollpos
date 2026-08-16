@@ -1,6 +1,6 @@
 # RollPOS frontend
 
-Vite + React + TypeScript + shadcn/ui, using **Bun**.
+Vite + React + TypeScript + shadcn/ui, using **Bun**. Local catalog data lives in **WatermelonDB** (LokiJS + IndexedDB).
 
 ## Scripts
 
