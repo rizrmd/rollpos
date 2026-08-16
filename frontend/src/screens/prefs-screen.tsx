@@ -1,6 +1,7 @@
 import type { Database } from "@/db/database"
 import { useMemo, useState } from "react"
 
+import { ChangePinDialog } from "@/components/change-pin-dialog"
 import { LiveNotice } from "@/components/page-header"
 import { PinDialog } from "@/components/pin-dialog"
 import { Button } from "@/components/ui/button"
@@ -11,9 +12,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { authenticateStaff, submitPreferences } from "@/db/staffing-write"
+import {
+  authenticateStaff,
+  changeStaffPin,
+  submitPreferences,
+} from "@/db/staffing-write"
 import {
   formatIsoWeekdayShort,
   formatWeekRange,
@@ -50,10 +62,13 @@ export function PrefsScreen({
   const activeSlots = slots.filter((slot) => slot.isActive)
   const [pending, setPending] = useState<StaffRecord | null>(null)
   const [who, setWho] = useState<StaffRecord | null>(null)
+  const [changePinWho, setChangePinWho] = useState<StaffRecord | null>(null)
+  const [pickPinOwner, setPickPinOwner] = useState(false)
   const [ranked, setRanked] = useState<string[]>([])
   const [offs, setOffs] = useState<string[]>([])
   const [note, setNote] = useState("")
   const [notice, setNotice] = useState<string | null>(null)
+  const activeStaff = staff.filter((member) => member.isActive)
 
   const deadline = settings
     ? preferenceDeadlineLabel(
@@ -105,6 +120,22 @@ export function PrefsScreen({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <LiveNotice message={notice} />
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="touch"
+              onClick={() => {
+                if (who) {
+                  setChangePinWho(who)
+                  return
+                }
+                setPickPinOwner(true)
+              }}
+            >
+              Ubah PIN saya
+            </Button>
+          </div>
           {closed ? (
             <p className="text-sm text-destructive" role="status">
               Deadline sudah lewat. Hubungi manager untuk mengubah.
@@ -114,23 +145,21 @@ export function PrefsScreen({
           <fieldset disabled={closed} className="flex flex-col gap-4 disabled:opacity-70">
             <legend className="mb-2 text-sm font-medium">Siapa yang mengisi?</legend>
             <div className="flex flex-wrap gap-2">
-              {staff
-                .filter((member) => member.isActive)
-                .map((member) => (
-                  <Button
-                    key={member.id}
-                    type="button"
-                    size="touch"
-                    variant={who?.id === member.id ? "default" : "outline"}
-                    aria-pressed={who?.id === member.id}
-                    onClick={() => {
-                      setNotice(null)
-                      setPending(member)
-                    }}
-                  >
-                    {member.nickname}
-                  </Button>
-                ))}
+              {activeStaff.map((member) => (
+                <Button
+                  key={member.id}
+                  type="button"
+                  size="touch"
+                  variant={who?.id === member.id ? "default" : "outline"}
+                  aria-pressed={who?.id === member.id}
+                  onClick={() => {
+                    setNotice(null)
+                    setPending(member)
+                  }}
+                >
+                  {member.nickname}
+                </Button>
+              ))}
             </div>
           </fieldset>
 
@@ -261,12 +290,57 @@ export function PrefsScreen({
         onOpenChange={(open) => {
           if (!open) setPending(null)
         }}
+        actionLabel="Ubah PIN saya"
+        onAction={() => {
+          setChangePinWho(pending)
+          setPending(null)
+        }}
         onSubmit={async (pin) => {
           if (!pending) return
           const member = await authenticateStaff(database, pending.id, pin)
           setWho(member)
           loadForm(member)
           setPending(null)
+        }}
+      />
+      <Dialog open={pickPinOwner} onOpenChange={setPickPinOwner}>
+        <DialogContent className="sm:max-w-sm" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Pilih nama kamu</DialogTitle>
+            <DialogDescription>
+              Masukkan PIN lama dulu sebelum PIN bisa diganti.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+            {activeStaff.map((member) => (
+              <li key={member.id}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="touch"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    setPickPinOwner(false)
+                    setChangePinWho(member)
+                  }}
+                >
+                  {member.nickname || member.name}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
+      <ChangePinDialog
+        open={Boolean(changePinWho)}
+        staffName={changePinWho?.nickname || changePinWho?.name || "staff"}
+        onOpenChange={(open) => {
+          if (!open) setChangePinWho(null)
+        }}
+        onSubmit={async (currentPin, newPin) => {
+          if (!changePinWho) return
+          await changeStaffPin(database, changePinWho.id, currentPin, newPin)
+          setNotice(`PIN ${changePinWho.nickname} berhasil diubah.`)
         }}
       />
     </div>
