@@ -56,7 +56,10 @@ export function PinDialog({
     <Dialog
       open={open}
       onOpenChange={(value) => {
-        if (!value) setPin("")
+        if (!value) {
+          setPin("")
+          setError(null)
+        }
         onOpenChange(value)
       }}
     >
@@ -65,8 +68,11 @@ export function PinDialog({
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}
         </DialogHeader>
-        <p className="font-mono text-center text-2xl tracking-[0.4em]">
-          {pin.replace(/./g, "•") || "••••"}
+        <p
+          className="min-h-8 font-mono text-center text-2xl leading-8 tracking-[0.4em]"
+          aria-label={pin ? `PIN ${pin.length} digit` : "PIN kosong"}
+        >
+          {pin ? pin.replace(/./g, "•") : "\u00A0"}
         </p>
         <div className="grid grid-cols-3 gap-2">
           {["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK"].map((key) => (
@@ -85,6 +91,7 @@ export function PinDialog({
                   void submit()
                   return
                 }
+                setError(null)
                 press(key)
               }}
             >
@@ -92,7 +99,13 @@ export function PinDialog({
             </Button>
           ))}
         </div>
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        <p
+          className="min-h-5 text-sm text-destructive"
+          role="alert"
+          aria-live="polite"
+        >
+          {error ?? "\u00A0"}
+        </p>
       </DialogContent>
     </Dialog>
   )
