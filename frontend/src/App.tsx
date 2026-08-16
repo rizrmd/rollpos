@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
+import { ArrowLeft } from "lucide-react"
 
 import { AppSidebar } from "@/components/app-sidebar"
-import { LiveNotice, PageHeader } from "@/components/page-header"
+import { LiveNotice } from "@/components/page-header"
 import { PinDialog } from "@/components/pin-dialog"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,11 +17,7 @@ import { seedStaffingIfEmpty } from "@/db/seed"
 import { useLandscape } from "@/hooks/use-landscape"
 import { useStaffing } from "@/hooks/use-staffing"
 import { canManage } from "@/lib/permissions"
-import {
-  formatIsoLong,
-  formatJakartaClock,
-  formatWeekRange,
-} from "@/lib/format"
+import { formatJakartaClock } from "@/lib/format"
 import type { StaffRecord } from "@/lib/types"
 import { CatalogScreen } from "@/screens/catalog-screen"
 import { ClockScreen } from "@/screens/clock-screen"
@@ -106,19 +103,6 @@ export function App() {
   }
 
   const item = page === "menu" ? null : NAV_BY_ID[page]
-  const meta = item
-    ? {
-        title: item.label,
-        description:
-          page === "clock"
-            ? `Clock-in / pulang · ${formatIsoLong(staffing.today)}`
-            : page === "today"
-              ? formatIsoLong(staffing.today)
-              : page === "prefs"
-                ? `Minggu depan · ${formatWeekRange(staffing.upcomingWeekStart)}`
-                : item.hint,
-      }
-    : null
   const content = !staffing.ready ? (
     <p className="text-sm text-muted-foreground">Membuka database lokal…</p>
   ) : page === "clock" ? (
@@ -267,9 +251,6 @@ export function App() {
           onLock={lock}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          {meta ? (
-            <PageHeader title={meta.title} description={meta.description} />
-          ) : null}
           <main id="konten" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">
             <div className="mx-auto w-full max-w-5xl px-4 py-4">
               <LiveNotice message={notice ?? staffing.error} tone="error" />
@@ -288,18 +269,22 @@ export function App() {
       <a href="#konten" className="skip-link">
         Langsung ke konten
       </a>
-      {page === "menu" ? null : meta ? (
-        <PageHeader
-          title={meta.title}
-          description={meta.description}
-          onBack={goMenu}
-        />
-      ) : null}
+      {page === "menu" ? null : (
+        <div className="border-b px-4 py-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-touch"
+            onClick={goMenu}
+            aria-label="Kembali ke menu"
+          >
+            <ArrowLeft className="size-5" />
+          </Button>
+        </div>
+      )}
       <main id="konten" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">
         {page === "menu" ? (
           <MenuScreen
-            today={staffing.today}
-            nowLabel={nowLabel}
             actor={actor}
             onOpen={openPage}
             onUnlock={startUnlock}
