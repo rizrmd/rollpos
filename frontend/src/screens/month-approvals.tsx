@@ -8,15 +8,20 @@ import {
   weekdayHeaders,
 } from "@/lib/format"
 import {
+  dayRoster,
   OFF_SOURCE_LABEL,
+  staffInitials,
   summarizeTeamMonth,
   teamMonthDays,
+  workingInitials,
   type TeamDayStatus,
 } from "@/lib/staff-prefs"
 import { addMonths, monthGrid } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import type {
+  AssignmentRecord,
   DayOffRecord,
+  SlotRecord,
   StaffRecord,
   SuggestionRecord,
 } from "@/lib/types"
@@ -27,6 +32,8 @@ export function MonthApprovals({
   weekStartsOn,
   today,
   staff,
+  slots = [],
+  assignments = [],
   offs,
   suggestions,
   onPickDate,
@@ -36,6 +43,8 @@ export function MonthApprovals({
   weekStartsOn: number
   today: string
   staff: StaffRecord[]
+  slots?: SlotRecord[]
+  assignments?: AssignmentRecord[]
   offs: DayOffRecord[]
   suggestions: SuggestionRecord[]
   onPickDate?: (date: string) => void
@@ -102,6 +111,16 @@ export function MonthApprovals({
                 day={day}
                 today={today}
                 staff={staff}
+                initials={workingInitials(
+                  dayRoster({
+                    date: day.date,
+                    staff,
+                    slots,
+                    assignments,
+                    offs,
+                    suggestions,
+                  })
+                )}
                 onPickDate={onPickDate}
               />
             </li>
@@ -147,11 +166,13 @@ function MonthDayCell({
   day,
   today,
   staff,
+  initials,
   onPickDate,
 }: {
   day: TeamDayStatus
   today: string
   staff: StaffRecord[]
+  initials: string[]
   onPickDate?: (date: string) => void
 }) {
   const isToday = day.date === today
@@ -161,15 +182,22 @@ function MonthDayCell({
       : day.pending.length > 0
         ? "border-amber-700/25 bg-amber-50 dark:bg-amber-950/20"
         : ""
-  const names = day.approved.map((row) => nick(staff, row.staffId))
+  const offInitials = day.approved.map((row) => {
+    const member = staff.find((item) => item.id === row.staffId)
+    return staffInitials(member?.nickname || member?.name || row.staffId)
+  })
   const pendingNames = day.pending.map((row) => nick(staff, row.staffId))
   const body = (
     <>
       <span className="text-xs font-medium">{Number(day.date.slice(8))}</span>
-      {day.inMonth && names.length > 0 ? (
-        <span className="text-[0.65rem] leading-tight">
-          {names.slice(0, 3).join(", ")}
-          {names.length > 3 ? ` +${names.length - 3}` : ""}
+      {day.inMonth && initials.length > 0 ? (
+        <span className="text-[0.65rem] leading-tight font-medium tracking-wide">
+          {initials.join(" ")}
+        </span>
+      ) : null}
+      {day.inMonth && offInitials.length > 0 ? (
+        <span className="text-[0.65rem] leading-tight text-muted-foreground">
+          libur {offInitials.join(" ")}
         </span>
       ) : null}
       {day.inMonth && pendingNames.length > 0 ? (

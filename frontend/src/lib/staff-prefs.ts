@@ -247,6 +247,32 @@ export function dayOffAction(day: PrefsDay, today: string): DayOffAction {
   return "request"
 }
 
+/** Inisial tampilan: dua huruf, atau dua kata → huruf pertama masing-masing. */
+export function staffInitials(name: string): string {
+  const cleaned = name.trim()
+  if (!cleaned) return "?"
+  const parts = cleaned.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) {
+    const first = parts[0]?.[0] ?? ""
+    const second = parts[1]?.[0] ?? ""
+    return `${first}${second}`.toUpperCase()
+  }
+  return cleaned.slice(0, Math.min(2, cleaned.length)).toUpperCase()
+}
+
+export function workingInitials(roster: DayRoster): string[] {
+  const seen = new Set<string>()
+  const list: string[] = []
+  for (const slot of roster.slots) {
+    for (const person of slot.people) {
+      if (seen.has(person.staffId)) continue
+      seen.add(person.staffId)
+      list.push(staffInitials(person.nickname || person.name))
+    }
+  }
+  return list
+}
+
 /** Label pendek di sel kalender — setiap tanggal punya status. */
 export function prefsDayCaption(day: PrefsDay, today: string): string {
   if (day.kind === "work") {

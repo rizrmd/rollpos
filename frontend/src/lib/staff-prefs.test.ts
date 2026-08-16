@@ -8,9 +8,11 @@ import {
   isPreferenceDeadlinePassed,
   prefsDaysForMonth,
   resolvePrefsDay,
+  staffInitials,
   summarizePrefsMonth,
   summarizeTeamMonth,
   teamMonthDays,
+  workingInitials,
 } from "@/lib/staff-prefs"
 import { addMonths, monthGrid, monthStartOf } from "@/lib/time"
 import type {
@@ -259,6 +261,15 @@ describe("resolvePrefsDay", () => {
   })
 })
 
+describe("staffInitials", () => {
+  test("satu kata memakai dua huruf, dua kata memakai inisial", () => {
+    expect(staffInitials("Ayu")).toBe("AY")
+    expect(staffInitials("Dimas")).toBe("DI")
+    expect(staffInitials("Nia Putri")).toBe("NP")
+    expect(staffInitials("")).toBe("?")
+  })
+})
+
 describe("dayRoster", () => {
   test("mengelompokkan siapa kerja per slot dan siapa libur", () => {
     const staff = [
@@ -329,6 +340,7 @@ describe("dayRoster", () => {
       ],
     })
     expect(roster.slots[0]?.people[0]?.nickname).toBe("Nia")
+    expect(workingInitials(roster)).toEqual(["NI"])
   })
 })
 

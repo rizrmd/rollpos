@@ -382,6 +382,8 @@ export function WeekScreen({
           weekStartsOn={settings?.weekStartsOn ?? 1}
           today={todayJakarta()}
           staff={activeStaff}
+          slots={activeSlots}
+          assignments={assignments}
           offs={offs}
           suggestions={suggestions}
           onPickDate={(date) => {

@@ -46,6 +46,7 @@ import {
   OFF_SOURCE_LABEL,
   prefsDayCaption,
   prefsDaysForMonth,
+  workingInitials,
   type DayRoster,
   type PrefsDay,
   type PrefsDayKind,
@@ -200,6 +201,35 @@ export function PrefsScreen({
         suggestions,
       })
     : null
+  const initialsByDate = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const day of days) {
+      if (!day.inMonth) continue
+      map.set(
+        day.date,
+        workingInitials(
+          dayRoster({
+            date: day.date,
+            staff: activeStaff,
+            slots: activeSlots,
+            assignments,
+            offs,
+            proposedAssignments: proposed.assignments,
+            suggestions,
+          })
+        )
+      )
+    }
+    return map
+  }, [
+    days,
+    activeStaff,
+    activeSlots,
+    assignments,
+    offs,
+    proposed.assignments,
+    suggestions,
+  ])
 
   async function guarded(run: () => Promise<void>, ok?: string) {
     try {
@@ -216,8 +246,8 @@ export function PrefsScreen({
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-medium">Shift & libur</h1>
         <p className="text-sm text-muted-foreground">
-          Kerja default dari usulan sistem yang adil. Ketuk tanggal untuk
-          lihat siapa kerja, atau minta libur. Manager yang memutuskan.
+          Inisial di tanggal = siapa yang masuk. Ketuk untuk detail atau
+          minta libur.
         </p>
       </header>
 
@@ -308,7 +338,11 @@ export function PrefsScreen({
             <ol className="grid grid-cols-7">
               {days.map((day) => {
                 const isToday = day.date === today
-                const caption = prefsDayCaption(day, today)
+                const initials = initialsByDate.get(day.date) ?? []
+                const status =
+                  day.kind === "work" || day.kind === "empty"
+                    ? ""
+                    : prefsDayCaption(day, today)
                 return (
                   <li
                     key={day.date}
@@ -333,9 +367,14 @@ export function PrefsScreen({
                       <span className="text-xs font-medium">
                         {Number(day.date.slice(8))}
                       </span>
-                      {day.inMonth ? (
+                      {day.inMonth && initials.length > 0 ? (
+                        <span className="text-[0.65rem] leading-tight font-medium tracking-wide">
+                          {initials.join(" ")}
+                        </span>
+                      ) : null}
+                      {day.inMonth && status ? (
                         <span className="text-[0.65rem] leading-tight">
-                          {caption}
+                          {status}
                         </span>
                       ) : null}
                     </button>
