@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  dayOffAction,
   decidedPrefsDays,
+  prefsDayCaption,
   isPreferenceDeadlinePassed,
   prefsDaysForMonth,
   resolvePrefsDay,
@@ -151,6 +153,44 @@ describe("resolvePrefsDay", () => {
     expect(asked.kind).toBe("declined")
     expect(asked.alternativeDate).toBe("2026-08-22")
     expect(alt.kind).toBe("offered")
+  })
+
+  test("ketuk tanggal: minta ke depan, cabut yang menunggu, lihat yang sudah diputus", () => {
+    const pending = resolvePrefsDay({
+      date: "2026-08-19",
+      inMonth: true,
+      staffId: "nia",
+      offs: [],
+      suggestions: [suggest({ workDate: "2026-08-19" })],
+      assignments: [],
+      slots: [pagi],
+    })
+    const empty = resolvePrefsDay({
+      date: "2026-08-21",
+      inMonth: true,
+      staffId: "nia",
+      offs: [],
+      suggestions: [],
+      assignments: [],
+      slots: [pagi],
+    })
+    const approved = resolvePrefsDay({
+      date: "2026-08-18",
+      inMonth: true,
+      staffId: "nia",
+      offs: [off({ workDate: "2026-08-18" })],
+      suggestions: [],
+      assignments: [],
+      slots: [pagi],
+    })
+    expect(dayOffAction(pending, "2026-08-17")).toBe("withdraw")
+    expect(dayOffAction(empty, "2026-08-17")).toBe("request")
+    expect(dayOffAction(empty, "2026-08-22")).toBe("view")
+    expect(dayOffAction(approved, "2026-08-17")).toBe("view")
+    expect(prefsDayCaption(pending, "2026-08-17")).toBe("Menunggu")
+    expect(prefsDayCaption(empty, "2026-08-17")).toBe("Kosong")
+    expect(prefsDayCaption(empty, "2026-08-22")).toBe("—")
+    expect(prefsDayCaption(approved, "2026-08-17")).toBe("Libur")
   })
 
   test("assignment published tampil kerja; draft diabaikan", () => {

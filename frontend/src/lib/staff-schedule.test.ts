@@ -20,11 +20,13 @@ import {
   clockPunch,
   hasOpenSession,
   removeOfficialOff,
+  requestDayOff,
   saveOutletSettings,
   saveSlot,
   submitPreferences,
   upsertAssignment,
   upsertStaff,
+  withdrawDayOffRequest,
 } from "@/db/staffing-write"
 import { canEditSlots, canManage, isOwner } from "@/lib/permissions"
 import { recommendSchedule, wouldViolateConsecutive } from "@/lib/recommend"
@@ -329,6 +331,43 @@ describe("staffing persist + schedule", () => {
         endMinutes: 600,
         dutyRole: "barista",
       })
+    ).rejects.toThrow(/libur resmi/)
+  })
+
+  test("minta libur per tanggal, bisa dicabut selama masih suggested", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const first = await requestDayOff(
+      database,
+      nia.id,
+      "2026-08-20",
+      1,
+      "acara"
+    )
+    const second = await requestDayOff(database, nia.id, "2026-08-22", 1)
+    const pending = await loadSuggestions(database)
+    expect(pending.filter((row) => row.staffId === nia.id)).toHaveLength(2)
+    expect(pending.find((row) => row.id === first)?.workDate).toBe("2026-08-20")
+    expect(pending.find((row) => row.id === first)?.weekStart).toBe("2026-08-17")
+    expect(pending.find((row) => row.id === second)?.workDate).toBe("2026-08-22")
+
+    await withdrawDayOffRequest(database, nia.id, first)
+    const after = await loadSuggestions(database)
+    expect(after.some((row) => row.id === first)).toBe(false)
+    expect(after.some((row) => row.id === second && row.status === "suggested")).toBe(
+      true
+    )
+
+    await acceptSuggestion(database, owner, second)
+    await expect(withdrawDayOffRequest(database, nia.id, second)).rejects.toThrow(
+      /diputuskan/
+    )
+    await expect(
+      requestDayOff(database, nia.id, "2026-08-22", 1)
     ).rejects.toThrow(/libur resmi/)
   })
 

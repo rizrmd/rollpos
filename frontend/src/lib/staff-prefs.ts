@@ -26,7 +26,10 @@ export type PrefsDay = {
   alternativeDate: string
   source: DayOffSource | ""
   slotNames: string[]
+  suggestionId: string
 }
+
+export type DayOffAction = "request" | "withdraw" | "view"
 
 export type MonthSummary = {
   approved: number
@@ -128,6 +131,7 @@ export function resolvePrefsDay({
       alternativeDate: "",
       source: official?.source ?? "accepted_suggestion",
       slotNames: [],
+      suggestionId: accepted?.id ?? "",
     }
   }
   if (pending) {
@@ -140,6 +144,7 @@ export function resolvePrefsDay({
       alternativeDate: "",
       source: "",
       slotNames: [],
+      suggestionId: pending.id,
     }
   }
   if (declined) {
@@ -152,6 +157,7 @@ export function resolvePrefsDay({
       alternativeDate: declined.alternativeDate,
       source: "",
       slotNames,
+      suggestionId: declined.id,
     }
   }
   if (offered) {
@@ -164,6 +170,7 @@ export function resolvePrefsDay({
       alternativeDate: offered.workDate,
       source: "",
       slotNames,
+      suggestionId: offered.id,
     }
   }
   if (work.length > 0) {
@@ -176,6 +183,7 @@ export function resolvePrefsDay({
       alternativeDate: "",
       source: "",
       slotNames,
+      suggestionId: "",
     }
   }
   return {
@@ -187,7 +195,27 @@ export function resolvePrefsDay({
     alternativeDate: "",
     source: "",
     slotNames: [],
+    suggestionId: "",
   }
+}
+
+export function dayOffAction(day: PrefsDay, today: string): DayOffAction {
+  if (day.kind === "pending") return "withdraw"
+  if (day.kind === "off") return "view"
+  if (day.date < today) return "view"
+  return "request"
+}
+
+/** Label pendek di sel kalender — setiap tanggal punya status. */
+export function prefsDayCaption(day: PrefsDay, today: string): string {
+  if (day.kind === "work") {
+    return day.slotNames.length > 0
+      ? `Kerja ${day.slotNames.join("/")}`
+      : PREFS_KIND_LABEL.work
+  }
+  if (day.kind !== "empty") return day.label
+  if (day.date < today) return "—"
+  return "Kosong"
 }
 
 export function prefsDaysForMonth({

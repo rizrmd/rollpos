@@ -30,6 +30,7 @@ import type {
   SuggestionStatus,
 } from "@/lib/types"
 import { DEFAULT_OUTLET_ID } from "@/lib/types"
+import { weekStartOn } from "@/lib/time"
 
 export function hasOpenSession(events: { type: AttendanceType }[]): boolean {
   const punches = events.filter(
@@ -533,6 +534,77 @@ export async function submitPreferences(
       })
     }
   })
+}
+
+export async function requestDayOff(
+  database: Database,
+  staffId: string,
+  workDate: string,
+  weekStartsOn: number,
+  note = ""
+): Promise<string> {
+  await database.ready
+  const official = listRows(database, TABLES.scheduledDaysOff).find(
+    (row) =>
+      cellStr(row, "staffId") === staffId && cellStr(row, "workDate") === workDate
+  )
+  if (official) {
+    throw new Error("Tanggal itu sudah libur resmi.")
+  }
+  const pending = listRows(database, TABLES.dayOffSuggestions).find(
+    (row) =>
+      cellStr(row, "staffId") === staffId &&
+      cellStr(row, "workDate") === workDate &&
+      cellStr(row, "status") === "suggested"
+  )
+  const now = Date.now()
+  if (pending) {
+    updateRow(database, TABLES.dayOffSuggestions, pending.id, {
+      note,
+      updatedAt: now,
+    })
+    return pending.id
+  }
+  const weekStart = weekStartOn(workDate, weekStartsOn)
+  const rank =
+    listRows(database, TABLES.dayOffSuggestions).filter(
+      (row) =>
+        cellStr(row, "staffId") === staffId &&
+        cellStr(row, "weekStart") === weekStart
+    ).length + 1
+  return addRow(database, TABLES.dayOffSuggestions, {
+    staffId,
+    weekStart,
+    workDate,
+    rank,
+    note,
+    status: "suggested",
+    alternativeDate: "",
+    actorStaffId: staffId,
+    createdAt: now,
+    updatedAt: now,
+  })
+}
+
+export async function withdrawDayOffRequest(
+  database: Database,
+  staffId: string,
+  suggestionId: string
+): Promise<void> {
+  await database.ready
+  const row = listRows(database, TABLES.dayOffSuggestions).find(
+    (item) => item.id === suggestionId
+  )
+  if (!row) {
+    throw new Error("Permintaan tidak ditemukan.")
+  }
+  if (cellStr(row, "staffId") !== staffId) {
+    throw new Error("Hanya pemilik permintaan yang boleh mencabut.")
+  }
+  if (cellStr(row, "status") !== "suggested") {
+    throw new Error("Permintaan sudah diputuskan manager.")
+  }
+  deleteRow(database, TABLES.dayOffSuggestions, suggestionId)
 }
 
 export async function acceptSuggestion(
