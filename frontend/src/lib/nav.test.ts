@@ -52,22 +52,19 @@ describe("visibleNavGroups", () => {
     }
   })
 
-  test("Preferensi punya dua submenu terpisah, bukan satu item gabungan", () => {
+  test("Karyawan menampilkan Shift & libur dan Ubah PIN langsung, tanpa heading Preferensi", () => {
     const karyawan = visibleNavGroups(null).find((group) => group.id === "tim")
     expect(karyawan).toBeDefined()
-    const prefs = karyawan!.items.find(
-      (entry) => isNavBranch(entry) && entry.id === "prefs-menu"
-    )
-    expect(prefs && isNavBranch(prefs)).toBe(true)
-    if (!prefs || !isNavBranch(prefs)) return
-    expect(prefs.children.map((item) => item.id)).toEqual(["prefs", "pin"])
-    expect(prefs.children.map((item) => item.label)).toEqual([
-      "Shift & libur",
-      "Ubah PIN",
-    ])
-    expect(karyawan!.items.some((entry) => !isNavBranch(entry) && entry.id === "prefs")).toBe(
-      false
-    )
+    expect(karyawan!.title).toBe("Karyawan")
+    expect(
+      karyawan!.items.some((entry) => isNavBranch(entry) && entry.id === "prefs-menu")
+    ).toBe(false)
+    expect(karyawan!.items.some((entry) => isNavBranch(entry))).toBe(false)
+    const ids = flattenNavEntries(karyawan!.items).map((item) => item.id)
+    const labels = flattenNavEntries(karyawan!.items).map((item) => item.label)
+    expect(ids).toEqual(["prefs", "pin"])
+    expect(labels).toEqual(["Shift & libur", "Ubah PIN"])
+    expect(labels).not.toContain("Preferensi")
   })
 
   test("canSeeNavItem mengikuti access item", () => {
