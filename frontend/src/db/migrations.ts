@@ -1,5 +1,154 @@
-import { schemaMigrations } from "@nozbe/watermelondb/Schema/migrations"
+import {
+  createTable,
+  schemaMigrations,
+} from "@nozbe/watermelondb/Schema/migrations"
 
 export const migrations = schemaMigrations({
-  migrations: [],
+  migrations: [
+    {
+      toVersion: 2,
+      steps: [
+        createTable({
+          name: "outlet_settings",
+          columns: [
+            { name: "outlet_id", type: "string", isIndexed: true },
+            { name: "open_minutes", type: "number" },
+            { name: "close_minutes", type: "number" },
+            { name: "week_starts_on", type: "number" },
+            { name: "preference_deadline_weekday", type: "number" },
+            { name: "preference_deadline_minutes", type: "number" },
+            { name: "max_consecutive_work_days", type: "number" },
+            { name: "target_days_off_per_week", type: "number" },
+            { name: "target_hours_per_week", type: "number" },
+            { name: "hours_skew_percent", type: "number" },
+            { name: "weekend_fairness_enabled", type: "boolean" },
+            { name: "grace_late_minutes", type: "number" },
+            { name: "created_at", type: "number" },
+            { name: "updated_at", type: "number" },
+          ],
+        }),
+        createTable({
+          name: "staff_members",
+          columns: [
+            { name: "name", type: "string" },
+            { name: "nickname", type: "string" },
+            { name: "pin_hash", type: "string" },
+            { name: "pin_salt", type: "string" },
+            { name: "is_active", type: "boolean" },
+            { name: "outlet_id", type: "string", isIndexed: true },
+            { name: "created_at", type: "number" },
+            { name: "updated_at", type: "number" },
+          ],
+        }),
+        createTable({
+          name: "staff_member_roles",
+          columns: [
+            { name: "staff_id", type: "string", isIndexed: true },
+            { name: "role", type: "string", isIndexed: true },
+            { name: "created_at", type: "number" },
+          ],
+        }),
+        createTable({
+          name: "shift_templates",
+          columns: [
+            { name: "name", type: "string" },
+            { name: "start_minutes", type: "number" },
+            { name: "end_minutes", type: "number" },
+            { name: "sort_order", type: "number" },
+            { name: "min_staff_count", type: "number" },
+            { name: "is_active", type: "boolean" },
+            { name: "outlet_id", type: "string", isIndexed: true },
+            { name: "created_at", type: "number" },
+            { name: "updated_at", type: "number" },
+          ],
+        }),
+        createTable({
+          name: "shift_role_requirements",
+          columns: [
+            { name: "template_id", type: "string", isIndexed: true },
+            { name: "role", type: "string" },
+            { name: "min_count", type: "number" },
+            { name: "created_at", type: "number" },
+          ],
+        }),
+        createTable({
+          name: "shift_assignments",
+          columns: [
+            { name: "staff_id", type: "string", isIndexed: true },
+            { name: "template_id", type: "string", isIndexed: true },
+            { name: "work_date", type: "string", isIndexed: true },
+            { name: "start_minutes", type: "number" },
+            { name: "end_minutes", type: "number" },
+            { name: "duty_role", type: "string" },
+            { name: "status", type: "string", isIndexed: true },
+            { name: "outlet_id", type: "string" },
+            { name: "note", type: "string" },
+            { name: "created_at", type: "number" },
+            { name: "updated_at", type: "number" },
+          ],
+        }),
+        createTable({
+          name: "attendance_events",
+          columns: [
+            { name: "staff_id", type: "string", isIndexed: true },
+            { name: "type", type: "string" },
+            { name: "occurred_at", type: "number" },
+            { name: "recorded_at", type: "number" },
+            { name: "device_id", type: "string" },
+            { name: "shift_assignment_id", type: "string" },
+            { name: "outlet_id", type: "string" },
+            { name: "note", type: "string" },
+            { name: "actor_staff_id", type: "string" },
+            { name: "corrects_event_id", type: "string" },
+          ],
+        }),
+        createTable({
+          name: "week_preferences",
+          columns: [
+            { name: "staff_id", type: "string", isIndexed: true },
+            { name: "week_start", type: "string", isIndexed: true },
+            { name: "note", type: "string" },
+            { name: "status", type: "string" },
+            { name: "submitted_at", type: "number" },
+            { name: "created_at", type: "number" },
+            { name: "updated_at", type: "number" },
+          ],
+        }),
+        createTable({
+          name: "week_preference_slots",
+          columns: [
+            { name: "preference_id", type: "string", isIndexed: true },
+            { name: "template_id", type: "string" },
+            { name: "rank", type: "number" },
+          ],
+        }),
+        createTable({
+          name: "day_off_suggestions",
+          columns: [
+            { name: "staff_id", type: "string", isIndexed: true },
+            { name: "week_start", type: "string", isIndexed: true },
+            { name: "work_date", type: "string", isIndexed: true },
+            { name: "rank", type: "number" },
+            { name: "note", type: "string" },
+            { name: "status", type: "string" },
+            { name: "alternative_date", type: "string" },
+            { name: "actor_staff_id", type: "string" },
+            { name: "created_at", type: "number" },
+            { name: "updated_at", type: "number" },
+          ],
+        }),
+        createTable({
+          name: "scheduled_days_off",
+          columns: [
+            { name: "staff_id", type: "string", isIndexed: true },
+            { name: "work_date", type: "string", isIndexed: true },
+            { name: "week_start", type: "string" },
+            { name: "source", type: "string" },
+            { name: "note", type: "string" },
+            { name: "created_at", type: "number" },
+          ],
+        }),
+      ],
+    },
+  ],
 })

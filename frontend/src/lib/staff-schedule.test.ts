@@ -1,0 +1,395 @@
+import { describe, expect, test } from "bun:test"
+
+import { createRollposDatabase } from "@/db/database"
+import { seedCatalogIfEmpty } from "@/db/catalog"
+import {
+  loadAssignments,
+  loadAttendance,
+  loadDayOffs,
+  loadSettings,
+  loadSlots,
+  loadStaff,
+  loadSuggestions,
+} from "@/db/snapshot"
+import {
+  acceptSuggestion,
+  authenticateStaff,
+  clockPunch,
+  hasOpenSession,
+  saveOutletSettings,
+  saveSlot,
+  submitPreferences,
+  upsertAssignment,
+  upsertStaff,
+} from "@/db/staffing-write"
+import { canEditSlots, canManage, isOwner } from "@/lib/permissions"
+import { recommendSchedule, wouldViolateConsecutive } from "@/lib/recommend"
+import type { OutletSettingsRecord, StaffRecord } from "@/lib/types"
+import { DEFAULT_OUTLET_ID } from "@/lib/types"
+
+let dbSeq = 0
+
+async function freshDb() {
+  dbSeq += 1
+  return createRollposDatabase({
+    dbName: `rollpos-test-${dbSeq}-${Date.now()}`,
+    inMemory: true,
+  })
+}
+
+async function bootstrap() {
+  const database = await freshDb()
+  await seedCatalogIfEmpty(database)
+  const owner = await createPerson(database, {
+    name: "Ayu",
+    roles: ["owner", "barista"],
+    pin: "1234",
+    asOwner: true,
+  })
+  await saveOutletSettings(database, owner, {
+    outletId: DEFAULT_OUTLET_ID,
+    openMinutes: 400,
+    closeMinutes: 1300,
+    weekStartsOn: 1,
+    preferenceDeadlineWeekday: 3,
+    preferenceDeadlineMinutes: 1000,
+    maxConsecutiveWorkDays: 6,
+    targetDaysOffPerWeek: 1,
+    targetHoursPerWeek: 0,
+    hoursSkewPercent: 25,
+    weekendFairnessEnabled: true,
+    graceLateMinutes: 8,
+  })
+  return { database, owner }
+}
+
+async function createPerson(
+  database: ReturnType<typeof createRollposDatabase>,
+  input: {
+    name: string
+    roles: StaffRecord["roles"]
+    pin: string
+    asOwner?: boolean
+  }
+): Promise<StaffRecord> {
+  const staff = await loadStaff(database)
+  const actor =
+    staff.find((row) => isOwner(row.roles)) ??
+    ({
+      id: "bootstrap",
+      name: "bootstrap",
+      nickname: "bootstrap",
+      pinHash: "",
+      pinSalt: "",
+      isActive: true,
+      outletId: DEFAULT_OUTLET_ID,
+      roles: ["owner"],
+    } satisfies StaffRecord)
+  const id = await upsertStaff(database, input.asOwner ? actor : actor, {
+    name: input.name,
+    nickname: input.name,
+    pin: input.pin,
+    isActive: true,
+    roles: input.roles,
+  })
+  const people = await loadStaff(database)
+  const created = people.find((row) => row.id === id)
+  if (!created) throw new Error("staff missing")
+  return created
+}
+
+function settingsFrom(row: OutletSettingsRecord): OutletSettingsRecord {
+  return { ...row }
+}
+
+describe("staffing persist + schedule", () => {
+  test("multi-role persist survives a write-and-reload snapshot", async () => {
+    const { database, owner } = await bootstrap()
+    const id = await upsertStaff(database, owner, {
+      name: "Nia",
+      nickname: "Nia",
+      pin: "3333",
+      isActive: true,
+      roles: ["barista", "kitchen"],
+    })
+    const again = await loadStaff(database)
+    const nia = again.find((row) => row.id === id)
+    expect(nia?.roles.sort()).toEqual(["barista", "kitchen"])
+  })
+
+  test("owner implies manager powers; floor cannot mutate slots", async () => {
+    const { database, owner } = await bootstrap()
+    expect(canManage(owner.roles)).toBe(true)
+    expect(canEditSlots(owner.roles)).toBe(true)
+    const kasir = await createPerson(database, {
+      name: "Dimas",
+      roles: ["kasir"],
+      pin: "2222",
+    })
+    expect(canEditSlots(kasir.roles)).toBe(false)
+    await expect(
+      saveSlot(database, kasir, {
+        name: "Malam",
+        startMinutes: 200,
+        endMinutes: 400,
+        sortOrder: 9,
+        minStaffCount: 1,
+        isActive: true,
+      })
+    ).rejects.toThrow(/Lantai/)
+    const slotId = await saveSlot(database, owner, {
+      name: "Siang",
+      startMinutes: 200,
+      endMinutes: 400,
+      sortOrder: 3,
+      minStaffCount: 3,
+      isActive: true,
+    })
+    const slots = await loadSlots(database)
+    expect(slots.some((slot) => slot.id === slotId && slot.minStaffCount === 3)).toBe(
+      true
+    )
+  })
+
+  test("last active owner cannot be stripped", async () => {
+    const { database, owner } = await bootstrap()
+    await expect(
+      upsertStaff(database, owner, {
+        id: owner.id,
+        name: owner.name,
+        nickname: owner.nickname,
+        isActive: true,
+        roles: ["barista"],
+      })
+    ).rejects.toThrow(/Owner terakhir/)
+  })
+
+  test("suggestion stays suggested until accept creates official off", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 300,
+      endMinutes: 600,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    await submitPreferences(
+      database,
+      nia.id,
+      "2026-08-17",
+      [{ templateId: slotId, rank: 1 }],
+      [{ workDate: "2026-08-18", rank: 1, note: "acara keluarga" }]
+    )
+    const pending = await loadSuggestions(database, "2026-08-17")
+    expect(pending).toHaveLength(1)
+    expect(pending[0]?.status).toBe("suggested")
+    expect(await loadDayOffs(database, "2026-08-17")).toHaveLength(0)
+
+    await acceptSuggestion(database, owner, pending[0]!.id)
+    const after = await loadSuggestions(database, "2026-08-17")
+    expect(after[0]?.status).toBe("accepted")
+    const offs = await loadDayOffs(database, "2026-08-17")
+    expect(offs).toHaveLength(1)
+    expect(offs[0]?.staffId).toBe(nia.id)
+    expect(offs[0]?.workDate).toBe("2026-08-18")
+
+    await expect(
+      upsertAssignment(database, owner, {
+        staffId: nia.id,
+        templateId: slotId,
+        workDate: "2026-08-18",
+        startMinutes: 300,
+        endMinutes: 600,
+        dutyRole: "barista",
+      })
+    ).rejects.toThrow(/libur resmi/)
+  })
+
+  test("changing live slot hours does not rewrite copied assignment minutes", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 300,
+      endMinutes: 600,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    await upsertAssignment(database, owner, {
+      staffId: nia.id,
+      templateId: slotId,
+      workDate: "2026-08-18",
+      startMinutes: 300,
+      endMinutes: 600,
+      dutyRole: "barista",
+    })
+    await saveSlot(database, owner, {
+      id: slotId,
+      name: "Pagi",
+      startMinutes: 360,
+      endMinutes: 700,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    const assignments = await loadAssignments(database)
+    const copied = assignments.find((row) => row.staffId === nia.id)
+    expect(copied?.startMinutes).toBe(300)
+    expect(copied?.endMinutes).toBe(600)
+    const slots = await loadSlots(database)
+    expect(slots.find((slot) => slot.id === slotId)?.startMinutes).toBe(360)
+  })
+
+  test("clock-in opens a session; second clock-in is rejected", async () => {
+    const { database } = await bootstrap()
+    const staff = (await loadStaff(database)).find((row) => row.name === "Ayu")
+    if (!staff) throw new Error("missing ayu")
+    await clockPunch(database, staff.id, "1234", "clock_in", "device-a", 1_000)
+    const events = await loadAttendance(database, staff.id)
+    expect(hasOpenSession(events)).toBe(true)
+    await expect(
+      clockPunch(database, staff.id, "1234", "clock_in", "device-a", 2_000)
+    ).rejects.toThrow(/sudah clock-in/)
+    await clockPunch(database, staff.id, "1234", "clock_out", "device-a", 3_000)
+    const closed = await loadAttendance(database, staff.id)
+    expect(hasOpenSession(closed)).toBe(false)
+    await expect(authenticateStaff(database, staff.id, "0000")).rejects.toThrow(/PIN/)
+  })
+
+  test("recommendation refuses an understaffed grant", async () => {
+    const { database, owner } = await bootstrap()
+    const stored = await loadSettings(database, DEFAULT_OUTLET_ID)
+    if (!stored) throw new Error("settings missing")
+    const dimas = await createPerson(database, {
+      name: "Dimas",
+      roles: ["kasir"],
+      pin: "2222",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 300,
+      endMinutes: 600,
+      sortOrder: 1,
+      minStaffCount: 2,
+      isActive: true,
+    })
+    const staff = await loadStaff(database)
+    const result = recommendSchedule({
+      settings: settingsFrom(stored),
+      staff,
+      slots: [
+        {
+          id: slotId,
+          name: "Pagi",
+          startMinutes: 300,
+          endMinutes: 600,
+          sortOrder: 1,
+          minStaffCount: 2,
+          isActive: true,
+          outletId: DEFAULT_OUTLET_ID,
+        },
+      ],
+      requirements: [],
+      assignments: [],
+      offs: [],
+      suggestions: [
+        {
+          id: "s1",
+          staffId: owner.id,
+          weekStart: "2026-08-17",
+          workDate: "2026-08-17",
+          rank: 1,
+          note: "",
+          status: "suggested",
+          alternativeDate: "",
+          actorStaffId: owner.id,
+        },
+        {
+          id: "s2",
+          staffId: dimas.id,
+          weekStart: "2026-08-17",
+          workDate: "2026-08-17",
+          rank: 1,
+          note: "",
+          status: "suggested",
+          alternativeDate: "",
+          actorStaffId: dimas.id,
+        },
+      ],
+      preferences: [],
+      weekStart: "2026-08-17",
+    })
+    const grantedThatDay = result.offs.filter((row) => row.workDate === "2026-08-17")
+    expect(grantedThatDay.length).toBeLessThan(2)
+    expect(result.grantedSuggestionIds.length).toBeLessThan(2)
+    const assigned = result.assignments.filter(
+      (row) => row.workDate === "2026-08-17" && row.templateId === slotId
+    )
+    expect(assigned.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test("consecutive-day cap blocks a proposed work day", () => {
+    const history = [
+      "2026-08-11",
+      "2026-08-12",
+      "2026-08-13",
+      "2026-08-14",
+      "2026-08-15",
+      "2026-08-16",
+    ]
+    expect(wouldViolateConsecutive(history, "2026-08-17", 6)).toBe(true)
+    expect(wouldViolateConsecutive(history, "2026-08-18", 6)).toBe(false)
+  })
+
+  test("apply recommendation writes draft assignments only, not attendance", async () => {
+    const { database, owner } = await bootstrap()
+    const before = await loadAttendance(database)
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 300,
+      endMinutes: 600,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    const { applyRecommendationDraft } = await import("@/db/staffing-write")
+    await applyRecommendationDraft(
+      database,
+      owner,
+      "2026-08-17",
+      [
+        {
+          staffId: nia.id,
+          templateId: slotId,
+          workDate: "2026-08-17",
+          startMinutes: 300,
+          endMinutes: 600,
+          dutyRole: "barista",
+        },
+      ],
+      []
+    )
+    const assignments = await loadAssignments(database)
+    expect(assignments.some((row) => row.status === "draft" && row.staffId === nia.id)).toBe(
+      true
+    )
+    const after = await loadAttendance(database)
+    expect(after.length).toBe(before.length)
+  })
+})
