@@ -9,7 +9,7 @@ import {
   TABLES,
 } from "@/db/database"
 import { seedCatalogIfEmpty } from "@/db/catalog"
-import { hashPin, newPinSalt } from "@/lib/pin"
+import { hashPin, newPinSalt, verifyPin } from "@/lib/pin"
 import { DEFAULT_OUTLET_ID, type StaffRole } from "@/lib/types"
 
 /** Seed defaults only. Product behavior must read stored outlet_settings / templates. */
@@ -34,31 +34,31 @@ export const SEED_DEFAULTS = {
     {
       name: "Ayu",
       nickname: "Ayu",
-      pin: "1234",
+      pin: "0000",
       roles: ["owner", "barista"] as StaffRole[],
     },
     {
       name: "Dimas",
       nickname: "Dimas",
-      pin: "2222",
+      pin: "0000",
       roles: ["kasir", "manager"] as StaffRole[],
     },
     {
       name: "Nia",
       nickname: "Nia",
-      pin: "3333",
+      pin: "0000",
       roles: ["barista", "kitchen"] as StaffRole[],
     },
     {
       name: "Raka",
       nickname: "Raka",
-      pin: "4444",
+      pin: "0000",
       roles: ["kasir", "kitchen"] as StaffRole[],
     },
     {
       name: "Sinta",
       nickname: "Sinta",
-      pin: "5555",
+      pin: "0000",
       roles: ["barista"] as StaffRole[],
     },
   ],
@@ -156,6 +156,7 @@ async function seedOnce(database: Database): Promise<void> {
     return
   }
   await backfillMissingSeedStaff(database, existing)
+  await resetStaffPinsToSeed(database, listRows(database, TABLES.staffMembers))
 }
 
 async function seedFresh(database: Database): Promise<void> {
@@ -230,5 +231,39 @@ async function backfillMissingSeedStaff(
       })
     }
     grantMissingRoles(database, dimasRow.id, dimas.roles, now)
+  })
+}
+
+function seedPinForRow(row: StaffRow): string {
+  const person = SEED_DEFAULTS.staff.find((candidate) => matchesSeedPerson(row, candidate))
+  return person?.pin ?? "0000"
+}
+
+async function resetStaffPinsToSeed(database: Database, existing: StaffRow[]): Promise<void> {
+  const now = Date.now()
+  const updates: Array<{ id: string; pinSalt: string; pinHash: string }> = []
+
+  for (const row of existing) {
+    const pin = seedPinForRow(row)
+    const already = await verifyPin(pin, cellStr(row, "pinSalt"), cellStr(row, "pinHash"))
+    if (already) continue
+    const pinSalt = newPinSalt()
+    updates.push({
+      id: row.id,
+      pinSalt,
+      pinHash: await hashPin(pin, pinSalt),
+    })
+  }
+
+  if (updates.length === 0) return
+
+  transact(database, () => {
+    for (const update of updates) {
+      updateRow(database, TABLES.staffMembers, update.id, {
+        pinSalt: update.pinSalt,
+        pinHash: update.pinHash,
+        updatedAt: now,
+      })
+    }
   })
 }

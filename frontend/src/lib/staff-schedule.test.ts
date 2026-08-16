@@ -170,6 +170,32 @@ describe("staffing persist + schedule", () => {
     expect(people.filter((row) => row.name === "Ayu")).toHaveLength(1)
   })
 
+  test("seed staff PIN is 0000 and existing staff get PIN backfill", async () => {
+    expect(SEED_DEFAULTS.staff.every((person) => person.pin === "0000")).toBe(true)
+
+    const fresh = await freshDb()
+    await seedStaffingIfEmpty(fresh)
+    for (const person of await loadStaff(fresh)) {
+      await expect(authenticateStaff(fresh, person.id, "0000")).resolves.toMatchObject({
+        id: person.id,
+      })
+    }
+
+    const { database } = await bootstrap()
+    const ayuBefore = (await loadStaff(database)).find((row) => row.name === "Ayu")
+    if (!ayuBefore) throw new Error("missing ayu")
+    await expect(authenticateStaff(database, ayuBefore.id, "1234")).resolves.toMatchObject({
+      id: ayuBefore.id,
+    })
+
+    await seedStaffingIfEmpty(database)
+    for (const person of await loadStaff(database)) {
+      await expect(authenticateStaff(database, person.id, "0000")).resolves.toMatchObject({
+        id: person.id,
+      })
+    }
+  })
+
   test("owner implies manager powers; floor cannot mutate slots", async () => {
     const { database, owner } = await bootstrap()
     expect(canManage(owner.roles)).toBe(true)
