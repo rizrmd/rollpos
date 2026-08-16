@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   dayOffAction,
+  dayRoster,
   decidedPrefsDays,
   prefsDayCaption,
   isPreferenceDeadlinePassed,
@@ -255,6 +256,79 @@ describe("resolvePrefsDay", () => {
     expect(rotation.kind).toBe("fair_off")
     expect(prefsDayCaption(rotation, "2026-08-17")).toBe("Giliran")
     expect(past.kind).toBe("empty")
+  })
+})
+
+describe("dayRoster", () => {
+  test("mengelompokkan siapa kerja per slot dan siapa libur", () => {
+    const staff = [
+      {
+        id: "ayu",
+        name: "Ayu",
+        nickname: "Ayu",
+        pinHash: "",
+        pinSalt: "",
+        isActive: true,
+        outletId: "main",
+        roles: ["barista" as const],
+      },
+      {
+        id: "nia",
+        name: "Nia",
+        nickname: "Nia",
+        pinHash: "",
+        pinSalt: "",
+        isActive: true,
+        outletId: "main",
+        roles: ["barista" as const],
+      },
+    ]
+    const sore = { ...pagi, id: "sore", name: "Sore", sortOrder: 2 }
+    const roster = dayRoster({
+      date: "2026-08-21",
+      staff,
+      slots: [pagi, sore],
+      assignments: [
+        work({ workDate: "2026-08-21", staffId: "ayu" }),
+        work({
+          id: "a-nia-sore",
+          workDate: "2026-08-21",
+          staffId: "nia",
+          templateId: "sore",
+        }),
+      ],
+      offs: [off({ workDate: "2026-08-21", staffId: "raka" })],
+      suggestions: [suggest({ workDate: "2026-08-21", staffId: "sinta" })],
+    })
+    expect(roster.slots[0]?.people.map((row) => row.nickname)).toEqual(["Ayu"])
+    expect(roster.slots[1]?.people.map((row) => row.nickname)).toEqual(["Nia"])
+    expect(roster.off.map((row) => row.staffId)).toEqual(["raka"])
+    expect(roster.pending.map((row) => row.staffId)).toEqual(["sinta"])
+  })
+
+  test("pakai usulan sistem jika belum ada assignment tersimpan", () => {
+    const roster = dayRoster({
+      date: "2026-08-21",
+      staff: [
+        {
+          id: "nia",
+          name: "Nia",
+          nickname: "Nia",
+          pinHash: "",
+          pinSalt: "",
+          isActive: true,
+          outletId: "main",
+          roles: ["barista"],
+        },
+      ],
+      slots: [pagi],
+      assignments: [],
+      offs: [],
+      proposedAssignments: [
+        { staffId: "nia", workDate: "2026-08-21", templateId: "pagi" },
+      ],
+    })
+    expect(roster.slots[0]?.people[0]?.nickname).toBe("Nia")
   })
 })
 

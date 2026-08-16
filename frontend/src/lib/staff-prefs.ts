@@ -6,6 +6,7 @@ import type {
   OutletSettingsRecord,
   PreferenceRecord,
   SlotRecord,
+  StaffRecord,
   SuggestionRecord,
 } from "@/lib/types"
 
@@ -380,6 +381,89 @@ export function summarizeTeamMonth(days: TeamDayStatus[]): {
     for (const row of day.approved) people.add(row.staffId)
   }
   return { approved, pending, declined, peopleOff: people.size }
+}
+
+export type RosterPerson = {
+  staffId: string
+  name: string
+  nickname: string
+}
+
+export type RosterSlot = {
+  slotId: string
+  slotName: string
+  people: RosterPerson[]
+}
+
+export type DayRoster = {
+  slots: RosterSlot[]
+  off: RosterPerson[]
+  pending: RosterPerson[]
+}
+
+function rosterPerson(
+  staff: StaffRecord[],
+  staffId: string
+): RosterPerson {
+  const member = staff.find((row) => row.id === staffId)
+  return {
+    staffId,
+    name: member?.name ?? staffId,
+    nickname: member?.nickname ?? staffId,
+  }
+}
+
+/** Siapa kerja, libur, dan minta libur di satu tanggal. */
+export function dayRoster({
+  date,
+  staff,
+  slots,
+  assignments,
+  offs,
+  proposedAssignments = [],
+  suggestions = [],
+}: {
+  date: string
+  staff: StaffRecord[]
+  slots: SlotRecord[]
+  assignments: AssignmentRecord[]
+  offs: DayOffRecord[]
+  proposedAssignments?: { staffId: string; workDate: string; templateId: string }[]
+  suggestions?: SuggestionRecord[]
+}): DayRoster {
+  const active = slots
+    .filter((slot) => slot.isActive)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+  const stored = assignments.filter(
+    (row) => row.workDate === date && row.status !== "cancelled"
+  )
+  const rows =
+    stored.length > 0
+      ? stored
+      : proposedAssignments.filter((row) => row.workDate === date)
+
+  return {
+    slots: active.map((slot) => {
+      const ids = [
+        ...new Set(
+          rows
+            .filter((row) => row.templateId === slot.id)
+            .map((row) => row.staffId)
+        ),
+      ]
+      return {
+        slotId: slot.id,
+        slotName: slot.name,
+        people: ids.map((id) => rosterPerson(staff, id)),
+      }
+    }),
+    off: offs
+      .filter((row) => row.workDate === date)
+      .map((row) => rosterPerson(staff, row.staffId)),
+    pending: suggestions
+      .filter((row) => row.workDate === date && row.status === "suggested")
+      .map((row) => rosterPerson(staff, row.staffId)),
+  }
 }
 
 export function weekPreferenceOf(

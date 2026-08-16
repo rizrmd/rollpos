@@ -41,10 +41,12 @@ import {
 } from "@/lib/recommend"
 import {
   dayOffAction,
+  dayRoster,
   decidedPrefsDays,
   OFF_SOURCE_LABEL,
   prefsDayCaption,
   prefsDaysForMonth,
+  type DayRoster,
   type PrefsDay,
   type PrefsDayKind,
 } from "@/lib/staff-prefs"
@@ -144,14 +146,9 @@ export function PrefsScreen({
         weekStart,
         historyWorkDates: history,
       })
-      nextAssignments.push(
-        ...result.assignments.filter((row) => row.staffId === who.id)
-      )
+      nextAssignments.push(...result.assignments)
       nextOffs.push(
-        ...result.offs.filter(
-          (row) =>
-            row.staffId === who.id && row.source === "recommendation"
-        )
+        ...result.offs.filter((row) => row.source === "recommendation")
       )
     }
     return { assignments: nextAssignments, offs: nextOffs }
@@ -192,6 +189,17 @@ export function PrefsScreen({
   const decided = decidedPrefsDays(days)
   const headers = weekdayHeaders(weekStartsOn)
   const action = picked ? dayOffAction(picked, today) : "view"
+  const roster = picked
+    ? dayRoster({
+        date: picked.date,
+        staff: activeStaff,
+        slots: activeSlots,
+        assignments,
+        offs,
+        proposedAssignments: proposed.assignments,
+        suggestions,
+      })
+    : null
 
   async function guarded(run: () => Promise<void>, ok?: string) {
     try {
@@ -208,8 +216,8 @@ export function PrefsScreen({
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-medium">Shift & libur</h1>
         <p className="text-sm text-muted-foreground">
-          Kerja default dari usulan sistem yang adil. Ketuk hari untuk minta
-          atau cabut libur. Manager yang memutuskan.
+          Kerja default dari usulan sistem yang adil. Ketuk tanggal untuk
+          lihat siapa kerja, atau minta libur. Manager yang memutuskan.
         </p>
       </header>
 
@@ -220,8 +228,8 @@ export function PrefsScreen({
         <CardHeader>
           <CardTitle>Siapa yang melihat?</CardTitle>
           <CardDescription>
-            PIN membuka kalender orang itu. Hari kerja diisi sistem secara
-            adil; ketuk untuk minta libur.
+            PIN membuka kalender orang itu. Ketuk tanggal untuk melihat siapa
+            yang kerja hari itu.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -339,8 +347,8 @@ export function PrefsScreen({
 
           {decided.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Belum ada permintaan di {formatMonthYear(monthCursor)}. Hari
-              kerja sudah diisi usulan sistem. Ketuk tanggal untuk minta libur.
+              Belum ada permintaan di {formatMonthYear(monthCursor)}. Ketuk
+              tanggal untuk melihat siapa kerja, atau minta libur.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -402,6 +410,9 @@ export function PrefsScreen({
               {picked ? dialogDescription(picked, today) : ""}
             </DialogDescription>
           </DialogHeader>
+          {roster ? (
+            <DayRosterList roster={roster} viewerId={who?.id} />
+          ) : null}
           {picked && action === "request" ? (
             <div className="flex flex-col gap-1">
               <Label htmlFor="off-note">Catatan (opsional)</Label>
@@ -479,6 +490,60 @@ export function PrefsScreen({
           setPendingWho(null)
         }}
       />
+    </div>
+  )
+}
+
+function DayRosterList({
+  roster,
+  viewerId,
+}: {
+  roster: DayRoster
+  viewerId?: string
+}) {
+  const hasWorkers = roster.slots.some((slot) => slot.people.length > 0)
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <section aria-labelledby="siapa-kerja">
+        <h3 id="siapa-kerja" className="mb-1 font-medium">
+          Siapa kerja
+        </h3>
+        {hasWorkers ? (
+          <ul className="flex flex-col gap-2">
+            {roster.slots.map((slot) => (
+              <li key={slot.slotId}>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {slot.slotName}
+                </p>
+                {slot.people.length === 0 ? (
+                  <p className="text-muted-foreground">kosong</p>
+                ) : (
+                  <ul>
+                    {slot.people.map((person) => (
+                      <li key={person.staffId}>
+                        {person.name}
+                        {person.staffId === viewerId ? " · kamu" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-muted-foreground">Belum ada yang dijadwalkan.</p>
+        )}
+      </section>
+      {roster.off.length > 0 ? (
+        <p className="text-muted-foreground">
+          Libur: {roster.off.map((row) => row.nickname).join(", ")}
+        </p>
+      ) : null}
+      {roster.pending.length > 0 ? (
+        <p className="text-muted-foreground">
+          Minta libur: {roster.pending.map((row) => row.nickname).join(", ")}
+        </p>
+      ) : null}
     </div>
   )
 }

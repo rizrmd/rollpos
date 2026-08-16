@@ -46,6 +46,7 @@ import {
   type CoverageTone,
   type DayHeat,
 } from "@/lib/schedule-board"
+import { dayRoster } from "@/lib/staff-prefs"
 import { addDays, formatMinutes, monthStartOf, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import type {
@@ -431,7 +432,7 @@ export function WeekScreen({
                     {formatIsoWeekdayShort(date)}
                   </span>
                   <span className="block text-xs text-muted-foreground">
-                    ketuk hari
+                    ketuk: siapa kerja
                   </span>
                 </span>
                 {heat === "hot" ? (
@@ -643,6 +644,7 @@ export function WeekScreen({
       <DaySheet
         date={daySheet}
         staff={activeStaff}
+        slots={activeSlots}
         assignments={weekAssignments}
         offs={offs}
         suggestions={pendingSuggest}
@@ -1084,6 +1086,7 @@ function AssignDialog({
 function DaySheet({
   date,
   staff,
+  slots,
   assignments,
   offs,
   suggestions,
@@ -1094,6 +1097,7 @@ function DaySheet({
 }: {
   date: string | null
   staff: StaffRecord[]
+  slots: SlotRecord[]
   assignments: AssignmentRecord[]
   offs: DayOffRecord[]
   suggestions: SuggestionRecord[]
@@ -1102,6 +1106,16 @@ function DaySheet({
   onOff: (member: StaffRecord) => Promise<void>
   onClearOff: (offId: string) => Promise<void>
 }) {
+  const roster = date
+    ? dayRoster({
+        date,
+        staff,
+        slots,
+        assignments,
+        offs,
+        suggestions,
+      })
+    : null
   const dayOffs = date ? offs.filter((row) => row.workDate === date) : []
   const daySuggest = date
     ? suggestions.filter((row) => row.workDate === date)
@@ -1114,10 +1128,35 @@ function DaySheet({
         <DialogHeader>
           <DialogTitle>{date ? formatIsoWeekday(date) : "Hari"}</DialogTitle>
           <DialogDescription>
-            Libur resmi, permintaan, dan orang yang belum diisi.
+            Siapa kerja hari ini, libur resmi, dan permintaan.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3 text-sm">
+          <section>
+            <h4 className="mb-1 font-medium">Siapa kerja</h4>
+            {roster && roster.slots.some((slot) => slot.people.length > 0) ? (
+              <ul className="flex flex-col gap-2">
+                {roster.slots.map((slot) => (
+                  <li key={slot.slotId}>
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {slot.slotName}
+                    </p>
+                    {slot.people.length === 0 ? (
+                      <p className="text-muted-foreground">kosong</p>
+                    ) : (
+                      <ul>
+                        {slot.people.map((person) => (
+                          <li key={person.staffId}>{person.name}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-muted-foreground">Belum ada yang dijadwalkan.</p>
+            )}
+          </section>
           <section>
             <h4 className="mb-1 font-medium">Libur resmi</h4>
             {dayOffs.length === 0 ? (
