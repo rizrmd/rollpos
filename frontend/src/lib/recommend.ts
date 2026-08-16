@@ -1,5 +1,5 @@
 import { floorRolesOf } from "@/lib/permissions"
-import { consecutiveRunEnding, isWeekend, slotHours, weekDates } from "@/lib/time"
+import { addDays, consecutiveRunEnding, isWeekend, slotHours, weekDates } from "@/lib/time"
 import type {
   AssignmentRecord,
   DayOffRecord,
@@ -71,6 +71,79 @@ export function weekHasActiveAssignments(
   )
 }
 
+/** Dua slot berurutan: nyambung atau overlap (Pagi 15:00 + Sore 15:00). */
+export function slotsTouch(left: SlotRecord, right: SlotRecord): boolean {
+  if (left.id === right.id) return false
+  const leftFirst = left.startMinutes <= right.startMinutes
+  const first = leftFirst ? left : right
+  const second = leftFirst ? right : left
+  return first.endMinutes >= second.startMinutes
+}
+
+function firstSlotOf(slots: SlotRecord[]): SlotRecord | undefined {
+  return [...slots].sort(
+    (a, b) => a.startMinutes - b.startMinutes || a.sortOrder - b.sortOrder
+  )[0]
+}
+
+function lastSlotOf(slots: SlotRecord[]): SlotRecord | undefined {
+  return [...slots].sort(
+    (a, b) => b.endMinutes - a.endMinutes || b.sortOrder - a.sortOrder
+  )[0]
+}
+
+export function isConsecutiveShift(
+  existing: { templateId: string; workDate: string },
+  slot: SlotRecord,
+  date: string,
+  slots: SlotRecord[]
+): boolean {
+  const other = slots.find((item) => item.id === existing.templateId)
+  if (!other) return false
+  if (existing.workDate === date && slotsTouch(other, slot)) return true
+  const first = firstSlotOf(slots)
+  const last = lastSlotOf(slots)
+  if (
+    existing.workDate === addDays(date, -1) &&
+    last?.id === other.id &&
+    first?.id === slot.id
+  ) {
+    return true
+  }
+  if (
+    existing.workDate === addDays(date, 1) &&
+    first?.id === other.id &&
+    last?.id === slot.id
+  ) {
+    return true
+  }
+  return false
+}
+
+export function hasConsecutiveShifts(
+  assignments: {
+    staffId: string
+    templateId: string
+    workDate: string
+    status?: string
+  }[],
+  slots: SlotRecord[]
+): boolean {
+  const active = assignments.filter((row) => row.status !== "cancelled")
+  for (const row of active) {
+    const slot = slots.find((item) => item.id === row.templateId)
+    if (!slot) continue
+    const clash = active.some(
+      (other) =>
+        other !== row &&
+        other.staffId === row.staffId &&
+        isConsecutiveShift(other, slot, row.workDate, slots)
+    )
+    if (clash) return true
+  }
+  return false
+}
+
 function availableStaff(
   staff: StaffRecord[],
   date: string,
@@ -99,9 +172,10 @@ function canCoverDay(
   offs: Set<string>,
   history: Record<string, string[]>,
   proposedWork: Map<string, string[]>,
-  maxConsecutive: number
+  maxConsecutive: number,
+  prior: { staffId: string; templateId: string; workDate: string }[] = []
 ): boolean {
-  const pool = availableStaff(
+  const remaining = availableStaff(
     staff,
     date,
     offs,
@@ -109,17 +183,32 @@ function canCoverDay(
     proposedWork,
     maxConsecutive
   )
+  const used: { staffId: string; templateId: string; workDate: string }[] = [
+    ...prior,
+  ]
   for (const slot of slots) {
-    if (pool.length < slot.minStaffCount) {
+    const eligible = remaining.filter(
+      (member) =>
+        !used.some(
+          (row) =>
+            row.staffId === member.id &&
+            isConsecutiveShift(row, slot, date, slots)
+        )
+    )
+    if (eligible.length < slot.minStaffCount) {
       return false
     }
     for (const req of requirements.filter((row) => row.templateId === slot.id)) {
-      const capable = pool.filter((member) =>
+      const capable = eligible.filter((member) =>
         member.roles.includes(req.role)
       ).length
       if (capable < req.minCount) {
         return false
       }
+    }
+    const taken = eligible.slice(0, slot.minStaffCount)
+    for (const member of taken) {
+      used.push({ staffId: member.id, templateId: slot.id, workDate: date })
     }
   }
   return true
@@ -419,63 +508,37 @@ function assignFairWork({
       weekendFairness: settings.weekendFairnessEnabled,
     })
 
+  const eligibleFor = (slot: SlotRecord, date: string) =>
+    availableStaff(
+      staff,
+      date,
+      grantedOff,
+      history,
+      proposedWork,
+      settings.maxConsecutiveWorkDays
+    ).filter(
+      (member) =>
+        !assignments.some(
+          (row) =>
+            row.staffId === member.id &&
+            (row.templateId === slot.id && row.workDate === date
+              ? true
+              : isConsecutiveShift(row, slot, date, slots))
+        )
+    )
+
   for (const date of dates) {
     for (const slot of slots) {
       const already = assignments.filter(
         (row) => row.workDate === date && row.templateId === slot.id
       )
       const needed = Math.max(0, slot.minStaffCount - already.length)
-      const pool = availableStaff(
-        staff,
-        date,
-        grantedOff,
-        history,
-        proposedWork,
-        settings.maxConsecutiveWorkDays
-      ).filter(
-        (member) =>
-          !already.some((row) => row.staffId === member.id)
-      )
-      const scored = [...pool].sort(
+      const scored = [...eligibleFor(slot, date)].sort(
         (a, b) =>
           scoreOf(a, slot, date) - scoreOf(b, slot, date) ||
           a.id.localeCompare(b.id)
       )
       for (const member of scored.slice(0, needed)) {
-        assignToSlot(
-          assignments,
-          hours,
-          proposedWork,
-          member,
-          slot,
-          date,
-          requirements
-        )
-      }
-    }
-
-    for (const slot of slots) {
-      const already = assignments.filter(
-        (row) => row.workDate === date && row.templateId === slot.id
-      )
-      if (already.length >= slot.minStaffCount) continue
-      const extras = availableStaff(
-        staff,
-        date,
-        grantedOff,
-        history,
-        proposedWork,
-        settings.maxConsecutiveWorkDays
-      ).filter((member) => !already.some((row) => row.staffId === member.id))
-      const scored = [...extras].sort(
-        (a, b) =>
-          scoreOf(a, slot, date) - scoreOf(b, slot, date) ||
-          a.id.localeCompare(b.id)
-      )
-      for (const member of scored.slice(
-        0,
-        slot.minStaffCount - already.length
-      )) {
         assignToSlot(
           assignments,
           hours,
@@ -503,22 +566,31 @@ function assignFairWork({
     ).filter((member) => !workingIds.has(member.id))
 
     for (const member of leftovers) {
-      const slot = [...slots].sort((a, b) => {
-        const fillA = assignments.filter(
-          (row) => row.workDate === date && row.templateId === a.id
-        ).length
-        const fillB = assignments.filter(
-          (row) => row.workDate === date && row.templateId === b.id
-        ).length
-        const shortA = fillA < a.minStaffCount ? 0 : 1
-        const shortB = fillB < b.minStaffCount ? 0 : 1
-        if (shortA !== shortB) return shortA - shortB
-        if (fillA !== fillB) return fillA - fillB
-        return (
-          scoreOf(member, a, date) - scoreOf(member, b, date) ||
-          a.sortOrder - b.sortOrder
+      const slot = [...slots]
+        .filter(
+          (item) =>
+            !assignments.some(
+              (row) =>
+                row.staffId === member.id &&
+                isConsecutiveShift(row, item, date, slots)
+            )
         )
-      })[0]
+        .sort((a, b) => {
+          const fillA = assignments.filter(
+            (row) => row.workDate === date && row.templateId === a.id
+          ).length
+          const fillB = assignments.filter(
+            (row) => row.workDate === date && row.templateId === b.id
+          ).length
+          const shortA = fillA < a.minStaffCount ? 0 : 1
+          const shortB = fillB < b.minStaffCount ? 0 : 1
+          if (shortA !== shortB) return shortA - shortB
+          if (fillA !== fillB) return fillA - fillB
+          return (
+            scoreOf(member, a, date) - scoreOf(member, b, date) ||
+            a.sortOrder - b.sortOrder
+          )
+        })[0]
       if (!slot) continue
       assignToSlot(
         assignments,

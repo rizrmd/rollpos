@@ -21,6 +21,7 @@ import {
   loadSuggestions,
 } from "@/db/snapshot"
 import {
+  hasConsecutiveShifts,
   historyWorkDatesFrom,
   recommendSchedule,
   SYSTEM_DRAFT_NOTE,
@@ -759,13 +760,13 @@ export async function writeFairDefaultDraft(
 ): Promise<boolean> {
   await database.ready
   const weekEnd = weekDates(weekStart)[6] ?? weekStart
-  const already = listRows(database, TABLES.shiftAssignments).some(
+  const already = listRows(database, TABLES.shiftAssignments).filter(
     (row) =>
       cellStr(row, "status") !== "cancelled" &&
       cellStr(row, "workDate") >= weekStart &&
       cellStr(row, "workDate") <= weekEnd
   )
-  if (already) return false
+  if (already.length > 0) return false
 
   const now = Date.now()
   transact(database, () => {
@@ -813,14 +814,35 @@ export async function ensureFairDefaultWeeks(
 
   let wrote = 0
   for (const weekStart of weekStarts) {
-    if (weekHasActiveAssignments(assignments, weekStart)) continue
+    const weekEnd = weekDates(weekStart)[6] ?? weekStart
+    const weekRows = assignments.filter(
+      (row) =>
+        row.status !== "cancelled" &&
+        row.workDate >= weekStart &&
+        row.workDate <= weekEnd
+    )
+    const publishedOrManual = weekRows.some(
+      (row) => row.status === "published" || row.note !== SYSTEM_DRAFT_NOTE
+    )
+    const shouldReplace =
+      weekRows.length > 0 &&
+      !publishedOrManual &&
+      hasConsecutiveShifts(weekRows, activeSlots)
+    if (weekHasActiveAssignments(assignments, weekStart) && !shouldReplace) {
+      continue
+    }
+    if (shouldReplace) {
+      await clearSystemDraftWeek(database, weekStart)
+    }
     const history = historyWorkDatesFrom(assignments, weekStart)
     const result = recommendSchedule({
       settings,
       staff,
       slots: activeSlots,
       requirements,
-      assignments,
+      assignments: shouldReplace
+        ? assignments.filter((row) => !weekRows.includes(row))
+        : assignments,
       offs,
       suggestions,
       preferences,
@@ -831,6 +853,30 @@ export async function ensureFairDefaultWeeks(
     if (ok) wrote += 1
   }
   return wrote
+}
+
+async function clearSystemDraftWeek(
+  database: Database,
+  weekStart: string
+): Promise<void> {
+  const weekEnd = weekDates(weekStart)[6] ?? weekStart
+  const now = Date.now()
+  transact(database, () => {
+    for (const row of listRows(database, TABLES.shiftAssignments)) {
+      const workDate = cellStr(row, "workDate")
+      if (
+        workDate >= weekStart &&
+        workDate <= weekEnd &&
+        cellStr(row, "status") !== "cancelled" &&
+        cellStr(row, "note") === SYSTEM_DRAFT_NOTE
+      ) {
+        updateRow(database, TABLES.shiftAssignments, row.id, {
+          status: "cancelled",
+          updatedAt: now,
+        })
+      }
+    }
+  })
 }
 
 export function defaultScheduleWeeks(weekStartsOn: number): string[] {

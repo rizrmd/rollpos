@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  hasConsecutiveShifts,
   historyWorkDatesFrom,
   recommendSchedule,
+  slotsTouch,
   weekHasActiveAssignments,
 } from "@/lib/recommend"
-import { weekDates } from "@/lib/time"
+import { addDays, weekDates } from "@/lib/time"
 import type {
   AssignmentRecord,
   OutletSettingsRecord,
@@ -173,6 +175,52 @@ describe("recommendSchedule fair default", () => {
     expect(weekendOff("nia") && weekendOff("raka") && weekendOff("sinta")).toBe(
       false
     )
+  })
+
+  test("slotsTouch hanya jika jam nyambung atau overlap", () => {
+    expect(slotsTouch(pagi, sore)).toBe(true)
+    expect(
+      slotsTouch(pagi, {
+        ...sore,
+        id: "malam",
+        startMinutes: 960,
+        endMinutes: 1320,
+      })
+    ).toBe(false)
+  })
+
+  test("tidak menugaskan dua shift berturut-turut", () => {
+    expect(slotsTouch(pagi, sore)).toBe(true)
+    const result = run()
+    expect(hasConsecutiveShifts(result.assignments, [pagi, sore])).toBe(false)
+    for (const member of crew) {
+      const byDate = new Map<string, string[]>()
+      for (const row of result.assignments.filter((item) => item.staffId === member.id)) {
+        const list = byDate.get(row.workDate) ?? []
+        list.push(row.templateId)
+        byDate.set(row.workDate, list)
+      }
+      for (const ids of byDate.values()) {
+        expect(ids.includes("pagi") && ids.includes("sore")).toBe(false)
+      }
+    }
+  })
+
+  test("sore kemarin tidak dilanjutkan pagi hari ini", () => {
+    const result = run()
+    for (const member of crew) {
+      const mine = result.assignments.filter((row) => row.staffId === member.id)
+      const backToBack = mine.some(
+        (row) =>
+          row.templateId === "sore" &&
+          mine.some(
+            (next) =>
+              next.templateId === "pagi" &&
+              next.workDate === addDays(row.workDate, 1)
+          )
+      )
+      expect(backToBack).toBe(false)
+    }
   })
 
   test("historyWorkDatesFrom mengabaikan cancelled dan minggu berjalan", () => {
