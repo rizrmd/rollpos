@@ -32,6 +32,10 @@ export function canAcceptSuggestions(roles: readonly StaffRole[]): boolean {
   return canManage(roles)
 }
 
+export function canManageProducts(roles: readonly StaffRole[]): boolean {
+  return canManage(roles)
+}
+
 export function canSubmitOwnPrefs(_roles: readonly StaffRole[]): boolean {
   return true
 }

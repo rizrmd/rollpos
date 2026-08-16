@@ -3,11 +3,13 @@ import {
   deleteRow,
   listRows,
   transact,
+  updateRow,
   type Database,
   TABLES,
 } from "@/db/database"
 import { loadProducts } from "@/db/snapshot"
-import type { ProductRecord } from "@/lib/types"
+import { canManageProducts } from "@/lib/permissions"
+import type { ProductRecord, StaffRecord } from "@/lib/types"
 
 export type ProductInput = {
   name: string
@@ -25,10 +27,37 @@ export const DEMO_PRODUCTS: ProductInput[] = [
 
 const catalogSeed = new WeakMap<object, Promise<boolean>>()
 
+function assertCanManageProducts(actor: StaffRecord): void {
+  if (!canManageProducts(actor.roles)) {
+    throw new Error(
+      "Hanya owner atau manager yang boleh menambah atau mengubah produk."
+    )
+  }
+}
+
+function toRecord(
+  id: string,
+  input: ProductInput,
+  createdAt: number,
+  updatedAt: number
+): ProductRecord {
+  return {
+    id,
+    name: input.name,
+    sku: input.sku,
+    price: input.price,
+    stock: input.stock,
+    createdAt,
+    updatedAt,
+  }
+}
+
 export async function createProduct(
   database: Database,
+  actor: StaffRecord,
   input: ProductInput
 ): Promise<ProductRecord> {
+  assertCanManageProducts(actor)
   await database.ready
   const now = Date.now()
   const id = addRow(database, TABLES.products, {
@@ -39,21 +68,40 @@ export async function createProduct(
     createdAt: now,
     updatedAt: now,
   })
-  return {
-    id,
+  return toRecord(id, input, now, now)
+}
+
+export async function updateProduct(
+  database: Database,
+  actor: StaffRecord,
+  id: string,
+  input: ProductInput
+): Promise<ProductRecord> {
+  assertCanManageProducts(actor)
+  await database.ready
+  const existing = listRows(database, TABLES.products).find((row) => row.id === id)
+  if (!existing) {
+    throw new Error("Produk tidak ditemukan.")
+  }
+  const now = Date.now()
+  updateRow(database, TABLES.products, id, {
     name: input.name,
     sku: input.sku,
     price: input.price,
     stock: input.stock,
-    createdAt: now,
     updatedAt: now,
-  }
+  })
+  const createdAt =
+    typeof existing.createdAt === "number" ? existing.createdAt : now
+  return toRecord(id, input, createdAt, now)
 }
 
 export async function deleteProduct(
   database: Database,
+  actor: StaffRecord,
   product: { id: string }
 ): Promise<void> {
+  assertCanManageProducts(actor)
   await database.ready
   deleteRow(database, TABLES.products, product.id)
 }

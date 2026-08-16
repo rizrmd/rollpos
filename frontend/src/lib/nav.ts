@@ -111,7 +111,7 @@ export const NAV_GROUPS: NavGroup[] = [
         hint: "Nama, harga, dan SKU menu",
         icon: Package,
         ready: true,
-        access: "public",
+        access: "manage",
         plan: [],
       },
       {

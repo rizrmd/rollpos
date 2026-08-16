@@ -167,8 +167,8 @@ export function App() {
       slots={staffing.slots}
       requirements={staffing.requirements}
     />
-  ) : page === "products" ? (
-    <CatalogScreen />
+  ) : page === "products" && actor ? (
+    <CatalogScreen actor={actor} />
   ) : page === "menu" ? null : item && !item.ready ? (
     <ComingSoonScreen item={item} />
   ) : MANAGE_PAGES.has(page) && !actor ? (

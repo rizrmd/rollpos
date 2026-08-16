@@ -6,8 +6,8 @@ import {
   visibleNavGroups,
 } from "@/lib/nav"
 
-const manageIds = ["stock", "week", "staff", "reports", "settings"] as const
-const publicIds = ["kasir", "clock", "today", "orders", "products", "prefs"] as const
+const manageIds = ["stock", "products", "week", "staff", "reports", "settings"] as const
+const publicIds = ["kasir", "clock", "today", "orders", "prefs"] as const
 
 describe("visibleNavGroups", () => {
   test("tanpa role, menu manage tidak tampil sama sekali", () => {
@@ -43,12 +43,17 @@ describe("visibleNavGroups", () => {
 
   test("canSeeNavItem mengikuti access item", () => {
     const stock = NAV_ITEMS.find((item) => item.id === "stock")
+    const products = NAV_ITEMS.find((item) => item.id === "products")
     const kasir = NAV_ITEMS.find((item) => item.id === "kasir")
     expect(stock).toBeDefined()
+    expect(products).toBeDefined()
     expect(kasir).toBeDefined()
     expect(canSeeNavItem(stock!, null)).toBe(false)
     expect(canSeeNavItem(stock!, ["kasir"])).toBe(false)
     expect(canSeeNavItem(stock!, ["manager"])).toBe(true)
+    expect(canSeeNavItem(products!, null)).toBe(false)
+    expect(canSeeNavItem(products!, ["kasir"])).toBe(false)
+    expect(canSeeNavItem(products!, ["owner"])).toBe(true)
     expect(canSeeNavItem(kasir!, null)).toBe(true)
     expect(canSeeNavItem(kasir!, ["kitchen"])).toBe(true)
   })
