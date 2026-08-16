@@ -14,10 +14,12 @@ import {
 } from "@/db/snapshot"
 import {
   acceptSuggestion,
+  addOfficialOff,
   authenticateStaff,
   changeStaffPin,
   clockPunch,
   hasOpenSession,
+  removeOfficialOff,
   saveOutletSettings,
   saveSlot,
   submitPreferences,
@@ -516,5 +518,24 @@ describe("staffing persist + schedule", () => {
     ).toBe(true)
     const after = await loadAttendance(database)
     expect(after.length).toBe(before.length)
+  })
+
+  test("manager can add then remove official day off", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    await addOfficialOff(database, owner, {
+      staffId: nia.id,
+      workDate: "2026-08-18",
+      weekStart: "2026-08-17",
+      source: "manager",
+    })
+    const offs = await loadDayOffs(database, "2026-08-17")
+    expect(offs).toHaveLength(1)
+    await removeOfficialOff(database, owner, offs[0]!.id)
+    expect(await loadDayOffs(database, "2026-08-17")).toHaveLength(0)
   })
 })

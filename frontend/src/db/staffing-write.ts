@@ -2,6 +2,7 @@ import {
   addRow,
   cellStr,
   deleteMatching,
+  deleteRow,
   listRows,
   transact,
   updateRow,
@@ -641,6 +642,18 @@ export async function addOfficialOff(
       createdAt: now,
     })
   })
+}
+
+export async function removeOfficialOff(
+  database: Database,
+  actor: StaffRecord,
+  offId: string
+): Promise<void> {
+  if (!canManage(actor.roles)) {
+    throw new Error("Lantai tidak boleh menghapus libur resmi.")
+  }
+  await database.ready
+  deleteRow(database, TABLES.scheduledDaysOff, offId)
 }
 
 export async function applyRecommendationDraft(

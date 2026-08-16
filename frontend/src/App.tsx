@@ -157,7 +157,8 @@ export function App() {
       suggestions={staffing.suggestions}
       offs={staffing.offs}
       preferences={staffing.preferences}
-      weekStart={staffing.thisWeekStart}
+      thisWeekStart={staffing.thisWeekStart}
+      upcomingWeekStart={staffing.upcomingWeekStart}
     />
   ) : page === "prefs" ? (
     <PrefsScreen
