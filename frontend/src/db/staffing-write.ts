@@ -9,7 +9,7 @@ import {
   TABLES,
 } from "@/db/database"
 import { loadAttendance, loadSettings, loadStaff } from "@/db/snapshot"
-import { hashPin, newPinSalt, verifyPin } from "@/lib/pin"
+import { hashPin, newPinSalt, validatePin, verifyPin } from "@/lib/pin"
 import {
   assertCanChangeRoles,
   assertLastOwnerSafe,
@@ -53,9 +53,15 @@ export async function saveOutletSettings(
   transact(database, () => {
     if (existing) {
       updateRow(database, TABLES.outletSettings, existing.id, {
-        ...(patch.openMinutes !== undefined ? { openMinutes: patch.openMinutes } : {}),
-        ...(patch.closeMinutes !== undefined ? { closeMinutes: patch.closeMinutes } : {}),
-        ...(patch.weekStartsOn !== undefined ? { weekStartsOn: patch.weekStartsOn } : {}),
+        ...(patch.openMinutes !== undefined
+          ? { openMinutes: patch.openMinutes }
+          : {}),
+        ...(patch.closeMinutes !== undefined
+          ? { closeMinutes: patch.closeMinutes }
+          : {}),
+        ...(patch.weekStartsOn !== undefined
+          ? { weekStartsOn: patch.weekStartsOn }
+          : {}),
         ...(patch.preferenceDeadlineWeekday !== undefined
           ? { preferenceDeadlineWeekday: patch.preferenceDeadlineWeekday }
           : {}),
@@ -192,7 +198,13 @@ export async function upsertStaff(
   const staff = await loadStaff(database)
   const target = input.id ? staff.find((row) => row.id === input.id) : undefined
   if (target) {
-    assertCanChangeRoles(actor.roles, target, input.roles, staff, input.isActive)
+    assertCanChangeRoles(
+      actor.roles,
+      target,
+      input.roles,
+      staff,
+      input.isActive
+    )
   } else if (!canManage(actor.roles)) {
     throw new Error("Lantai tidak boleh menambah staff.")
   } else {
@@ -288,6 +300,27 @@ export async function authenticateStaff(
     throw new Error("PIN salah.")
   }
   return member
+}
+
+export async function changeStaffPin(
+  database: Database,
+  staffId: string,
+  currentPin: string,
+  newPin: string
+): Promise<void> {
+  await authenticateStaff(database, staffId, currentPin)
+  const validationError = validatePin(newPin)
+  if (validationError) throw new Error(validationError)
+  if (currentPin === newPin) {
+    throw new Error("PIN baru harus berbeda dari PIN saat ini.")
+  }
+
+  const salt = newPinSalt()
+  updateRow(database, TABLES.staffMembers, staffId, {
+    pinSalt: salt,
+    pinHash: await hashPin(newPin, salt),
+    updatedAt: Date.now(),
+  })
 }
 
 export async function clockPunch(
@@ -441,7 +474,8 @@ export async function submitPreferences(
   const now = Date.now()
   const existing = listRows(database, TABLES.weekPreferences).find(
     (row) =>
-      cellStr(row, "staffId") === staffId && cellStr(row, "weekStart") === weekStart
+      cellStr(row, "staffId") === staffId &&
+      cellStr(row, "weekStart") === weekStart
   )
   transact(database, () => {
     let preferenceId = existing?.id ?? ""
@@ -506,7 +540,9 @@ export async function acceptSuggestion(
   suggestionId: string
 ): Promise<void> {
   if (!canAcceptSuggestions(actor.roles)) {
-    throw new Error("Hanya owner atau manager yang boleh menerima suggest libur.")
+    throw new Error(
+      "Hanya owner atau manager yang boleh menerima suggest libur."
+    )
   }
   await database.ready
   const suggestion = listRows(database, TABLES.dayOffSuggestions).find(
@@ -554,7 +590,9 @@ export async function declineSuggestion(
   alternativeDate = ""
 ): Promise<void> {
   if (!canAcceptSuggestions(actor.roles)) {
-    throw new Error("Hanya owner atau manager yang boleh menolak suggest libur.")
+    throw new Error(
+      "Hanya owner atau manager yang boleh menolak suggest libur."
+    )
   }
   await database.ready
   updateRow(database, TABLES.dayOffSuggestions, suggestionId, {

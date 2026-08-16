@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Delete, KeyRound, ShieldCheck } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -13,12 +14,16 @@ export function PinDialog({
   open,
   title,
   description,
+  actionLabel,
+  onAction,
   onOpenChange,
   onSubmit,
 }: {
   open: boolean
   title: string
   description?: string
+  actionLabel?: string
+  onAction?: () => void
   onOpenChange: (open: boolean) => void
   onSubmit: (pin: string) => Promise<void> | void
 }) {
@@ -28,7 +33,7 @@ export function PinDialog({
 
   async function submit(next = pin) {
     if (next.length < 4) {
-      setError("PIN minimal 4 digit.")
+      setError("Masukkan minimal 4 digit.")
       return
     }
     setBusy(true)
@@ -47,9 +52,6 @@ export function PinDialog({
   function press(digit: string) {
     const next = (pin + digit).slice(0, 6)
     setPin(next)
-    if (next.length >= 4 && digit !== "") {
-      // wait for explicit OK
-    }
   }
 
   return (
@@ -63,49 +65,112 @@ export function PinDialog({
         onOpenChange(value)
       }}
     >
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description ? <DialogDescription>{description}</DialogDescription> : null}
-        </DialogHeader>
-        <p
-          className="min-h-8 font-mono text-center text-2xl leading-8 tracking-[0.4em]"
-          aria-label={pin ? `PIN ${pin.length} digit` : "PIN kosong"}
+      <DialogContent className="overflow-hidden p-0 sm:max-w-sm">
+        <div
+          className="flex flex-col gap-5 p-5"
+          tabIndex={0}
+          autoFocus
+          onKeyDown={(event) => {
+            if (/^\d$/.test(event.key)) press(event.key)
+            if (event.key === "Backspace") setPin((value) => value.slice(0, -1))
+            if (event.key === "Enter") void submit()
+          }}
         >
-          {pin ? pin.replace(/./g, "•") : "\u00A0"}
-        </p>
-        <div className="grid grid-cols-3 gap-2">
-          {["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK"].map((key) => (
+          <DialogHeader className="items-center text-center">
+            <span className="flex size-11 items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <KeyRound className="size-5" aria-hidden="true" />
+            </span>
+            <DialogTitle className="text-xl">{title}</DialogTitle>
+            {description ? (
+              <DialogDescription>{description}</DialogDescription>
+            ) : null}
+          </DialogHeader>
+          <div
+            className="flex min-h-10 items-center justify-center gap-3"
+            aria-label={pin ? `PIN ${pin.length} digit` : "PIN kosong"}
+          >
+            {Array.from({ length: 6 }, (_, index) => (
+              <span
+                key={index}
+                className={`size-3 rounded-full border-2 ${index < pin.length ? "border-primary bg-primary" : "border-muted-foreground/35"}`}
+                aria-hidden="true"
+              />
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-2.5">
+            {[
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7",
+              "8",
+              "9",
+              "hapus",
+              "0",
+              "masuk",
+            ].map((key) => (
+              <Button
+                key={key}
+                type="button"
+                variant={key === "masuk" ? "default" : "outline"}
+                className="h-14 text-lg font-semibold"
+                disabled={busy}
+                aria-label={
+                  key === "hapus"
+                    ? "Hapus digit terakhir"
+                    : key === "masuk"
+                      ? "Konfirmasi PIN"
+                      : undefined
+                }
+                onClick={() => {
+                  if (key === "hapus") {
+                    setPin((value) => value.slice(0, -1))
+                    setError(null)
+                    return
+                  }
+                  if (key === "masuk") {
+                    void submit()
+                    return
+                  }
+                  setError(null)
+                  press(key)
+                }}
+              >
+                {key === "hapus" ? (
+                  <Delete className="size-5" />
+                ) : key === "masuk" ? (
+                  <ShieldCheck className="size-5" />
+                ) : (
+                  key
+                )}
+              </Button>
+            ))}
+          </div>
+          <p
+            className="min-h-5 text-sm text-destructive"
+            role="alert"
+            aria-live="polite"
+          >
+            {error ?? "\u00A0"}
+          </p>
+          {actionLabel && onAction ? (
             <Button
-              key={key}
               type="button"
-              variant={key === "OK" ? "default" : "outline"}
+              variant="ghost"
               disabled={busy}
               onClick={() => {
-                if (key === "C") {
-                  setPin("")
-                  setError(null)
-                  return
-                }
-                if (key === "OK") {
-                  void submit()
-                  return
-                }
+                setPin("")
                 setError(null)
-                press(key)
+                onAction()
               }}
             >
-              {key}
+              {actionLabel}
             </Button>
-          ))}
+          ) : null}
         </div>
-        <p
-          className="min-h-5 text-sm text-destructive"
-          role="alert"
-          aria-live="polite"
-        >
-          {error ?? "\u00A0"}
-        </p>
       </DialogContent>
     </Dialog>
   )

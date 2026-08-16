@@ -2,8 +2,17 @@ import type { Database } from "@/db/database"
 import { useMemo, useState } from "react"
 
 import { LiveNotice } from "@/components/page-header"
+import { ChangePinDialog } from "@/components/change-pin-dialog"
 import { PinDialog } from "@/components/pin-dialog"
-import { clockPunch } from "@/db/staffing-write"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { changeStaffPin, clockPunch } from "@/db/staffing-write"
 import {
   formatClockFromMinutes,
   formatDuration,
@@ -40,6 +49,8 @@ export function ClockScreen({
   today: string
 }) {
   const [selected, setSelected] = useState<StaffRecord | null>(null)
+  const [changePinWho, setChangePinWho] = useState<StaffRecord | null>(null)
+  const [pickPinOwner, setPickPinOwner] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const active = staff.filter((member) => member.isActive)
 
@@ -62,6 +73,15 @@ export function ClockScreen({
   return (
     <div className="flex flex-col gap-4">
       <LiveNotice message={notice} />
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setPickPinOwner(true)}
+        >
+          Ubah PIN saya
+        </Button>
+      </div>
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {cards.map((card) => (
           <li key={card.member.id}>
@@ -89,7 +109,9 @@ export function ClockScreen({
               <span
                 className={cn(
                   "text-sm",
-                  card.kind === "on_duty" ? "opacity-90" : "text-muted-foreground"
+                  card.kind === "on_duty"
+                    ? "opacity-90"
+                    : "text-muted-foreground"
                 )}
               >
                 {card.line}
@@ -108,11 +130,20 @@ export function ClockScreen({
         }
         description={
           selected
-            ? pinDescription(selected, openByStaff.get(selected.id) === true, attendance)
+            ? pinDescription(
+                selected,
+                openByStaff.get(selected.id) === true,
+                attendance
+              )
             : "Masukkan PIN staff."
         }
         onOpenChange={(open) => {
           if (!open) setSelected(null)
+        }}
+        actionLabel="Ubah PIN saya"
+        onAction={() => {
+          setChangePinWho(selected)
+          setSelected(null)
         }}
         onSubmit={async (pin) => {
           if (!selected) return
@@ -124,6 +155,46 @@ export function ClockScreen({
               ? `${selected.nickname} pulang ${clock}`
               : `${selected.nickname} masuk ${clock}`
           )
+        }}
+      />
+      <Dialog open={pickPinOwner} onOpenChange={setPickPinOwner}>
+        <DialogContent className="sm:max-w-sm" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Pilih nama kamu</DialogTitle>
+            <DialogDescription>
+              PIN saat ini akan diminta sebelum PIN dapat diubah.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+            {active.map((member) => (
+              <li key={member.id}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="touch"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    setPickPinOwner(false)
+                    setChangePinWho(member)
+                  }}
+                >
+                  {member.name}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
+      <ChangePinDialog
+        open={Boolean(changePinWho)}
+        staffName={changePinWho?.nickname || changePinWho?.name || "staff"}
+        onOpenChange={(open) => {
+          if (!open) setChangePinWho(null)
+        }}
+        onSubmit={async (currentPin, newPin) => {
+          if (!changePinWho) return
+          await changeStaffPin(database, changePinWho.id, currentPin, newPin)
+          setNotice(`PIN ${changePinWho.nickname} berhasil diubah.`)
         }}
       />
     </div>

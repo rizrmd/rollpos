@@ -15,6 +15,7 @@ import {
 import {
   acceptSuggestion,
   authenticateStaff,
+  changeStaffPin,
   clockPunch,
   hasOpenSession,
   saveOutletSettings,
@@ -158,9 +159,9 @@ describe("staffing persist + schedule", () => {
 
   test("seed backfills Dimas as manager when staff already exist", async () => {
     const { database } = await bootstrap()
-    expect((await loadStaff(database)).some((row) => row.name === "Dimas")).toBe(
-      false
-    )
+    expect(
+      (await loadStaff(database)).some((row) => row.name === "Dimas")
+    ).toBe(false)
     await seedStaffingIfEmpty(database)
     const people = await loadStaff(database)
     const dimas = people.find((row) => row.nickname === "Dimas")
@@ -171,29 +172,68 @@ describe("staffing persist + schedule", () => {
   })
 
   test("seed staff PIN is 0000 and existing staff get PIN backfill", async () => {
-    expect(SEED_DEFAULTS.staff.every((person) => person.pin === "0000")).toBe(true)
+    expect(SEED_DEFAULTS.staff.every((person) => person.pin === "0000")).toBe(
+      true
+    )
 
     const fresh = await freshDb()
     await seedStaffingIfEmpty(fresh)
     for (const person of await loadStaff(fresh)) {
-      await expect(authenticateStaff(fresh, person.id, "0000")).resolves.toMatchObject({
+      await expect(
+        authenticateStaff(fresh, person.id, "0000")
+      ).resolves.toMatchObject({
         id: person.id,
       })
     }
 
     const { database } = await bootstrap()
-    const ayuBefore = (await loadStaff(database)).find((row) => row.name === "Ayu")
+    const ayuBefore = (await loadStaff(database)).find(
+      (row) => row.name === "Ayu"
+    )
     if (!ayuBefore) throw new Error("missing ayu")
-    await expect(authenticateStaff(database, ayuBefore.id, "1234")).resolves.toMatchObject({
+    await expect(
+      authenticateStaff(database, ayuBefore.id, "1234")
+    ).resolves.toMatchObject({
       id: ayuBefore.id,
     })
 
     await seedStaffingIfEmpty(database)
     for (const person of await loadStaff(database)) {
-      await expect(authenticateStaff(database, person.id, "0000")).resolves.toMatchObject({
+      await expect(
+        authenticateStaff(database, person.id, "0000")
+      ).resolves.toMatchObject({
         id: person.id,
       })
     }
+  })
+
+  test("staff dapat mengubah PIN sendiri setelah memverifikasi PIN saat ini", async () => {
+    const { database } = await bootstrap()
+    const staff = await createPerson(database, {
+      name: "Nia",
+      roles: ["kasir"],
+      pin: "2468",
+    })
+
+    await expect(
+      changeStaffPin(database, staff.id, "9999", "1357")
+    ).rejects.toThrow(/PIN salah/)
+    await expect(
+      changeStaffPin(database, staff.id, "2468", "12ab")
+    ).rejects.toThrow(/angka/)
+    await expect(
+      changeStaffPin(database, staff.id, "2468", "2468")
+    ).rejects.toThrow(/berbeda/)
+
+    await changeStaffPin(database, staff.id, "2468", "1357")
+    await expect(authenticateStaff(database, staff.id, "2468")).rejects.toThrow(
+      /PIN salah/
+    )
+    await expect(
+      authenticateStaff(database, staff.id, "1357")
+    ).resolves.toMatchObject({
+      id: staff.id,
+    })
   })
 
   test("owner implies manager powers; floor cannot mutate slots", async () => {
@@ -225,9 +265,9 @@ describe("staffing persist + schedule", () => {
       isActive: true,
     })
     const slots = await loadSlots(database)
-    expect(slots.some((slot) => slot.id === slotId && slot.minStaffCount === 3)).toBe(
-      true
-    )
+    expect(
+      slots.some((slot) => slot.id === slotId && slot.minStaffCount === 3)
+    ).toBe(true)
   })
 
   test("last active owner cannot be stripped", async () => {
@@ -343,7 +383,9 @@ describe("staffing persist + schedule", () => {
     await clockPunch(database, staff.id, "1234", "clock_out", "device-a", 3_000)
     const closed = await loadAttendance(database, staff.id)
     expect(hasOpenSession(closed)).toBe(false)
-    await expect(authenticateStaff(database, staff.id, "0000")).rejects.toThrow(/PIN/)
+    await expect(authenticateStaff(database, staff.id, "0000")).rejects.toThrow(
+      /PIN/
+    )
   })
 
   test("recommendation refuses an understaffed grant", async () => {
@@ -409,7 +451,9 @@ describe("staffing persist + schedule", () => {
       preferences: [],
       weekStart: "2026-08-17",
     })
-    const grantedThatDay = result.offs.filter((row) => row.workDate === "2026-08-17")
+    const grantedThatDay = result.offs.filter(
+      (row) => row.workDate === "2026-08-17"
+    )
     expect(grantedThatDay.length).toBeLessThan(2)
     expect(result.grantedSuggestionIds.length).toBeLessThan(2)
     const assigned = result.assignments.filter(
@@ -465,9 +509,11 @@ describe("staffing persist + schedule", () => {
       []
     )
     const assignments = await loadAssignments(database)
-    expect(assignments.some((row) => row.status === "draft" && row.staffId === nia.id)).toBe(
-      true
-    )
+    expect(
+      assignments.some(
+        (row) => row.status === "draft" && row.staffId === nia.id
+      )
+    ).toBe(true)
     const after = await loadAttendance(database)
     expect(after.length).toBe(before.length)
   })
