@@ -17,6 +17,7 @@ import {
   ensureFairDefaultWeeks,
   hasOpenSession,
 } from "@/db/staffing-write"
+import { listOnDuty } from "@/lib/on-duty"
 import { DEFAULT_OUTLET_ID, type OutletSettingsRecord, type StaffRecord } from "@/lib/types"
 import { nextWeekStart, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 
@@ -132,6 +133,19 @@ export function useStaffing() {
     return map
   }, [attendance, staff])
 
+  const onDuty = useMemo(
+    () =>
+      listOnDuty({
+        staff,
+        attendance,
+        assignments,
+        slots,
+        today,
+        openByStaff,
+      }),
+    [assignments, attendance, openByStaff, slots, staff, today]
+  )
+
   return {
     database,
     ready,
@@ -151,5 +165,6 @@ export function useStaffing() {
     upcomingWeekStart,
     thisWeekDates,
     openByStaff,
+    onDuty,
   }
 }

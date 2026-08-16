@@ -19,6 +19,7 @@ import {
   formatOccurredClock,
   minutesFromOccurred,
 } from "@/lib/format"
+import { groupClockCards } from "@/lib/on-duty"
 import { deviceId, formatMinutes, todayJakarta } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import type {
@@ -69,21 +70,13 @@ export function ClockScreen({
       ),
     [active, assignments, attendance, offs, openByStaff, slots, today]
   )
+  const grouped = useMemo(() => groupClockCards(cards), [cards])
 
-  return (
-    <div className="flex flex-col gap-4">
-      <LiveNotice message={notice} />
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => setPickPinOwner(true)}
-        >
-          Ubah PIN saya
-        </Button>
-      </div>
+  function renderCards(items: typeof cards) {
+    if (items.length === 0) return null
+    return (
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {cards.map((card) => (
+        {items.map((card) => (
           <li key={card.member.id}>
             <button
               type="button"
@@ -121,6 +114,63 @@ export function ClockScreen({
           </li>
         ))}
       </ul>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <LiveNotice message={notice} />
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setPickPinOwner(true)}
+        >
+          Ubah PIN saya
+        </Button>
+      </div>
+      <section aria-labelledby="clock-on-duty" className="flex flex-col gap-3">
+        <h2
+          id="clock-on-duty"
+          className="text-sm font-semibold tracking-wide text-foreground uppercase"
+        >
+          Sedang masuk
+          <span className="ml-2 font-normal text-muted-foreground normal-case">
+            {grouped.onDuty.length}
+          </span>
+        </h2>
+        {grouped.onDuty.length === 0 ? (
+          <p className="rounded-2xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
+            Belum ada yang clock-in. Ketuk nama di bawah untuk masuk.
+          </p>
+        ) : (
+          renderCards(grouped.onDuty)
+        )}
+      </section>
+      {grouped.waiting.length > 0 ? (
+        <section aria-labelledby="clock-waiting" className="flex flex-col gap-3">
+          <h2
+            id="clock-waiting"
+            className="text-sm font-semibold tracking-wide text-muted-foreground uppercase"
+          >
+            Belum masuk
+            <span className="ml-2 font-normal">{grouped.waiting.length}</span>
+          </h2>
+          {renderCards(grouped.waiting)}
+        </section>
+      ) : null}
+      {grouped.off.length > 0 ? (
+        <section aria-labelledby="clock-off" className="flex flex-col gap-3">
+          <h2
+            id="clock-off"
+            className="text-sm font-semibold tracking-wide text-muted-foreground uppercase"
+          >
+            Libur
+            <span className="ml-2 font-normal">{grouped.off.length}</span>
+          </h2>
+          {renderCards(grouped.off)}
+        </section>
+      ) : null}
       <PinDialog
         open={Boolean(selected)}
         title={
@@ -248,8 +298,8 @@ function describeMember({
       member,
       kind: "on_duty",
       line: clockIn
-        ? `On duty sejak ${formatOccurredClock(clockIn.occurredAt)}`
-        : "Sedang on duty",
+        ? `Masuk sejak ${formatOccurredClock(clockIn.occurredAt)}`
+        : "Sedang masuk",
       action: "Ketuk untuk pulang",
     }
   }

@@ -1,3 +1,4 @@
+import { OnDutyBoard } from "@/components/on-duty-board"
 import { Badge } from "@/components/ui/badge"
 import {
   Card,
@@ -7,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { formatIsoWeekday, formatOccurredClock, minutesFromOccurred } from "@/lib/format"
+import type { OnDutyEntry } from "@/lib/on-duty"
 import { formatMinutes, jakartaDateParts, todayJakarta } from "@/lib/time"
 import type {
   AssignmentRecord,
@@ -26,6 +28,7 @@ export function TodayScreen({
   attendance,
   offs,
   openByStaff,
+  onDutyPeople,
 }: {
   today: string
   settings: OutletSettingsRecord | null
@@ -35,6 +38,7 @@ export function TodayScreen({
   attendance: AttendanceEventRecord[]
   offs: DayOffRecord[]
   openByStaff: Map<string, boolean>
+  onDutyPeople: OnDutyEntry[]
 }) {
   const grace = settings?.graceLateMinutes ?? 0
   const nowMinutes = jakartaDateParts().minutes
@@ -50,7 +54,6 @@ export function TodayScreen({
       !assignedIds.has(member.id)
   )
   const todayOffs = offs.filter((row) => row.workDate === today)
-  const onDuty = staff.filter((member) => openByStaff.get(member.id)).length
   const missing = todayAssignments.filter((row) => {
     const clockIn = todayEvent(attendance, row.staffId, "clock_in", today)
     return !clockIn && nowMinutes > row.startMinutes + grace
@@ -58,8 +61,9 @@ export function TodayScreen({
 
   return (
     <div className="flex flex-col gap-4">
+      <OnDutyBoard entries={onDutyPeople} />
       <p className="text-sm text-muted-foreground">
-        {onDuty} on duty · {missing} belum datang · {todayOffs.length} libur
+        {missing} belum datang · {todayOffs.length} libur
       </p>
 
       {activeSlots.map((slot) => {
@@ -214,7 +218,7 @@ function personStatus({
   }
   if (onDuty || clockIn) {
     return {
-      label: late ? "terlambat" : "on duty",
+      label: late ? "terlambat" : "masuk",
       detail: clockIn ? `masuk ${formatOccurredClock(clockIn.occurredAt)}` : "",
       variant: late ? "destructive" : "secondary",
     }

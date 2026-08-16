@@ -145,6 +145,7 @@ export function App() {
       attendance={staffing.attendance}
       offs={staffing.offs}
       openByStaff={staffing.openByStaff}
+      onDutyPeople={staffing.onDuty}
     />
   ) : page === "week" && actor ? (
     <WeekScreen
@@ -268,6 +269,7 @@ export function App() {
         nowLabel={nowLabel}
         page={page}
         actor={actor}
+        onDuty={staffing.onDuty}
         onOpen={openPage}
         onUnlock={startUnlock}
         onLock={lock}
@@ -345,6 +347,7 @@ export function App() {
         {page === "menu" ? (
           <MenuScreen
             actor={actor}
+            onDuty={staffing.onDuty}
             onOpen={openPage}
             onUnlock={startUnlock}
             onLock={lock}

@@ -93,7 +93,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "clock",
         label: "Masuk",
-        hint: "Clock-in dan pulang dengan PIN",
+        hint: "Clock-in, pulang, dan siapa yang sudah masuk",
         icon: Clock3,
         ready: true,
         access: "public",
@@ -102,7 +102,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "today",
         label: "Hari ini",
-        hint: "Siapa jaga dan siapa sudah datang",
+        hint: "Siapa sedang masuk dan siapa belum datang",
         icon: CalendarDays,
         ready: true,
         access: "public",
