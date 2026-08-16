@@ -15,6 +15,7 @@ export type PrefsDayKind =
   | "declined"
   | "offered"
   | "work"
+  | "fair_off"
   | "empty"
 
 export type PrefsDay = {
@@ -53,6 +54,7 @@ export const PREFS_KIND_LABEL: Record<PrefsDayKind, string> = {
   declined: "Ditolak",
   offered: "Tawaran",
   work: "Kerja",
+  fair_off: "Giliran",
   empty: "",
 }
 
@@ -87,6 +89,9 @@ export function resolvePrefsDay({
   suggestions,
   assignments,
   slots,
+  proposedAssignments = [],
+  proposedOffs = [],
+  today,
 }: {
   date: string
   inMonth: boolean
@@ -95,6 +100,9 @@ export function resolvePrefsDay({
   suggestions: SuggestionRecord[]
   assignments: AssignmentRecord[]
   slots: SlotRecord[]
+  proposedAssignments?: { staffId: string; workDate: string; templateId: string }[]
+  proposedOffs?: { staffId: string; workDate: string }[]
+  today?: string
 }): PrefsDay {
   const official = offs.find(
     (row) => row.staffId === staffId && row.workDate === date
@@ -115,9 +123,12 @@ export function resolvePrefsDay({
     (row) =>
       row.staffId === staffId &&
       row.workDate === date &&
-      row.status === "published"
+      row.status !== "cancelled"
   )
-  const slotNames = work
+  const proposedWork = proposedAssignments.filter(
+    (row) => row.staffId === staffId && row.workDate === date
+  )
+  const slotNames = (work.length > 0 ? work : proposedWork)
     .map((row) => slots.find((slot) => slot.id === row.templateId)?.name)
     .filter((name): name is string => Boolean(name))
 
@@ -173,7 +184,7 @@ export function resolvePrefsDay({
       suggestionId: offered.id,
     }
   }
-  if (work.length > 0) {
+  if (work.length > 0 || proposedWork.length > 0) {
     return {
       date,
       inMonth,
@@ -183,6 +194,35 @@ export function resolvePrefsDay({
       alternativeDate: "",
       source: "",
       slotNames,
+      suggestionId: "",
+    }
+  }
+  const fairOff = proposedOffs.some(
+    (row) => row.staffId === staffId && row.workDate === date
+  )
+  if (fairOff) {
+    return {
+      date,
+      inMonth,
+      kind: "fair_off",
+      label: PREFS_KIND_LABEL.fair_off,
+      note: "",
+      alternativeDate: "",
+      source: "recommendation",
+      slotNames: [],
+      suggestionId: "",
+    }
+  }
+  if (today && date >= today && inMonth) {
+    return {
+      date,
+      inMonth,
+      kind: "work",
+      label: PREFS_KIND_LABEL.work,
+      note: "",
+      alternativeDate: "",
+      source: "recommendation",
+      slotNames: [],
       suggestionId: "",
     }
   }
@@ -215,7 +255,7 @@ export function prefsDayCaption(day: PrefsDay, today: string): string {
   }
   if (day.kind !== "empty") return day.label
   if (day.date < today) return "—"
-  return "Kosong"
+  return PREFS_KIND_LABEL.work
 }
 
 export function prefsDaysForMonth({
@@ -225,6 +265,9 @@ export function prefsDaysForMonth({
   suggestions,
   assignments,
   slots,
+  proposedAssignments,
+  proposedOffs,
+  today,
 }: {
   cells: { date: string; inMonth: boolean }[]
   staffId: string
@@ -232,6 +275,9 @@ export function prefsDaysForMonth({
   suggestions: SuggestionRecord[]
   assignments: AssignmentRecord[]
   slots: SlotRecord[]
+  proposedAssignments?: { staffId: string; workDate: string; templateId: string }[]
+  proposedOffs?: { staffId: string; workDate: string }[]
+  today?: string
 }): PrefsDay[] {
   return cells.map((cell) =>
     resolvePrefsDay({
@@ -241,6 +287,9 @@ export function prefsDaysForMonth({
       suggestions,
       assignments,
       slots,
+      proposedAssignments,
+      proposedOffs,
+      today,
     })
   )
 }

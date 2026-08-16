@@ -12,7 +12,11 @@ import {
   loadStaff,
   loadSuggestions,
 } from "@/db/snapshot"
-import { hasOpenSession } from "@/db/staffing-write"
+import {
+  defaultScheduleWeeks,
+  ensureFairDefaultWeeks,
+  hasOpenSession,
+} from "@/db/staffing-write"
 import { DEFAULT_OUTLET_ID, type OutletSettingsRecord, type StaffRecord } from "@/lib/types"
 import { nextWeekStart, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 
@@ -64,11 +68,20 @@ export function useStaffing() {
         loadPreferences(database),
         loadAttendance(database),
       ])
+      const weekStartsOn = nextSettings?.weekStartsOn ?? 1
+      let assignments = nextAssignments
+      const filled = await ensureFairDefaultWeeks(
+        database,
+        defaultScheduleWeeks(weekStartsOn)
+      )
+      if (filled > 0) {
+        assignments = await loadAssignments(database)
+      }
       setSettings(nextSettings)
       setStaff(nextStaff)
       setSlots(nextSlots)
       setRequirements(nextRequirements)
-      setAssignments(nextAssignments)
+      setAssignments(assignments)
       setSuggestions(nextSuggestions)
       setOffs(nextOffs)
       setPreferences(nextPreferences)

@@ -559,6 +559,53 @@ describe("staffing persist + schedule", () => {
     expect(after.length).toBe(before.length)
   })
 
+  test("fair default draft fills an empty week once and skips the second write", async () => {
+    const { writeFairDefaultDraft, ensureFairDefaultWeeks } = await import(
+      "@/db/staffing-write"
+    )
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 300,
+      endMinutes: 600,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    const first = await writeFairDefaultDraft(database, "2026-08-17", [
+      {
+        staffId: nia.id,
+        templateId: slotId,
+        workDate: "2026-08-17",
+        startMinutes: 300,
+        endMinutes: 600,
+        dutyRole: "barista",
+      },
+    ])
+    const second = await writeFairDefaultDraft(database, "2026-08-17", [
+      {
+        staffId: owner.id,
+        templateId: slotId,
+        workDate: "2026-08-18",
+        startMinutes: 300,
+        endMinutes: 600,
+        dutyRole: "barista",
+      },
+    ])
+    expect(first).toBe(true)
+    expect(second).toBe(false)
+    const assignments = await loadAssignments(database)
+    expect(
+      assignments.filter((row) => row.status === "draft" && row.note === "usulan sistem")
+    ).toHaveLength(1)
+    expect(await ensureFairDefaultWeeks(database, ["2026-08-17"])).toBe(0)
+  })
+
   test("manager can add then remove official day off", async () => {
     const { database, owner } = await bootstrap()
     const nia = await createPerson(database, {

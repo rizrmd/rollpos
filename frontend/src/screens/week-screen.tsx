@@ -1,5 +1,5 @@
 import type { Database } from "@/db/database"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
@@ -17,6 +17,7 @@ import {
   acceptSuggestion,
   addOfficialOff,
   applyRecommendationDraft,
+  ensureFairDefaultWeeks,
   cancelAssignment,
   declineSuggestion,
   publishWeek,
@@ -31,7 +32,7 @@ import {
   preferenceDeadlineLabel,
 } from "@/lib/format"
 import { floorRolesOf } from "@/lib/permissions"
-import { recommendSchedule } from "@/lib/recommend"
+import { historyWorkDatesFrom, recommendSchedule } from "@/lib/recommend"
 import {
   alternativeOffDate,
   cellCoverage,
@@ -160,6 +161,10 @@ export function WeekScreen({
     0
   )
 
+  useEffect(() => {
+    void ensureFairDefaultWeeks(database, [weekStart])
+  }, [database, weekStart])
+
   const recommendPreview =
     settings && recommendOpen
       ? (() => {
@@ -173,6 +178,7 @@ export function WeekScreen({
             suggestions,
             preferences,
             weekStart,
+            historyWorkDates: historyWorkDatesFrom(assignments, weekStart),
           })
           return {
             result,
@@ -348,8 +354,8 @@ export function WeekScreen({
               className="h-full w-full flex-col items-start gap-1 py-3"
               onClick={() => setRecommendOpen(true)}
             >
-              <span className="text-xs text-muted-foreground">2 · Isi draft</span>
-              <span>Isi otomatis</span>
+              <span className="text-xs text-muted-foreground">2 · Isi ulang</span>
+              <span>Usulan adil</span>
             </Button>
           </li>
           <li>
@@ -781,9 +787,10 @@ export function WeekScreen({
       <Dialog open={recommendOpen} onOpenChange={setRecommendOpen}>
         <DialogContent showCloseButton className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Isi otomatis draft?</DialogTitle>
+            <DialogTitle>Isi ulang usulan adil?</DialogTitle>
             <DialogDescription>
-              Pratinjau mesin. Absensi tidak berubah. Draft minggu ini ditimpa.
+              Kerja default dari mesin yang membagi shift dan libur secara
+              adil. Absensi tidak berubah. Draft minggu ini ditimpa.
             </DialogDescription>
           </DialogHeader>
           {recommendPreview ? (
@@ -825,7 +832,7 @@ export function WeekScreen({
                 setRecommendOpen(false)
               }}
             >
-              Terapkan draft
+              Terapkan usulan
             </Button>
           </DialogFooter>
         </DialogContent>

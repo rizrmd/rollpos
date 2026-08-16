@@ -188,12 +188,12 @@ describe("resolvePrefsDay", () => {
     expect(dayOffAction(empty, "2026-08-22")).toBe("view")
     expect(dayOffAction(approved, "2026-08-17")).toBe("view")
     expect(prefsDayCaption(pending, "2026-08-17")).toBe("Menunggu")
-    expect(prefsDayCaption(empty, "2026-08-17")).toBe("Kosong")
+    expect(prefsDayCaption(empty, "2026-08-17")).toBe("Kerja")
     expect(prefsDayCaption(empty, "2026-08-22")).toBe("—")
     expect(prefsDayCaption(approved, "2026-08-17")).toBe("Libur")
   })
 
-  test("assignment published tampil kerja; draft diabaikan", () => {
+  test("assignment draft dan published tampil kerja", () => {
     expect(
       resolvePrefsDay({
         date: "2026-08-21",
@@ -215,7 +215,46 @@ describe("resolvePrefsDay", () => {
         assignments: [work({ workDate: "2026-08-21", status: "draft" })],
         slots: [pagi],
       }).kind
-    ).toBe("empty")
+    ).toBe("work")
+  })
+
+  test("hari ke depan tanpa assignment default kerja; giliran libur dari usulan", () => {
+    const defaultWork = resolvePrefsDay({
+      date: "2026-08-21",
+      inMonth: true,
+      staffId: "nia",
+      offs: [],
+      suggestions: [],
+      assignments: [],
+      slots: [pagi],
+      today: "2026-08-17",
+    })
+    const rotation = resolvePrefsDay({
+      date: "2026-08-23",
+      inMonth: true,
+      staffId: "nia",
+      offs: [],
+      suggestions: [],
+      assignments: [],
+      slots: [pagi],
+      proposedOffs: [{ staffId: "nia", workDate: "2026-08-23" }],
+      today: "2026-08-17",
+    })
+    const past = resolvePrefsDay({
+      date: "2026-08-10",
+      inMonth: true,
+      staffId: "nia",
+      offs: [],
+      suggestions: [],
+      assignments: [],
+      slots: [pagi],
+      today: "2026-08-17",
+    })
+    expect(defaultWork.kind).toBe("work")
+    expect(defaultWork.source).toBe("recommendation")
+    expect(rotation.kind).toBe("fair_off")
+    expect(prefsDayCaption(rotation, "2026-08-17")).toBe("Giliran")
+    expect(past.kind).toBe("empty")
   })
 })
 

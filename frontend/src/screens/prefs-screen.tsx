@@ -35,6 +35,11 @@ import {
   weekdayHeaders,
 } from "@/lib/format"
 import {
+  historyWorkDatesFrom,
+  recommendSchedule,
+  weekHasActiveAssignments,
+} from "@/lib/recommend"
+import {
   dayOffAction,
   decidedPrefsDays,
   OFF_SOURCE_LABEL,
@@ -43,12 +48,14 @@ import {
   type PrefsDay,
   type PrefsDayKind,
 } from "@/lib/staff-prefs"
-import { addMonths, monthGrid, monthStartOf, todayJakarta } from "@/lib/time"
+import { addMonths, monthGrid, monthStartOf, todayJakarta, weekStartOn } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import type {
   AssignmentRecord,
   DayOffRecord,
   OutletSettingsRecord,
+  PreferenceRecord,
+  RoleRequirementRecord,
   SlotRecord,
   StaffRecord,
   SuggestionRecord,
@@ -63,6 +70,8 @@ const KIND_CLASS: Record<PrefsDayKind, string> = {
   offered:
     "border-sky-700/30 bg-sky-50 text-sky-950 dark:bg-sky-950/40 dark:text-sky-50",
   work: "border-border bg-muted/60",
+  fair_off:
+    "border-emerald-700/20 bg-emerald-50/60 text-emerald-950 dark:bg-emerald-950/25 dark:text-emerald-50",
   empty: "border-border bg-card",
 }
 
@@ -74,6 +83,8 @@ export function PrefsScreen({
   assignments,
   offs,
   settings,
+  preferences = [],
+  requirements = [],
   today = todayJakarta(),
 }: {
   database: Database
@@ -83,6 +94,8 @@ export function PrefsScreen({
   assignments: AssignmentRecord[]
   offs: DayOffRecord[]
   settings: OutletSettingsRecord | null
+  preferences?: PreferenceRecord[]
+  requirements?: RoleRequirementRecord[]
   today?: string
 }) {
   const activeSlots = slots
@@ -102,6 +115,60 @@ export function PrefsScreen({
     () => monthGrid(monthCursor, weekStartsOn),
     [monthCursor, weekStartsOn]
   )
+  const proposed = useMemo(() => {
+    if (!settings || !who) {
+      return { assignments: [], offs: [] }
+    }
+    const weekStarts = [
+      ...new Set(cells.map((cell) => weekStartOn(cell.date, weekStartsOn))),
+    ]
+    const history = historyWorkDatesFrom(assignments, today)
+    const nextAssignments: {
+      staffId: string
+      workDate: string
+      templateId: string
+    }[] = []
+    const nextOffs: { staffId: string; workDate: string }[] = []
+    for (const weekStart of weekStarts) {
+      if (weekStart < weekStartOn(today, weekStartsOn)) continue
+      if (weekHasActiveAssignments(assignments, weekStart)) continue
+      const result = recommendSchedule({
+        settings,
+        staff,
+        slots: activeSlots,
+        requirements,
+        assignments,
+        offs,
+        suggestions,
+        preferences,
+        weekStart,
+        historyWorkDates: history,
+      })
+      nextAssignments.push(
+        ...result.assignments.filter((row) => row.staffId === who.id)
+      )
+      nextOffs.push(
+        ...result.offs.filter(
+          (row) =>
+            row.staffId === who.id && row.source === "recommendation"
+        )
+      )
+    }
+    return { assignments: nextAssignments, offs: nextOffs }
+  }, [
+    settings,
+    who,
+    cells,
+    weekStartsOn,
+    assignments,
+    today,
+    staff,
+    activeSlots,
+    requirements,
+    offs,
+    suggestions,
+    preferences,
+  ])
   const days = useMemo(() => {
     if (!who) return []
     return prefsDaysForMonth({
@@ -111,8 +178,11 @@ export function PrefsScreen({
       suggestions,
       assignments,
       slots: activeSlots,
+      proposedAssignments: proposed.assignments,
+      proposedOffs: proposed.offs,
+      today,
     })
-  }, [who, cells, offs, suggestions, assignments, activeSlots])
+  }, [who, cells, offs, suggestions, assignments, activeSlots, proposed, today])
   const summary = {
     approved: days.filter((day) => day.inMonth && day.kind === "off").length,
     pending: days.filter((day) => day.inMonth && day.kind === "pending").length,
@@ -138,8 +208,8 @@ export function PrefsScreen({
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-medium">Shift & libur</h1>
         <p className="text-sm text-muted-foreground">
-          Setiap tanggal punya status. Ketuk hari untuk minta atau cabut libur.
-          Manager yang memutuskan.
+          Kerja default dari usulan sistem yang adil. Ketuk hari untuk minta
+          atau cabut libur. Manager yang memutuskan.
         </p>
       </header>
 
@@ -150,8 +220,8 @@ export function PrefsScreen({
         <CardHeader>
           <CardTitle>Siapa yang melihat?</CardTitle>
           <CardDescription>
-            PIN membuka kalender orang itu. Status tiap tanggal: libur,
-            menunggu, ditolak, atau kerja.
+            PIN membuka kalender orang itu. Hari kerja diisi sistem secara
+            adil; ketuk untuk minta libur.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -210,12 +280,13 @@ export function PrefsScreen({
             </Button>
           </div>
 
-          <ol className="grid grid-cols-4 gap-2 text-xs sm:grid-cols-5">
+          <ol className="grid grid-cols-3 gap-2 text-xs sm:grid-cols-6">
             <Legend swatch={KIND_CLASS.off}>Libur</Legend>
             <Legend swatch={KIND_CLASS.pending}>Menunggu</Legend>
             <Legend swatch={KIND_CLASS.declined}>Ditolak</Legend>
             <Legend swatch={KIND_CLASS.offered}>Tawaran</Legend>
             <Legend swatch={KIND_CLASS.work}>Kerja</Legend>
+            <Legend swatch={KIND_CLASS.fair_off}>Giliran</Legend>
           </ol>
 
           <div className="overflow-hidden border bg-card">
@@ -268,8 +339,8 @@ export function PrefsScreen({
 
           {decided.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Belum ada permintaan atau keputusan di{" "}
-              {formatMonthYear(monthCursor)}. Ketuk tanggal untuk minta libur.
+              Belum ada permintaan di {formatMonthYear(monthCursor)}. Hari
+              kerja sudah diisi usulan sistem. Ketuk tanggal untuk minta libur.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -463,13 +534,16 @@ function dialogDescription(day: PrefsDay, today: string): string {
   if (day.kind === "offered") {
     return `Ini tawaran ganti dari ${formatIsoWeekdayShort(day.alternativeDate)}. Ketuk Minta libur kalau mau ambil hari ini.`
   }
+  if (day.kind === "fair_off") {
+    return "Giliran libur dari sistem (belum resmi). Ketuk Minta libur supaya manager meninjau."
+  }
   if (day.kind === "work") {
     return day.slotNames.length > 0
-      ? `Jadwal terbit: ${day.slotNames.join(", ")}. Bisa minta libur; manager yang memutuskan.`
-      : "Jadwal kerja sudah terbit. Bisa minta libur; manager yang memutuskan."
+      ? `Usulan sistem: ${day.slotNames.join(", ")}. Bisa minta libur; manager yang memutuskan.`
+      : "Kerja default dari usulan sistem yang adil. Bisa minta libur; manager yang memutuskan."
   }
   if (action === "view") {
     return "Tanggal ini sudah lewat."
   }
-  return "Belum ada keputusan. Minta libur di tanggal ini."
+  return "Kerja default dari usulan sistem. Minta libur di tanggal ini."
 }

@@ -1,0 +1,221 @@
+import { describe, expect, test } from "bun:test"
+
+import {
+  historyWorkDatesFrom,
+  recommendSchedule,
+  weekHasActiveAssignments,
+} from "@/lib/recommend"
+import { weekDates } from "@/lib/time"
+import type {
+  AssignmentRecord,
+  OutletSettingsRecord,
+  SlotRecord,
+  StaffRecord,
+  SuggestionRecord,
+} from "@/lib/types"
+
+const weekStart = "2026-08-17"
+const dates = weekDates(weekStart)
+
+const settings: OutletSettingsRecord = {
+  id: "s1",
+  outletId: "main",
+  openMinutes: 420,
+  closeMinutes: 1320,
+  weekStartsOn: 1,
+  preferenceDeadlineWeekday: 3,
+  preferenceDeadlineMinutes: 1080,
+  maxConsecutiveWorkDays: 6,
+  targetDaysOffPerWeek: 1,
+  targetHoursPerWeek: 0,
+  hoursSkewPercent: 25,
+  weekendFairnessEnabled: true,
+  graceLateMinutes: 10,
+}
+
+const pagi: SlotRecord = {
+  id: "pagi",
+  name: "Pagi",
+  startMinutes: 420,
+  endMinutes: 900,
+  sortOrder: 1,
+  minStaffCount: 2,
+  isActive: true,
+  outletId: "main",
+}
+
+const sore: SlotRecord = {
+  id: "sore",
+  name: "Sore",
+  startMinutes: 900,
+  endMinutes: 1320,
+  sortOrder: 2,
+  minStaffCount: 2,
+  isActive: true,
+  outletId: "main",
+}
+
+function person(id: string, roles: StaffRecord["roles"] = ["barista"]): StaffRecord {
+  return {
+    id,
+    name: id,
+    nickname: id,
+    pinHash: "",
+    pinSalt: "",
+    isActive: true,
+    outletId: "main",
+    roles,
+  }
+}
+
+const crew = [
+  person("ayu", ["owner", "barista"]),
+  person("dimas", ["kasir", "manager"]),
+  person("nia", ["barista", "kitchen"]),
+  person("raka", ["kasir", "kitchen"]),
+  person("sinta", ["barista"]),
+]
+
+function run(
+  extras: Partial<Parameters<typeof recommendSchedule>[0]> = {}
+) {
+  return recommendSchedule({
+    settings,
+    staff: crew,
+    slots: [pagi, sore],
+    requirements: [],
+    assignments: [],
+    offs: [],
+    suggestions: [],
+    preferences: [],
+    weekStart,
+    ...extras,
+  })
+}
+
+describe("recommendSchedule fair default", () => {
+  test("setiap orang dapat target libur dan hari sisanya jadi kerja", () => {
+    const result = run()
+    for (const member of crew) {
+      const offs = result.offs.filter((row) => row.staffId === member.id)
+      const workDays = new Set(
+        result.assignments
+          .filter((row) => row.staffId === member.id)
+          .map((row) => row.workDate)
+      )
+      expect(offs).toHaveLength(1)
+      expect(workDays.size).toBe(6)
+      expect(offs[0] && workDays.has(offs[0].workDate)).toBe(false)
+    }
+  })
+
+  test("libur tidak menumpuk sampai coverage pecah", () => {
+    const result = run()
+    for (const date of dates) {
+      const offCount = result.offs.filter((row) => row.workDate === date).length
+      const working = new Set(
+        result.assignments
+          .filter((row) => row.workDate === date)
+          .map((row) => row.staffId)
+      )
+      expect(offCount).toBeLessThanOrEqual(1)
+      expect(working.size).toBeGreaterThanOrEqual(4)
+      expect(result.assignments.filter((row) => row.workDate === date && row.templateId === "pagi").length).toBeGreaterThanOrEqual(2)
+      expect(result.assignments.filter((row) => row.workDate === date && row.templateId === "sore").length).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  test("permintaan libur diterima jika coverage aman", () => {
+    const suggestions: SuggestionRecord[] = [
+      {
+        id: "s-nia",
+        staffId: "nia",
+        weekStart,
+        workDate: "2026-08-19",
+        rank: 1,
+        note: "",
+        status: "suggested",
+        alternativeDate: "",
+        actorStaffId: "nia",
+      },
+    ]
+    const result = run({ suggestions })
+    expect(result.grantedSuggestionIds).toEqual(["s-nia"])
+    expect(
+      result.offs.some(
+        (row) =>
+          row.staffId === "nia" &&
+          row.workDate === "2026-08-19" &&
+          row.source === "accepted_suggestion"
+      )
+    ).toBe(true)
+    expect(
+      result.assignments.some(
+        (row) => row.staffId === "nia" && row.workDate === "2026-08-19"
+      )
+    ).toBe(false)
+  })
+
+  test("weekend fairness mengutamakan libur bagi yang sering jaga weekend", () => {
+    const history = {
+      ayu: ["2026-08-01", "2026-08-02", "2026-08-08", "2026-08-09"],
+      dimas: ["2026-08-01", "2026-08-02", "2026-08-08", "2026-08-09"],
+      nia: ["2026-08-03", "2026-08-04"],
+      raka: ["2026-08-05", "2026-08-06"],
+      sinta: ["2026-08-07"],
+    }
+    const result = run({ historyWorkDates: history })
+    const weekendOff = (id: string) =>
+      result.offs.some(
+        (row) => row.staffId === id && (row.workDate === "2026-08-22" || row.workDate === "2026-08-23")
+      )
+    expect(weekendOff("ayu") || weekendOff("dimas")).toBe(true)
+    expect(weekendOff("nia") && weekendOff("raka") && weekendOff("sinta")).toBe(
+      false
+    )
+  })
+
+  test("historyWorkDatesFrom mengabaikan cancelled dan minggu berjalan", () => {
+    const rows: AssignmentRecord[] = [
+      {
+        id: "1",
+        staffId: "ayu",
+        templateId: "pagi",
+        workDate: "2026-08-10",
+        startMinutes: 420,
+        endMinutes: 900,
+        dutyRole: "barista",
+        status: "published",
+        outletId: "main",
+        note: "",
+      },
+      {
+        id: "2",
+        staffId: "ayu",
+        templateId: "pagi",
+        workDate: "2026-08-17",
+        startMinutes: 420,
+        endMinutes: 900,
+        dutyRole: "barista",
+        status: "draft",
+        outletId: "main",
+        note: "",
+      },
+      {
+        id: "3",
+        staffId: "ayu",
+        templateId: "pagi",
+        workDate: "2026-08-09",
+        startMinutes: 420,
+        endMinutes: 900,
+        dutyRole: "barista",
+        status: "cancelled",
+        outletId: "main",
+        note: "",
+      },
+    ]
+    expect(historyWorkDatesFrom(rows, weekStart)).toEqual({ ayu: ["2026-08-10"] })
+    expect(weekHasActiveAssignments(rows, weekStart)).toBe(true)
+    expect(weekHasActiveAssignments(rows, "2026-08-24")).toBe(false)
+  })
+})

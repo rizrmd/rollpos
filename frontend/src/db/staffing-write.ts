@@ -9,7 +9,23 @@ import {
   type Database,
   TABLES,
 } from "@/db/database"
-import { loadAttendance, loadSettings, loadStaff } from "@/db/snapshot"
+import {
+  loadAssignments,
+  loadAttendance,
+  loadDayOffs,
+  loadPreferences,
+  loadRequirements,
+  loadSettings,
+  loadSlots,
+  loadStaff,
+  loadSuggestions,
+} from "@/db/snapshot"
+import {
+  historyWorkDatesFrom,
+  recommendSchedule,
+  SYSTEM_DRAFT_NOTE,
+  weekHasActiveAssignments,
+} from "@/lib/recommend"
 import { hashPin, newPinSalt, validatePin, verifyPin } from "@/lib/pin"
 import {
   assertCanChangeRoles,
@@ -30,7 +46,7 @@ import type {
   SuggestionStatus,
 } from "@/lib/types"
 import { DEFAULT_OUTLET_ID } from "@/lib/types"
-import { weekStartOn } from "@/lib/time"
+import { nextWeekStart, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 
 export function hasOpenSession(events: { type: AttendanceType }[]): boolean {
   const punches = events.filter(
@@ -726,6 +742,100 @@ export async function removeOfficialOff(
   }
   await database.ready
   deleteRow(database, TABLES.scheduledDaysOff, offId)
+}
+
+/** Tulis draft kerja usulan sistem. Tidak menimpa minggu yang sudah diisi, tidak menulis libur resmi. */
+export async function writeFairDefaultDraft(
+  database: Database,
+  weekStart: string,
+  assignments: {
+    staffId: string
+    templateId: string
+    workDate: string
+    startMinutes: number
+    endMinutes: number
+    dutyRole: string
+  }[]
+): Promise<boolean> {
+  await database.ready
+  const weekEnd = weekDates(weekStart)[6] ?? weekStart
+  const already = listRows(database, TABLES.shiftAssignments).some(
+    (row) =>
+      cellStr(row, "status") !== "cancelled" &&
+      cellStr(row, "workDate") >= weekStart &&
+      cellStr(row, "workDate") <= weekEnd
+  )
+  if (already) return false
+
+  const now = Date.now()
+  transact(database, () => {
+    for (const item of assignments) {
+      addRow(database, TABLES.shiftAssignments, {
+        staffId: item.staffId,
+        templateId: item.templateId,
+        workDate: item.workDate,
+        startMinutes: item.startMinutes,
+        endMinutes: item.endMinutes,
+        dutyRole: item.dutyRole,
+        status: "draft",
+        outletId: DEFAULT_OUTLET_ID,
+        note: SYSTEM_DRAFT_NOTE,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+  })
+  return true
+}
+
+/** Isi draft kerja minggu ini + depan jika masih kosong. Libur resmi tidak ditulis. */
+export async function ensureFairDefaultWeeks(
+  database: Database,
+  weekStarts: string[]
+): Promise<number> {
+  await database.ready
+  const settings = await loadSettings(database, DEFAULT_OUTLET_ID)
+  if (!settings) return 0
+  const [staff, slots, requirements, assignments, suggestions, offs, preferences] =
+    await Promise.all([
+      loadStaff(database),
+      loadSlots(database),
+      loadRequirements(database),
+      loadAssignments(database),
+      loadSuggestions(database),
+      loadDayOffs(database),
+      loadPreferences(database),
+    ])
+  const activeSlots = slots.filter((slot) => slot.isActive)
+  if (staff.filter((row) => row.isActive).length === 0 || activeSlots.length === 0) {
+    return 0
+  }
+
+  let wrote = 0
+  for (const weekStart of weekStarts) {
+    if (weekHasActiveAssignments(assignments, weekStart)) continue
+    const history = historyWorkDatesFrom(assignments, weekStart)
+    const result = recommendSchedule({
+      settings,
+      staff,
+      slots: activeSlots,
+      requirements,
+      assignments,
+      offs,
+      suggestions,
+      preferences,
+      weekStart,
+      historyWorkDates: history,
+    })
+    const ok = await writeFairDefaultDraft(database, weekStart, result.assignments)
+    if (ok) wrote += 1
+  }
+  return wrote
+}
+
+export function defaultScheduleWeeks(weekStartsOn: number): string[] {
+  const today = todayJakarta()
+  return [weekStartOn(today, weekStartsOn), nextWeekStart(weekStartsOn)]
 }
 
 export async function applyRecommendationDraft(

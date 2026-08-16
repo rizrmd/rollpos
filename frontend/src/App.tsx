@@ -170,6 +170,8 @@ export function App() {
       assignments={staffing.assignments}
       offs={staffing.offs}
       settings={staffing.settings}
+      preferences={staffing.preferences}
+      requirements={staffing.requirements}
       today={staffing.today}
     />
   ) : page === "pin" ? (
