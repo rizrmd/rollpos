@@ -156,6 +156,20 @@ describe("staffing persist + schedule", () => {
     ).rejects.toThrow(/Hanya owner/)
   })
 
+  test("seed backfills Dimas as manager when staff already exist", async () => {
+    const { database } = await bootstrap()
+    expect((await loadStaff(database)).some((row) => row.name === "Dimas")).toBe(
+      false
+    )
+    await seedStaffingIfEmpty(database)
+    const people = await loadStaff(database)
+    const dimas = people.find((row) => row.nickname === "Dimas")
+    if (!dimas) throw new Error("Dimas masih belum ter-seed")
+    expect(dimas.isActive).toBe(true)
+    expect(dimas.roles.sort()).toEqual(["kasir", "manager"])
+    expect(people.filter((row) => row.name === "Ayu")).toHaveLength(1)
+  })
+
   test("owner implies manager powers; floor cannot mutate slots", async () => {
     const { database, owner } = await bootstrap()
     expect(canManage(owner.roles)).toBe(true)
