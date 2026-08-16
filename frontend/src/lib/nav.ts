@@ -5,6 +5,7 @@ import {
   CalendarDays,
   CalendarRange,
   Clock3,
+  KeyRound,
   Receipt,
   UtensilsCrossed,
   Settings,
@@ -25,6 +26,7 @@ export type AppPage =
   | "products"
   | "stock"
   | "prefs"
+  | "pin"
   | "week"
   | "staff"
   | "reports"
@@ -42,10 +44,25 @@ export type NavItem = {
   plan: string[]
 }
 
+export type NavBranch = {
+  id: string
+  label: string
+  hint: string
+  icon: LucideIcon
+  access: NavAccess
+  children: NavItem[]
+}
+
+export type NavEntry = NavItem | NavBranch
+
 export type NavGroup = {
   id: string
   title: string
-  items: NavItem[]
+  items: NavEntry[]
+}
+
+export function isNavBranch(entry: NavEntry): entry is NavBranch {
+  return "children" in entry
 }
 
 export const DEFAULT_PAGE: Exclude<AppPage, "menu"> = "kasir"
@@ -139,13 +156,31 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "Karyawan",
     items: [
       {
-        id: "prefs",
+        id: "prefs-menu",
         label: "Preferensi",
-        hint: "Minta libur dan urutan shift minggu depan",
+        hint: "Shift, libur, dan PIN akun",
         icon: SlidersHorizontal,
-        ready: true,
         access: "public",
-        plan: [],
+        children: [
+          {
+            id: "prefs",
+            label: "Shift & libur",
+            hint: "Urutan shift dan minta libur minggu depan",
+            icon: SlidersHorizontal,
+            ready: true,
+            access: "public",
+            plan: [],
+          },
+          {
+            id: "pin",
+            label: "Ubah PIN",
+            hint: "Ganti PIN dengan verifikasi PIN lama",
+            icon: KeyRound,
+            ready: true,
+            access: "public",
+            plan: [],
+          },
+        ],
       },
       {
         id: "week",
@@ -197,7 +232,13 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ]
 
-export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) => group.items)
+export function flattenNavEntries(entries: readonly NavEntry[]): NavItem[] {
+  return entries.flatMap((entry) => (isNavBranch(entry) ? entry.children : [entry]))
+}
+
+export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) =>
+  flattenNavEntries(group.items)
+)
 
 export const NAV_BY_ID: Record<Exclude<AppPage, "menu">, NavItem> = Object.fromEntries(
   NAV_ITEMS.map((item) => [item.id, item])
@@ -218,11 +259,32 @@ export function canSeeNavItem(
   return item.access === "public" || canManage(roles ?? [])
 }
 
+export function visibleNavEntry(
+  entry: NavEntry,
+  roles: readonly StaffRole[] | null | undefined
+): NavEntry | null {
+  if (isNavBranch(entry)) {
+    const children = entry.children.filter((item) => canSeeNavItem(item, roles))
+    if (children.length === 0) return null
+    return { ...entry, children }
+  }
+  return canSeeNavItem(entry, roles) ? entry : null
+}
+
 export function visibleNavGroups(
   roles: readonly StaffRole[] | null | undefined
 ): NavGroup[] {
   return NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => canSeeNavItem(item, roles)),
+    items: group.items
+      .map((entry) => visibleNavEntry(entry, roles))
+      .filter((entry): entry is NavEntry => entry !== null),
   })).filter((group) => group.items.length > 0)
+}
+
+export function navEntryContainsPage(entry: NavEntry, page: AppPage): boolean {
+  if (isNavBranch(entry)) {
+    return entry.children.some((item) => item.id === page)
+  }
+  return entry.id === page
 }

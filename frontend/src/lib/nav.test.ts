@@ -3,12 +3,14 @@ import { describe, expect, test } from "bun:test"
 import {
   NAV_ITEMS,
   canSeeNavItem,
+  flattenNavEntries,
+  isNavBranch,
   isSidebarDefaultOpen,
   visibleNavGroups,
 } from "@/lib/nav"
 
 const manageIds = ["stock", "products", "week", "staff", "reports", "settings"] as const
-const publicIds = ["kasir", "clock", "today", "orders", "prefs"] as const
+const publicIds = ["kasir", "clock", "today", "orders", "prefs", "pin"] as const
 
 describe("visibleNavGroups", () => {
   test("label grup memakai bahasa kasir, bukan Inti/Operasi/Tim", () => {
@@ -21,7 +23,7 @@ describe("visibleNavGroups", () => {
 
   test("tanpa role, menu manage tidak tampil sama sekali", () => {
     const ids = visibleNavGroups(null).flatMap((group) =>
-      group.items.map((item) => item.id)
+      flattenNavEntries(group.items).map((item) => item.id)
     )
     expect(ids).toEqual([...publicIds])
     for (const id of manageIds) {
@@ -35,7 +37,7 @@ describe("visibleNavGroups", () => {
   test("kasir/barista/kitchen tidak melihat menu manage", () => {
     for (const role of ["kasir", "barista", "kitchen"] as const) {
       const ids = visibleNavGroups([role]).flatMap((group) =>
-        group.items.map((item) => item.id)
+        flattenNavEntries(group.items).map((item) => item.id)
       )
       expect(ids).toEqual([...publicIds])
     }
@@ -44,10 +46,28 @@ describe("visibleNavGroups", () => {
   test("owner dan manager melihat semua menu", () => {
     for (const role of ["owner", "manager"] as const) {
       const ids = visibleNavGroups([role]).flatMap((group) =>
-        group.items.map((item) => item.id)
+        flattenNavEntries(group.items).map((item) => item.id)
       )
       expect(ids).toEqual(NAV_ITEMS.map((item) => item.id))
     }
+  })
+
+  test("Preferensi punya dua submenu terpisah, bukan satu item gabungan", () => {
+    const karyawan = visibleNavGroups(null).find((group) => group.id === "tim")
+    expect(karyawan).toBeDefined()
+    const prefs = karyawan!.items.find(
+      (entry) => isNavBranch(entry) && entry.id === "prefs-menu"
+    )
+    expect(prefs && isNavBranch(prefs)).toBe(true)
+    if (!prefs || !isNavBranch(prefs)) return
+    expect(prefs.children.map((item) => item.id)).toEqual(["prefs", "pin"])
+    expect(prefs.children.map((item) => item.label)).toEqual([
+      "Shift & libur",
+      "Ubah PIN",
+    ])
+    expect(karyawan!.items.some((entry) => !isNavBranch(entry) && entry.id === "prefs")).toBe(
+      false
+    )
   })
 
   test("canSeeNavItem mengikuti access item", () => {
@@ -75,5 +95,7 @@ describe("isSidebarDefaultOpen", () => {
     expect(isSidebarDefaultOpen("clock")).toBe(true)
     expect(isSidebarDefaultOpen("today")).toBe(true)
     expect(isSidebarDefaultOpen("products")).toBe(true)
+    expect(isSidebarDefaultOpen("pin")).toBe(true)
+    expect(isSidebarDefaultOpen("prefs")).toBe(true)
   })
 })

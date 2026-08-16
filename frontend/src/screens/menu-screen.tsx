@@ -1,7 +1,12 @@
 import { ChevronRight, Lock, LockOpen } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { visibleNavGroups, type AppPage, type NavItem } from "@/lib/nav"
+import {
+  isNavBranch,
+  visibleNavGroups,
+  type AppPage,
+  type NavItem,
+} from "@/lib/nav"
 import { cn } from "@/lib/utils"
 import type { StaffRecord } from "@/lib/types"
 
@@ -33,11 +38,34 @@ export function MenuScreen({
                 : "grid gap-3 sm:grid-cols-2"
             }
           >
-            {group.items.map((item) => (
-              <li key={item.id} className={item.id === "kasir" ? "sm:col-span-2" : undefined}>
-                <MenuCard item={item} featured={item.id === "kasir"} onOpen={onOpen} />
-              </li>
-            ))}
+            {group.items.flatMap((entry) => {
+              if (isNavBranch(entry)) {
+                return [
+                  <li key={entry.id} className="sm:col-span-2">
+                    <p className="mb-2 text-sm font-medium">{entry.label}</p>
+                    <ul className="grid gap-3 sm:grid-cols-2">
+                      {entry.children.map((item) => (
+                        <li key={item.id}>
+                          <MenuCard item={item} onOpen={onOpen} />
+                        </li>
+                      ))}
+                    </ul>
+                  </li>,
+                ]
+              }
+              return [
+                <li
+                  key={entry.id}
+                  className={entry.id === "kasir" ? "sm:col-span-2" : undefined}
+                >
+                  <MenuCard
+                    item={entry}
+                    featured={entry.id === "kasir"}
+                    onOpen={onOpen}
+                  />
+                </li>,
+              ]
+            })}
           </ul>
         </section>
       ))}

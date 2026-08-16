@@ -23,6 +23,7 @@ import { CatalogScreen } from "@/screens/catalog-screen"
 import { ClockScreen } from "@/screens/clock-screen"
 import { ComingSoonScreen } from "@/screens/coming-soon-screen"
 import { MenuScreen } from "@/screens/menu-screen"
+import { PinScreen } from "@/screens/pin-screen"
 import { PrefsScreen } from "@/screens/prefs-screen"
 import { SettingsScreen } from "@/screens/settings-screen"
 import { StaffScreen } from "@/screens/staff-screen"
@@ -170,6 +171,8 @@ export function App() {
       settings={staffing.settings}
       weekStart={staffing.upcomingWeekStart}
     />
+  ) : page === "pin" ? (
+    <PinScreen database={staffing.database} staff={staffing.staff} />
   ) : page === "staff" && actor ? (
     <StaffScreen
       database={staffing.database}

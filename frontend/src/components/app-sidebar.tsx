@@ -3,7 +3,15 @@ import { ChevronRight, Coffee, Lock, LockOpen, PanelLeftClose } from "lucide-rea
 
 import { Button } from "@/components/ui/button"
 import { formatIsoLong } from "@/lib/format"
-import { NAV_BY_ID, visibleNavGroups, type AppPage, type NavItem } from "@/lib/nav"
+import {
+  NAV_BY_ID,
+  isNavBranch,
+  navEntryContainsPage,
+  visibleNavGroups,
+  type AppPage,
+  type NavEntry,
+  type NavItem,
+} from "@/lib/nav"
 import { cn } from "@/lib/utils"
 import type { StaffRecord } from "@/lib/types"
 
@@ -164,7 +172,7 @@ function NavGroup({
   children,
 }: {
   title: string
-  items: NavItem[]
+  items: NavEntry[]
   page: AppPage
   onOpen: (page: Exclude<AppPage, "menu">) => void
   children?: ReactNode
@@ -179,43 +187,97 @@ function NavGroup({
         {title}
       </h2>
       <ul className="flex flex-col gap-0.5" aria-labelledby={headingId}>
-        {items.map((item) => {
-          const Icon = item.icon
-          const current = page === item.id
-          return (
-            <li key={item.id}>
-              <button
-                type="button"
-                onClick={() => onOpen(item.id)}
-                aria-current={current ? "page" : undefined}
-                className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
-                  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                  current
-                    ? "bg-primary text-primary-foreground"
-                    : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                )}
-              >
-                <Icon className="size-5 shrink-0" aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                {!item.ready ? (
-                  <span
-                    className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-medium",
-                      current
-                        ? "bg-primary-foreground/15 text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    segera
-                  </span>
-                ) : null}
-              </button>
-            </li>
-          )
-        })}
+        {items.map((entry) => (
+          <NavEntryRow
+            key={entry.id}
+            entry={entry}
+            page={page}
+            onOpen={onOpen}
+          />
+        ))}
       </ul>
       {children ? <div className="mt-2">{children}</div> : null}
     </div>
+  )
+}
+
+function NavEntryRow({
+  entry,
+  page,
+  onOpen,
+}: {
+  entry: NavEntry
+  page: AppPage
+  onOpen: (page: Exclude<AppPage, "menu">) => void
+}) {
+  if (isNavBranch(entry)) {
+    const open = navEntryContainsPage(entry, page)
+    return (
+      <li>
+        <p
+          className={cn(
+            "px-3 pt-1 pb-0.5 text-[11px] font-medium text-muted-foreground",
+            open && "text-foreground"
+          )}
+        >
+          {entry.label}
+        </p>
+        <ul className="flex flex-col gap-0.5 pl-2">
+          {entry.children.map((item) => (
+            <li key={item.id}>
+              <NavLeafButton item={item} page={page} onOpen={onOpen} />
+            </li>
+          ))}
+        </ul>
+      </li>
+    )
+  }
+
+  return (
+    <li>
+      <NavLeafButton item={entry} page={page} onOpen={onOpen} />
+    </li>
+  )
+}
+
+function NavLeafButton({
+  item,
+  page,
+  onOpen,
+}: {
+  item: NavItem
+  page: AppPage
+  onOpen: (page: Exclude<AppPage, "menu">) => void
+}) {
+  const Icon = item.icon
+  const current = page === item.id
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(item.id)}
+      aria-current={current ? "page" : undefined}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
+        "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+        current
+          ? "bg-primary text-primary-foreground"
+          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+      )}
+    >
+      <Icon className="size-5 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {!item.ready ? (
+        <span
+          className={cn(
+            "rounded-full px-2 py-0.5 text-[10px] font-medium",
+            current
+              ? "bg-primary-foreground/15 text-primary-foreground"
+              : "bg-muted text-muted-foreground"
+          )}
+        >
+          segera
+        </span>
+      ) : null}
+    </button>
   )
 }
