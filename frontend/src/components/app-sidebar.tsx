@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { ChevronRight, Coffee, Lock, LockOpen } from "lucide-react"
+import { ChevronRight, Coffee, Lock, LockOpen, PanelLeftClose } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { formatIsoLong } from "@/lib/format"
@@ -24,6 +24,7 @@ export function AppSidebar({
   onOpen,
   onUnlock,
   onLock,
+  onCollapse,
 }: {
   today: string
   nowLabel: string
@@ -32,14 +33,18 @@ export function AppSidebar({
   onOpen: (page: Exclude<AppPage, "menu">) => void
   onUnlock: () => void
   onLock: () => void
+  onCollapse: () => void
 }) {
   const kasir = NAV_BY_ID["kasir"]
   const KasirIcon = kasir.icon
   const kasirActive = page === kasir.id
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="flex items-center gap-3 border-b border-sidebar-border px-4 py-4">
+    <aside
+      id="app-sidebar"
+      className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
+    >
+      <div className="flex items-center gap-2 border-b border-sidebar-border px-3 py-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <Coffee className="size-5" aria-hidden="true" />
         </span>
@@ -53,6 +58,18 @@ export function AppSidebar({
             <span>{nowLabel}</span>
           </p>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onCollapse}
+          aria-label="Sembunyikan menu"
+          aria-expanded={true}
+          aria-controls="app-sidebar"
+          title="Sembunyikan menu"
+        >
+          <PanelLeftClose className="size-4" />
+        </Button>
       </div>
 
       <div className="px-3 pt-3">

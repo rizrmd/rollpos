@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, PanelLeft } from "lucide-react"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { LiveNotice } from "@/components/page-header"
@@ -33,6 +33,7 @@ import {
   MANAGE_PAGES,
   NAV_BY_ID,
   canSeeNavItem,
+  isSidebarDefaultOpen,
   type AppPage,
 } from "@/lib/nav"
 
@@ -48,6 +49,7 @@ export function App() {
   )
   const [notice, setNotice] = useState<string | null>(null)
   const [nowLabel, setNowLabel] = useState(() => formatJakartaClock())
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowLabel(formatJakartaClock()), 15_000)
@@ -66,6 +68,20 @@ export function App() {
   useEffect(() => {
     if (landscape && page === "menu") setPage(DEFAULT_PAGE)
   }, [landscape, page])
+
+  useEffect(() => {
+    if (!landscape) return
+    setSidebarOpen(isSidebarDefaultOpen(page))
+  }, [landscape, page])
+
+  useEffect(() => {
+    if (!landscape || !sidebarOpen || page !== "kasir") return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSidebarOpen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [landscape, sidebarOpen, page])
 
   const managers = staffing.staff.filter(
     (member) => member.isActive && canManage(member.roles)
@@ -238,21 +254,42 @@ export function App() {
   )
 
   if (landscape) {
+    const overlaySidebar = page === "kasir" && sidebarOpen
+    const sidebar = (
+      <AppSidebar
+        today={staffing.today}
+        nowLabel={nowLabel}
+        page={page}
+        actor={actor}
+        onOpen={openPage}
+        onUnlock={startUnlock}
+        onLock={lock}
+        onCollapse={() => setSidebarOpen(false)}
+      />
+    )
+
     return (
-      <div className="flex h-svh bg-background">
+      <div className="relative flex h-svh bg-background">
         <a href="#konten" className="skip-link">
           Langsung ke konten
         </a>
-        <AppSidebar
-          today={staffing.today}
-          nowLabel={nowLabel}
-          page={page}
-          actor={actor}
-          onOpen={openPage}
-          onUnlock={startUnlock}
-          onLock={lock}
-        />
-        <div className="flex min-w-0 flex-1 flex-col">
+        {sidebarOpen && !overlaySidebar ? sidebar : null}
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          {sidebarOpen ? null : (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-touch"
+              className="absolute top-3 left-3 z-20 shadow-sm"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Tampilkan menu"
+              aria-expanded={false}
+              aria-controls="app-sidebar"
+              title="Tampilkan menu"
+            >
+              <PanelLeft className="size-5" />
+            </Button>
+          )}
           <main id="konten" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">
             <div className="mx-auto w-full max-w-5xl px-4 py-4">
               <LiveNotice message={notice ?? staffing.error} tone="error" />
@@ -260,6 +297,19 @@ export function App() {
             </div>
           </main>
         </div>
+        {overlaySidebar ? (
+          <>
+            <button
+              type="button"
+              className="fixed inset-0 z-30 bg-black/30"
+              aria-label="Tutup menu"
+              onClick={() => setSidebarOpen(false)}
+            />
+            <div className="fixed inset-y-0 left-0 z-40 h-full shadow-xl">
+              {sidebar}
+            </div>
+          </>
+        ) : null}
         {pinDialog}
         {managerPickDialog}
       </div>

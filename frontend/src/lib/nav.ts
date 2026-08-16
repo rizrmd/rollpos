@@ -50,10 +50,15 @@ export type NavGroup = {
 
 export const DEFAULT_PAGE: Exclude<AppPage, "menu"> = "kasir"
 
+/** Kasir butuh area penuh. "menu" juga tertutup — di landscape itu hanya transisi ke kasir. */
+export function isSidebarDefaultOpen(page: AppPage): boolean {
+  return page !== "kasir" && page !== "menu"
+}
+
 export const NAV_GROUPS: NavGroup[] = [
   {
     id: "inti",
-    title: "Inti",
+    title: "Harian",
     items: [
       {
         id: "kasir",
@@ -90,7 +95,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     id: "operasi",
-    title: "Operasi",
+    title: "Toko",
     items: [
       {
         id: "orders",
@@ -131,7 +136,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     id: "tim",
-    title: "Tim",
+    title: "Karyawan",
     items: [
       {
         id: "prefs",

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   NAV_ITEMS,
   canSeeNavItem,
+  isSidebarDefaultOpen,
   visibleNavGroups,
 } from "@/lib/nav"
 
@@ -10,6 +11,14 @@ const manageIds = ["stock", "products", "week", "staff", "reports", "settings"] 
 const publicIds = ["kasir", "clock", "today", "orders", "prefs"] as const
 
 describe("visibleNavGroups", () => {
+  test("label grup memakai bahasa kasir, bukan Inti/Operasi/Tim", () => {
+    const titles = visibleNavGroups(["owner"]).map((group) => group.title)
+    expect(titles).toEqual(["Harian", "Toko", "Karyawan", "Bisnis"])
+    expect(titles).not.toContain("Inti")
+    expect(titles).not.toContain("Operasi")
+    expect(titles).not.toContain("Tim")
+  })
+
   test("tanpa role, menu manage tidak tampil sama sekali", () => {
     const ids = visibleNavGroups(null).flatMap((group) =>
       group.items.map((item) => item.id)
@@ -56,5 +65,15 @@ describe("visibleNavGroups", () => {
     expect(canSeeNavItem(products!, ["owner"])).toBe(true)
     expect(canSeeNavItem(kasir!, null)).toBe(true)
     expect(canSeeNavItem(kasir!, ["kitchen"])).toBe(true)
+  })
+})
+
+describe("isSidebarDefaultOpen", () => {
+  test("tertutup di kasir dan menu, terbuka di halaman lain", () => {
+    expect(isSidebarDefaultOpen("kasir")).toBe(false)
+    expect(isSidebarDefaultOpen("menu")).toBe(false)
+    expect(isSidebarDefaultOpen("clock")).toBe(true)
+    expect(isSidebarDefaultOpen("today")).toBe(true)
+    expect(isSidebarDefaultOpen("products")).toBe(true)
   })
 })
