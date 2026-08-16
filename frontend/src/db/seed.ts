@@ -1,12 +1,11 @@
-import type { Database } from "@nozbe/watermelondb"
-
-import { seedCatalogIfEmpty } from "@/db/catalog"
 import {
-  settingsCollection,
-  slotCollection,
-  staffCollection,
-  staffRoleCollection,
-} from "@/db/snapshot"
+  addRow,
+  listRows,
+  transact,
+  type Database,
+  TABLES,
+} from "@/db/database"
+import { seedCatalogIfEmpty } from "@/db/catalog"
 import { hashPin, newPinSalt } from "@/lib/pin"
 import { DEFAULT_OUTLET_ID, type StaffRole } from "@/lib/types"
 
@@ -62,69 +61,85 @@ export const SEED_DEFAULTS = {
   ],
 }
 
-let seedInFlight: Promise<void> | null = null
+const staffingSeed = new WeakMap<object, Promise<void>>()
 
 export function seedStaffingIfEmpty(database: Database): Promise<void> {
-  seedInFlight ??= seedOnce(database)
-  return seedInFlight
+  const key = database.store
+  let pending = staffingSeed.get(key)
+  if (!pending) {
+    pending = seedOnce(database)
+    staffingSeed.set(key, pending)
+  }
+  return pending
 }
 
 async function seedOnce(database: Database): Promise<void> {
   await seedCatalogIfEmpty(database)
-  const staffCount = await staffCollection(database).query().fetchCount()
-  if (staffCount > 0) {
+  if (listRows(database, TABLES.staffMembers).length > 0) {
     return
   }
 
   const now = Date.now()
   const seed = SEED_DEFAULTS
-  await database.write(async () => {
-    await settingsCollection(database).create((row) => {
-      row.outletId = seed.outletId
-      row.openMinutes = seed.openMinutes
-      row.closeMinutes = seed.closeMinutes
-      row.weekStartsOn = seed.weekStartsOn
-      row.preferenceDeadlineWeekday = seed.preferenceDeadlineWeekday
-      row.preferenceDeadlineMinutes = seed.preferenceDeadlineMinutes
-      row.maxConsecutiveWorkDays = seed.maxConsecutiveWorkDays
-      row.targetDaysOffPerWeek = seed.targetDaysOffPerWeek
-      row.targetHoursPerWeek = seed.targetHoursPerWeek
-      row.hoursSkewPercent = seed.hoursSkewPercent
-      row.weekendFairnessEnabled = seed.weekendFairnessEnabled
-      row.graceLateMinutes = seed.graceLateMinutes
-      row.stamp(now)
+  const hashed = await Promise.all(
+    seed.staff.map(async (person) => {
+      const salt = newPinSalt()
+      return {
+        ...person,
+        salt,
+        pinHash: await hashPin(person.pin, salt),
+      }
+    })
+  )
+
+  transact(database, () => {
+    addRow(database, TABLES.outletSettings, {
+      outletId: seed.outletId,
+      openMinutes: seed.openMinutes,
+      closeMinutes: seed.closeMinutes,
+      weekStartsOn: seed.weekStartsOn,
+      preferenceDeadlineWeekday: seed.preferenceDeadlineWeekday,
+      preferenceDeadlineMinutes: seed.preferenceDeadlineMinutes,
+      maxConsecutiveWorkDays: seed.maxConsecutiveWorkDays,
+      targetDaysOffPerWeek: seed.targetDaysOffPerWeek,
+      targetHoursPerWeek: seed.targetHoursPerWeek,
+      hoursSkewPercent: seed.hoursSkewPercent,
+      weekendFairnessEnabled: seed.weekendFairnessEnabled,
+      graceLateMinutes: seed.graceLateMinutes,
+      createdAt: now,
+      updatedAt: now,
     })
 
     for (const slot of seed.slots) {
-      await slotCollection(database).create((row) => {
-        row.name = slot.name
-        row.startMinutes = slot.startMinutes
-        row.endMinutes = slot.endMinutes
-        row.sortOrder = slot.sortOrder
-        row.minStaffCount = slot.minStaffCount
-        row.isActive = true
-        row.outletId = seed.outletId
-        row.stamp(now)
+      addRow(database, TABLES.shiftTemplates, {
+        name: slot.name,
+        startMinutes: slot.startMinutes,
+        endMinutes: slot.endMinutes,
+        sortOrder: slot.sortOrder,
+        minStaffCount: slot.minStaffCount,
+        isActive: true,
+        outletId: seed.outletId,
+        createdAt: now,
+        updatedAt: now,
       })
     }
 
-    for (const person of seed.staff) {
-      const salt = newPinSalt()
-      const pinHash = await hashPin(person.pin, salt)
-      const created = await staffCollection(database).create((row) => {
-        row.name = person.name
-        row.nickname = person.nickname
-        row.pinSalt = salt
-        row.pinHash = pinHash
-        row.isActive = true
-        row.outletId = seed.outletId
-        row.stamp(now)
+    for (const person of hashed) {
+      const staffId = addRow(database, TABLES.staffMembers, {
+        name: person.name,
+        nickname: person.nickname,
+        pinSalt: person.salt,
+        pinHash: person.pinHash,
+        isActive: true,
+        outletId: seed.outletId,
+        createdAt: now,
+        updatedAt: now,
       })
       for (const role of person.roles) {
-        await staffRoleCollection(database).create((row) => {
-          row.staffId = created.id
-          row.role = role
-          row.setNum("created_at", now)
+        addRow(database, TABLES.staffMemberRoles, {
+          staffId,
+          role,
+          createdAt: now,
         })
       }
     }

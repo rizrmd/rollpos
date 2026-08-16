@@ -1,4 +1,4 @@
-import type { Database } from "@nozbe/watermelondb"
+import type { Database } from "@/db/database"
 import { useState } from "react"
 
 import { PinDialog } from "@/components/pin-dialog"

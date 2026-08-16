@@ -1,4 +1,4 @@
-import type { Database } from "@nozbe/watermelondb"
+import type { Database } from "@/db/database"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

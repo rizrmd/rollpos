@@ -1,31 +1,44 @@
-import { useDatabase } from "@nozbe/watermelondb/react"
 import { useEffect, useState } from "react"
 
-import { productsCollection } from "@/db/catalog"
-import type Product from "@/db/models/Product"
+import { loadProducts } from "@/db/catalog"
+import { useDatabase } from "@/db/database-provider"
+import type { ProductRecord } from "@/lib/types"
 
 export function useProducts() {
   const database = useDatabase()
-  const [products, setProducts] = useState<Product[]>([])
+  const [products, setProducts] = useState<ProductRecord[]>([])
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const subscription = productsCollection(database)
-      .query()
-      .observe()
-      .subscribe({
-        next: (rows) => {
-          setProducts(rows)
-          setReady(true)
-        },
-        error: (err: unknown) => {
-          setError(err instanceof Error ? err.message : String(err))
-        },
-      })
+    let cancelled = false
+    let unsubscribe = () => {}
+
+    void database.ready.then(() => {
+      if (cancelled) return
+
+      const refresh = () => {
+        void loadProducts(database)
+          .then((rows) => {
+            if (cancelled) return
+            setProducts(rows)
+            setReady(true)
+            setError(null)
+          })
+          .catch((err: unknown) => {
+            if (cancelled) return
+            setError(err instanceof Error ? err.message : String(err))
+          })
+      }
+
+      const listenerId = database.store.addTablesListener(() => refresh())
+      unsubscribe = () => database.store.delListener(listenerId)
+      refresh()
+    })
 
     return () => {
-      subscription.unsubscribe()
+      cancelled = true
+      unsubscribe()
     }
   }, [database])
 

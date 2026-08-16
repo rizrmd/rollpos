@@ -13,6 +13,16 @@ export type FloorRole = (typeof FLOOR_ROLES)[number]
 
 export const DEFAULT_OUTLET_ID = "main"
 
+export type ProductRecord = {
+  id: string
+  name: string
+  sku: string
+  price: number
+  stock: number
+  createdAt: number
+  updatedAt: number
+}
+
 export type OutletSettingsRecord = {
   id: string
   outletId: string

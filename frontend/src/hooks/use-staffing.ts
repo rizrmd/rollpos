@@ -1,9 +1,7 @@
-import { useDatabase } from "@nozbe/watermelondb/react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
+import { useDatabase } from "@/db/database-provider"
 import {
-  assignmentCollection,
-  attendanceCollection,
   loadAssignments,
   loadAttendance,
   loadDayOffs,
@@ -13,10 +11,6 @@ import {
   loadSlots,
   loadStaff,
   loadSuggestions,
-  settingsCollection,
-  slotCollection,
-  staffCollection,
-  suggestionCollection,
 } from "@/db/snapshot"
 import { hasOpenSession } from "@/db/staffing-write"
 import { DEFAULT_OUTLET_ID, type OutletSettingsRecord, type StaffRecord } from "@/lib/types"
@@ -48,6 +42,7 @@ export function useStaffing() {
 
   const refresh = useCallback(async () => {
     try {
+      await database.ready
       const [
         nextSettings,
         nextStaff,
@@ -86,17 +81,21 @@ export function useStaffing() {
   }, [database])
 
   useEffect(() => {
-    const subs = [
-      staffCollection(database).query().observe().subscribe(() => void refresh()),
-      slotCollection(database).query().observe().subscribe(() => void refresh()),
-      assignmentCollection(database).query().observe().subscribe(() => void refresh()),
-      attendanceCollection(database).query().observe().subscribe(() => void refresh()),
-      suggestionCollection(database).query().observe().subscribe(() => void refresh()),
-      settingsCollection(database).query().observe().subscribe(() => void refresh()),
-    ]
-    void refresh()
+    let cancelled = false
+    let unsubscribe = () => {}
+
+    void database.ready.then(() => {
+      if (cancelled) return
+      const listenerId = database.store.addTablesListener(() => {
+        void refresh()
+      })
+      unsubscribe = () => database.store.delListener(listenerId)
+      void refresh()
+    })
+
     return () => {
-      for (const sub of subs) sub.unsubscribe()
+      cancelled = true
+      unsubscribe()
     }
   }, [database, refresh])
 

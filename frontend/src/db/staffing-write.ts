@@ -1,20 +1,14 @@
-import { Q, type Database } from "@nozbe/watermelondb"
-
 import {
-  assignmentCollection,
-  attendanceCollection,
-  dayOffCollection,
-  loadAttendance,
-  loadSettings,
-  loadStaff,
-  preferenceCollection,
-  preferenceSlotCollection,
-  settingsCollection,
-  slotCollection,
-  staffCollection,
-  staffRoleCollection,
-  suggestionCollection,
-} from "@/db/snapshot"
+  addRow,
+  cellStr,
+  deleteMatching,
+  listRows,
+  transact,
+  updateRow,
+  type Database,
+  TABLES,
+} from "@/db/database"
+import { loadAttendance, loadSettings, loadStaff } from "@/db/snapshot"
 import { hashPin, newPinSalt, verifyPin } from "@/lib/pin"
 import {
   assertCanChangeRoles,
@@ -35,9 +29,7 @@ import type {
 } from "@/lib/types"
 import { DEFAULT_OUTLET_ID } from "@/lib/types"
 
-export function hasOpenSession(
-  events: { type: AttendanceType }[]
-): boolean {
+export function hasOpenSession(events: { type: AttendanceType }[]): boolean {
   const punches = events.filter(
     (event) => event.type === "clock_in" || event.type === "clock_out"
   )
@@ -52,58 +44,60 @@ export async function saveOutletSettings(
   if (!canEditSlots(actor.roles)) {
     throw new Error("Lantai tidak boleh mengubah pengaturan outlet.")
   }
-  const existing = await settingsCollection(database)
-    .query(Q.where("outlet_id", patch.outletId ?? DEFAULT_OUTLET_ID))
-    .fetch()
+  await database.ready
+  const existing = listRows(database, TABLES.outletSettings).find(
+    (row) => cellStr(row, "outletId") === (patch.outletId ?? DEFAULT_OUTLET_ID)
+  )
   const now = Date.now()
-  await database.write(async () => {
-    if (existing[0]) {
-      await existing[0].update((row) => {
-        if (patch.openMinutes !== undefined) row.openMinutes = patch.openMinutes
-        if (patch.closeMinutes !== undefined) row.closeMinutes = patch.closeMinutes
-        if (patch.weekStartsOn !== undefined) row.weekStartsOn = patch.weekStartsOn
-        if (patch.preferenceDeadlineWeekday !== undefined) {
-          row.preferenceDeadlineWeekday = patch.preferenceDeadlineWeekday
-        }
-        if (patch.preferenceDeadlineMinutes !== undefined) {
-          row.preferenceDeadlineMinutes = patch.preferenceDeadlineMinutes
-        }
-        if (patch.maxConsecutiveWorkDays !== undefined) {
-          row.maxConsecutiveWorkDays = patch.maxConsecutiveWorkDays
-        }
-        if (patch.targetDaysOffPerWeek !== undefined) {
-          row.targetDaysOffPerWeek = patch.targetDaysOffPerWeek
-        }
-        if (patch.targetHoursPerWeek !== undefined) {
-          row.targetHoursPerWeek = patch.targetHoursPerWeek
-        }
-        if (patch.hoursSkewPercent !== undefined) {
-          row.hoursSkewPercent = patch.hoursSkewPercent
-        }
-        if (patch.weekendFairnessEnabled !== undefined) {
-          row.weekendFairnessEnabled = patch.weekendFairnessEnabled
-        }
-        if (patch.graceLateMinutes !== undefined) {
-          row.graceLateMinutes = patch.graceLateMinutes
-        }
-        row.stamp(now, "updated")
+  transact(database, () => {
+    if (existing) {
+      updateRow(database, TABLES.outletSettings, existing.id, {
+        ...(patch.openMinutes !== undefined ? { openMinutes: patch.openMinutes } : {}),
+        ...(patch.closeMinutes !== undefined ? { closeMinutes: patch.closeMinutes } : {}),
+        ...(patch.weekStartsOn !== undefined ? { weekStartsOn: patch.weekStartsOn } : {}),
+        ...(patch.preferenceDeadlineWeekday !== undefined
+          ? { preferenceDeadlineWeekday: patch.preferenceDeadlineWeekday }
+          : {}),
+        ...(patch.preferenceDeadlineMinutes !== undefined
+          ? { preferenceDeadlineMinutes: patch.preferenceDeadlineMinutes }
+          : {}),
+        ...(patch.maxConsecutiveWorkDays !== undefined
+          ? { maxConsecutiveWorkDays: patch.maxConsecutiveWorkDays }
+          : {}),
+        ...(patch.targetDaysOffPerWeek !== undefined
+          ? { targetDaysOffPerWeek: patch.targetDaysOffPerWeek }
+          : {}),
+        ...(patch.targetHoursPerWeek !== undefined
+          ? { targetHoursPerWeek: patch.targetHoursPerWeek }
+          : {}),
+        ...(patch.hoursSkewPercent !== undefined
+          ? { hoursSkewPercent: patch.hoursSkewPercent }
+          : {}),
+        ...(patch.weekendFairnessEnabled !== undefined
+          ? { weekendFairnessEnabled: patch.weekendFairnessEnabled }
+          : {}),
+        ...(patch.graceLateMinutes !== undefined
+          ? { graceLateMinutes: patch.graceLateMinutes }
+          : {}),
+        updatedAt: now,
       })
       return
     }
-    await settingsCollection(database).create((row) => {
-      row.outletId = patch.outletId ?? DEFAULT_OUTLET_ID
-      row.openMinutes = patch.openMinutes ?? 0
-      row.closeMinutes = patch.closeMinutes ?? 0
-      row.weekStartsOn = patch.weekStartsOn ?? 1
-      row.preferenceDeadlineWeekday = patch.preferenceDeadlineWeekday ?? 3
-      row.preferenceDeadlineMinutes = patch.preferenceDeadlineMinutes ?? 0
-      row.maxConsecutiveWorkDays = patch.maxConsecutiveWorkDays ?? 6
-      row.targetDaysOffPerWeek = patch.targetDaysOffPerWeek ?? 1
-      row.targetHoursPerWeek = patch.targetHoursPerWeek ?? 0
-      row.hoursSkewPercent = patch.hoursSkewPercent ?? 25
-      row.weekendFairnessEnabled = patch.weekendFairnessEnabled ?? true
-      row.graceLateMinutes = patch.graceLateMinutes ?? 10
-      row.stamp(now)
+    addRow(database, TABLES.outletSettings, {
+      outletId: patch.outletId ?? DEFAULT_OUTLET_ID,
+      openMinutes: patch.openMinutes ?? 0,
+      closeMinutes: patch.closeMinutes ?? 0,
+      weekStartsOn: patch.weekStartsOn ?? 1,
+      preferenceDeadlineWeekday: patch.preferenceDeadlineWeekday ?? 3,
+      preferenceDeadlineMinutes: patch.preferenceDeadlineMinutes ?? 0,
+      maxConsecutiveWorkDays: patch.maxConsecutiveWorkDays ?? 6,
+      targetDaysOffPerWeek: patch.targetDaysOffPerWeek ?? 1,
+      targetHoursPerWeek: patch.targetHoursPerWeek ?? 0,
+      hoursSkewPercent: patch.hoursSkewPercent ?? 25,
+      weekendFairnessEnabled: patch.weekendFairnessEnabled ?? true,
+      graceLateMinutes: patch.graceLateMinutes ?? 10,
+      createdAt: now,
+      updatedAt: now,
     })
   })
 }
@@ -125,35 +119,31 @@ export async function saveSlot(
   if (!canEditSlots(actor.roles)) {
     throw new Error("Lantai tidak boleh mengubah slot shift.")
   }
+  await database.ready
   const now = Date.now()
-  let id = input.id ?? ""
-  await database.write(async () => {
-    if (input.id) {
-      const row = await slotCollection(database).find(input.id)
-      await row.update((slot) => {
-        slot.name = input.name
-        slot.startMinutes = input.startMinutes
-        slot.endMinutes = input.endMinutes
-        slot.sortOrder = input.sortOrder
-        slot.minStaffCount = input.minStaffCount
-        slot.isActive = input.isActive
-        slot.stamp(now, "updated")
-      })
-      return
-    }
-    const created = await slotCollection(database).create((slot) => {
-      slot.name = input.name
-      slot.startMinutes = input.startMinutes
-      slot.endMinutes = input.endMinutes
-      slot.sortOrder = input.sortOrder
-      slot.minStaffCount = input.minStaffCount
-      slot.isActive = input.isActive
-      slot.outletId = input.outletId ?? DEFAULT_OUTLET_ID
-      slot.stamp(now)
+  if (input.id) {
+    updateRow(database, TABLES.shiftTemplates, input.id, {
+      name: input.name,
+      startMinutes: input.startMinutes,
+      endMinutes: input.endMinutes,
+      sortOrder: input.sortOrder,
+      minStaffCount: input.minStaffCount,
+      isActive: input.isActive,
+      updatedAt: now,
     })
-    id = created.id
+    return input.id
+  }
+  return addRow(database, TABLES.shiftTemplates, {
+    name: input.name,
+    startMinutes: input.startMinutes,
+    endMinutes: input.endMinutes,
+    sortOrder: input.sortOrder,
+    minStaffCount: input.minStaffCount,
+    isActive: input.isActive,
+    outletId: input.outletId ?? DEFAULT_OUTLET_ID,
+    createdAt: now,
+    updatedAt: now,
   })
-  return id
 }
 
 export async function upsertStaff(
@@ -197,62 +187,58 @@ export async function upsertStaff(
   }
 
   const now = Date.now()
-  let staffId = input.id ?? ""
-  await database.write(async () => {
-    if (target) {
-      const row = await staffCollection(database).find(target.id)
-      await row.update((person) => {
-        person.name = input.name
-        person.nickname = input.nickname
-        person.isActive = input.isActive
-        person.stamp(now, "updated")
+  if (target) {
+    const pinCells = input.pin
+      ? await (async () => {
+          const salt = newPinSalt()
+          return { pinSalt: salt, pinHash: await hashPin(input.pin!, salt) }
+        })()
+      : {}
+    transact(database, () => {
+      updateRow(database, TABLES.staffMembers, target.id, {
+        name: input.name,
+        nickname: input.nickname,
+        isActive: input.isActive,
+        updatedAt: now,
+        ...pinCells,
       })
-      if (input.pin) {
-        const salt = newPinSalt()
-        const pinHash = await hashPin(input.pin, salt)
-        await row.update((person) => {
-          person.pinSalt = salt
-          person.pinHash = pinHash
+      deleteMatching(
+        database,
+        TABLES.staffMemberRoles,
+        (row) => cellStr(row, "staffId") === target.id
+      )
+      for (const role of input.roles) {
+        addRow(database, TABLES.staffMemberRoles, {
+          staffId: target.id,
+          role,
+          createdAt: now,
         })
       }
-      const existingRoles = await staffRoleCollection(database)
-        .query(Q.where("staff_id", target.id))
-        .fetch()
-      await Promise.all(existingRoles.map((role) => role.destroyPermanently()))
-      await Promise.all(
-        input.roles.map((role) =>
-          staffRoleCollection(database).create((row) => {
-            row.staffId = target.id
-            row.role = role
-            row.setNum("created_at", now)
-          })
-        )
-      )
-      staffId = target.id
-      return
-    }
-
-    const salt = newPinSalt()
-    const pinHash = await hashPin(input.pin ?? "0000", salt)
-    const created = await staffCollection(database).create((person) => {
-      person.name = input.name
-      person.nickname = input.nickname
-      person.pinSalt = salt
-      person.pinHash = pinHash
-      person.isActive = input.isActive
-      person.outletId = input.outletId ?? DEFAULT_OUTLET_ID
-      person.stamp(now)
     })
-    await Promise.all(
-      input.roles.map((role) =>
-        staffRoleCollection(database).create((row) => {
-          row.staffId = created.id
-          row.role = role
-          row.setNum("created_at", now)
-        })
-      )
-    )
-    staffId = created.id
+    return target.id
+  }
+
+  const salt = newPinSalt()
+  const pinHash = await hashPin(input.pin ?? "0000", salt)
+  let staffId = ""
+  transact(database, () => {
+    staffId = addRow(database, TABLES.staffMembers, {
+      name: input.name,
+      nickname: input.nickname,
+      pinSalt: salt,
+      pinHash,
+      isActive: input.isActive,
+      outletId: input.outletId ?? DEFAULT_OUTLET_ID,
+      createdAt: now,
+      updatedAt: now,
+    })
+    for (const role of input.roles) {
+      addRow(database, TABLES.staffMemberRoles, {
+        staffId,
+        role,
+        createdAt: now,
+      })
+    }
   })
   return staffId
 }
@@ -292,19 +278,17 @@ export async function clockPunch(
     throw new Error("Belum ada sesi terbuka untuk di-clock-out.")
   }
   const settings = await loadSettings(database, DEFAULT_OUTLET_ID)
-  await database.write(async () => {
-    await attendanceCollection(database).create((event) => {
-      event.staffId = staffId
-      event.type = type
-      event.occurredAt = at
-      event.recordedAt = Date.now()
-      event.deviceId = deviceId
-      event.shiftAssignmentId = ""
-      event.outletId = settings?.outletId ?? DEFAULT_OUTLET_ID
-      event.note = ""
-      event.actorStaffId = staffId
-      event.correctsEventId = ""
-    })
+  addRow(database, TABLES.attendanceEvents, {
+    staffId,
+    type,
+    occurredAt: at,
+    recordedAt: Date.now(),
+    deviceId,
+    shiftAssignmentId: "",
+    outletId: settings?.outletId ?? DEFAULT_OUTLET_ID,
+    note: "",
+    actorStaffId: staffId,
+    correctsEventId: "",
   })
 }
 
@@ -325,19 +309,18 @@ export async function correctAttendance(
   if (!input.note.trim()) {
     throw new Error("Alasan koreksi wajib diisi.")
   }
-  await database.write(async () => {
-    await attendanceCollection(database).create((event) => {
-      event.staffId = input.staffId
-      event.type = "correction"
-      event.occurredAt = input.occurredAt
-      event.recordedAt = Date.now()
-      event.deviceId = input.deviceId
-      event.shiftAssignmentId = ""
-      event.outletId = DEFAULT_OUTLET_ID
-      event.note = input.note
-      event.actorStaffId = actor.id
-      event.correctsEventId = input.correctsEventId ?? ""
-    })
+  await database.ready
+  addRow(database, TABLES.attendanceEvents, {
+    staffId: input.staffId,
+    type: "correction",
+    occurredAt: input.occurredAt,
+    recordedAt: Date.now(),
+    deviceId: input.deviceId,
+    shiftAssignmentId: "",
+    outletId: DEFAULT_OUTLET_ID,
+    note: input.note,
+    actorStaffId: actor.id,
+    correctsEventId: input.correctsEventId ?? "",
   })
 }
 
@@ -358,45 +341,46 @@ export async function upsertAssignment(
   if (!canManage(actor.roles)) {
     throw new Error("Lantai tidak boleh mengubah roster.")
   }
-  const offs = await dayOffCollection(database)
-    .query(Q.where("staff_id", input.staffId), Q.where("work_date", input.workDate))
-    .fetch()
+  await database.ready
+  const offs = listRows(database, TABLES.scheduledDaysOff).filter(
+    (row) =>
+      cellStr(row, "staffId") === input.staffId &&
+      cellStr(row, "workDate") === input.workDate
+  )
   if (offs.length > 0) {
     throw new Error("Tidak bisa menugaskan kerja di hari libur resmi.")
   }
   const now = Date.now()
-  const existing = await assignmentCollection(database)
-    .query(
-      Q.where("staff_id", input.staffId),
-      Q.where("template_id", input.templateId),
-      Q.where("work_date", input.workDate),
-      Q.where("status", Q.notEq("cancelled"))
-    )
-    .fetch()
-  await database.write(async () => {
-    if (existing[0]) {
-      await existing[0].update((row) => {
-        row.startMinutes = input.startMinutes
-        row.endMinutes = input.endMinutes
-        row.dutyRole = input.dutyRole
-        row.status = input.status ?? row.status
-        row.note = input.note ?? row.note
-        row.stamp(now, "updated")
-      })
-      return
-    }
-    await assignmentCollection(database).create((row) => {
-      row.staffId = input.staffId
-      row.templateId = input.templateId
-      row.workDate = input.workDate
-      row.startMinutes = input.startMinutes
-      row.endMinutes = input.endMinutes
-      row.dutyRole = input.dutyRole
-      row.status = input.status ?? "draft"
-      row.outletId = DEFAULT_OUTLET_ID
-      row.note = input.note ?? ""
-      row.stamp(now)
+  const existing = listRows(database, TABLES.shiftAssignments).find(
+    (row) =>
+      cellStr(row, "staffId") === input.staffId &&
+      cellStr(row, "templateId") === input.templateId &&
+      cellStr(row, "workDate") === input.workDate &&
+      cellStr(row, "status") !== "cancelled"
+  )
+  if (existing) {
+    updateRow(database, TABLES.shiftAssignments, existing.id, {
+      startMinutes: input.startMinutes,
+      endMinutes: input.endMinutes,
+      dutyRole: input.dutyRole,
+      status: input.status ?? cellStr(existing, "status"),
+      note: input.note ?? cellStr(existing, "note"),
+      updatedAt: now,
     })
+    return
+  }
+  addRow(database, TABLES.shiftAssignments, {
+    staffId: input.staffId,
+    templateId: input.templateId,
+    workDate: input.workDate,
+    startMinutes: input.startMinutes,
+    endMinutes: input.endMinutes,
+    dutyRole: input.dutyRole,
+    status: input.status ?? "draft",
+    outletId: DEFAULT_OUTLET_ID,
+    note: input.note ?? "",
+    createdAt: now,
+    updatedAt: now,
   })
 }
 
@@ -408,12 +392,10 @@ export async function cancelAssignment(
   if (!canManage(actor.roles)) {
     throw new Error("Lantai tidak boleh mengubah roster.")
   }
-  const row = await assignmentCollection(database).find(assignmentId)
-  await database.write(async () => {
-    await row.update((assignment) => {
-      assignment.status = "cancelled"
-      assignment.stamp(Date.now(), "updated")
-    })
+  await database.ready
+  updateRow(database, TABLES.shiftAssignments, assignmentId, {
+    status: "cancelled",
+    updatedAt: Date.now(),
   })
 }
 
@@ -425,66 +407,66 @@ export async function submitPreferences(
   suggestions: { workDate: string; rank: number; note: string }[],
   note = ""
 ): Promise<void> {
+  await database.ready
   const now = Date.now()
-  const existing = await preferenceCollection(database)
-    .query(Q.where("staff_id", staffId), Q.where("week_start", weekStart))
-    .fetch()
-  await database.write(async () => {
-    let preferenceId = existing[0]?.id ?? ""
-    if (existing[0]) {
-      await existing[0].update((row) => {
-        row.note = note
-        row.status = "submitted"
-        row.submittedAt = now
-        row.stamp(now, "updated")
+  const existing = listRows(database, TABLES.weekPreferences).find(
+    (row) =>
+      cellStr(row, "staffId") === staffId && cellStr(row, "weekStart") === weekStart
+  )
+  transact(database, () => {
+    let preferenceId = existing?.id ?? ""
+    if (existing) {
+      updateRow(database, TABLES.weekPreferences, existing.id, {
+        note,
+        status: "submitted",
+        submittedAt: now,
+        updatedAt: now,
       })
-      const oldSlots = await preferenceSlotCollection(database)
-        .query(Q.where("preference_id", existing[0].id))
-        .fetch()
-      await Promise.all(oldSlots.map((row) => row.destroyPermanently()))
+      deleteMatching(
+        database,
+        TABLES.weekPreferenceSlots,
+        (row) => cellStr(row, "preferenceId") === existing.id
+      )
     } else {
-      const created = await preferenceCollection(database).create((row) => {
-        row.staffId = staffId
-        row.weekStart = weekStart
-        row.note = note
-        row.status = "submitted"
-        row.submittedAt = now
-        row.stamp(now)
+      preferenceId = addRow(database, TABLES.weekPreferences, {
+        staffId,
+        weekStart,
+        note,
+        status: "submitted",
+        submittedAt: now,
+        createdAt: now,
+        updatedAt: now,
       })
-      preferenceId = created.id
     }
-    await Promise.all(
-      slots.map((slot) =>
-        preferenceSlotCollection(database).create((row) => {
-          row.preferenceId = preferenceId
-          row.templateId = slot.templateId
-          row.rank = slot.rank
-        })
-      )
+    for (const slot of slots) {
+      addRow(database, TABLES.weekPreferenceSlots, {
+        preferenceId,
+        templateId: slot.templateId,
+        rank: slot.rank,
+      })
+    }
+    deleteMatching(
+      database,
+      TABLES.dayOffSuggestions,
+      (row) =>
+        cellStr(row, "staffId") === staffId &&
+        cellStr(row, "weekStart") === weekStart &&
+        cellStr(row, "status") === "suggested"
     )
-    const oldSuggestions = await suggestionCollection(database)
-      .query(
-        Q.where("staff_id", staffId),
-        Q.where("week_start", weekStart),
-        Q.where("status", "suggested")
-      )
-      .fetch()
-    await Promise.all(oldSuggestions.map((row) => row.destroyPermanently()))
-    await Promise.all(
-      suggestions.map((item) =>
-        suggestionCollection(database).create((row) => {
-          row.staffId = staffId
-          row.weekStart = weekStart
-          row.workDate = item.workDate
-          row.rank = item.rank
-          row.note = item.note
-          row.status = "suggested"
-          row.alternativeDate = ""
-          row.actorStaffId = staffId
-          row.stamp(now)
-        })
-      )
-    )
+    for (const item of suggestions) {
+      addRow(database, TABLES.dayOffSuggestions, {
+        staffId,
+        weekStart,
+        workDate: item.workDate,
+        rank: item.rank,
+        note: item.note,
+        status: "suggested",
+        alternativeDate: "",
+        actorStaffId: staffId,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
   })
 }
 
@@ -496,36 +478,41 @@ export async function acceptSuggestion(
   if (!canAcceptSuggestions(actor.roles)) {
     throw new Error("Hanya owner atau manager yang boleh menerima suggest libur.")
   }
-  const suggestion = await suggestionCollection(database).find(suggestionId)
-  const conflicts = await assignmentCollection(database)
-    .query(
-      Q.where("staff_id", suggestion.staffId),
-      Q.where("work_date", suggestion.workDate),
-      Q.where("status", Q.notEq("cancelled"))
-    )
-    .fetch()
+  await database.ready
+  const suggestion = listRows(database, TABLES.dayOffSuggestions).find(
+    (row) => row.id === suggestionId
+  )
+  if (!suggestion) {
+    throw new Error("Saran libur tidak ditemukan")
+  }
+  const staffId = cellStr(suggestion, "staffId")
+  const workDate = cellStr(suggestion, "workDate")
   const now = Date.now()
-  await database.write(async () => {
-    await Promise.all(
-      conflicts.map((row) =>
-        row.update((assignment) => {
-          assignment.status = "cancelled"
-          assignment.stamp(now, "updated")
+  transact(database, () => {
+    for (const row of listRows(database, TABLES.shiftAssignments)) {
+      if (
+        cellStr(row, "staffId") === staffId &&
+        cellStr(row, "workDate") === workDate &&
+        cellStr(row, "status") !== "cancelled"
+      ) {
+        updateRow(database, TABLES.shiftAssignments, row.id, {
+          status: "cancelled",
+          updatedAt: now,
         })
-      )
-    )
-    await suggestion.update((row) => {
-      row.status = "accepted"
-      row.actorStaffId = actor.id
-      row.stamp(now, "updated")
+      }
+    }
+    updateRow(database, TABLES.dayOffSuggestions, suggestionId, {
+      status: "accepted",
+      actorStaffId: actor.id,
+      updatedAt: now,
     })
-    await dayOffCollection(database).create((row) => {
-      row.staffId = suggestion.staffId
-      row.workDate = suggestion.workDate
-      row.weekStart = suggestion.weekStart
-      row.source = "accepted_suggestion"
-      row.note = suggestion.note
-      row.setNum("created_at", now)
+    addRow(database, TABLES.scheduledDaysOff, {
+      staffId,
+      workDate,
+      weekStart: cellStr(suggestion, "weekStart"),
+      source: "accepted_suggestion",
+      note: cellStr(suggestion, "note"),
+      createdAt: now,
     })
   })
 }
@@ -539,14 +526,12 @@ export async function declineSuggestion(
   if (!canAcceptSuggestions(actor.roles)) {
     throw new Error("Hanya owner atau manager yang boleh menolak suggest libur.")
   }
-  const suggestion = await suggestionCollection(database).find(suggestionId)
-  await database.write(async () => {
-    await suggestion.update((row) => {
-      row.status = "declined"
-      row.alternativeDate = alternativeDate
-      row.actorStaffId = actor.id
-      row.stamp(Date.now(), "updated")
-    })
+  await database.ready
+  updateRow(database, TABLES.dayOffSuggestions, suggestionId, {
+    status: "declined",
+    alternativeDate,
+    actorStaffId: actor.id,
+    updatedAt: Date.now(),
   })
 }
 
@@ -564,30 +549,28 @@ export async function addOfficialOff(
   if (!canManage(actor.roles)) {
     throw new Error("Lantai tidak boleh menetapkan libur resmi.")
   }
+  await database.ready
   const now = Date.now()
-  const conflicts = await assignmentCollection(database)
-    .query(
-      Q.where("staff_id", input.staffId),
-      Q.where("work_date", input.workDate),
-      Q.where("status", Q.notEq("cancelled"))
-    )
-    .fetch()
-  await database.write(async () => {
-    await Promise.all(
-      conflicts.map((row) =>
-        row.update((assignment) => {
-          assignment.status = "cancelled"
-          assignment.stamp(now, "updated")
+  transact(database, () => {
+    for (const row of listRows(database, TABLES.shiftAssignments)) {
+      if (
+        cellStr(row, "staffId") === input.staffId &&
+        cellStr(row, "workDate") === input.workDate &&
+        cellStr(row, "status") !== "cancelled"
+      ) {
+        updateRow(database, TABLES.shiftAssignments, row.id, {
+          status: "cancelled",
+          updatedAt: now,
         })
-      )
-    )
-    await dayOffCollection(database).create((row) => {
-      row.staffId = input.staffId
-      row.workDate = input.workDate
-      row.weekStart = input.weekStart
-      row.source = input.source ?? "manager"
-      row.note = input.note ?? ""
-      row.setNum("created_at", now)
+      }
+    }
+    addRow(database, TABLES.scheduledDaysOff, {
+      staffId: input.staffId,
+      workDate: input.workDate,
+      weekStart: input.weekStart,
+      source: input.source ?? "manager",
+      note: input.note ?? "",
+      createdAt: now,
     })
   })
 }
@@ -609,53 +592,49 @@ export async function applyRecommendationDraft(
   if (!canManage(actor.roles)) {
     throw new Error("Lantai tidak boleh menerapkan rekomendasi.")
   }
+  await database.ready
   const now = Date.now()
-  const existingAssignments = await assignmentCollection(database).query().fetch()
   const weekEnd = addDaysLocal(weekStart, 6)
-  const inWeek = existingAssignments.filter(
-    (row) => row.workDate >= weekStart && row.workDate <= weekEnd
-  )
-  await database.write(async () => {
-    await Promise.all(
-      inWeek.map((row) =>
-        row.update((assignment) => {
-          assignment.status = "cancelled"
-          assignment.stamp(now, "updated")
+  transact(database, () => {
+    for (const row of listRows(database, TABLES.shiftAssignments)) {
+      const workDate = cellStr(row, "workDate")
+      if (workDate >= weekStart && workDate <= weekEnd) {
+        updateRow(database, TABLES.shiftAssignments, row.id, {
+          status: "cancelled",
+          updatedAt: now,
         })
-      )
+      }
+    }
+    for (const item of assignments) {
+      addRow(database, TABLES.shiftAssignments, {
+        staffId: item.staffId,
+        templateId: item.templateId,
+        workDate: item.workDate,
+        startMinutes: item.startMinutes,
+        endMinutes: item.endMinutes,
+        dutyRole: item.dutyRole,
+        status: "draft",
+        outletId: DEFAULT_OUTLET_ID,
+        note: "rekomendasi",
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+    deleteMatching(
+      database,
+      TABLES.scheduledDaysOff,
+      (row) => cellStr(row, "weekStart") === weekStart
     )
-    await Promise.all(
-      assignments.map((item) =>
-        assignmentCollection(database).create((row) => {
-          row.staffId = item.staffId
-          row.templateId = item.templateId
-          row.workDate = item.workDate
-          row.startMinutes = item.startMinutes
-          row.endMinutes = item.endMinutes
-          row.dutyRole = item.dutyRole
-          row.status = "draft"
-          row.outletId = DEFAULT_OUTLET_ID
-          row.note = "rekomendasi"
-          row.stamp(now)
-        })
-      )
-    )
-    const existingOffs = await dayOffCollection(database)
-      .query(Q.where("week_start", weekStart))
-      .fetch()
-    await Promise.all(existingOffs.map((row) => row.destroyPermanently()))
-    await Promise.all(
-      offs.map((item) =>
-        dayOffCollection(database).create((row) => {
-          row.staffId = item.staffId
-          row.workDate = item.workDate
-          row.weekStart = weekStart
-          row.source = item.source
-          row.note = "rekomendasi"
-          row.setNum("created_at", now)
-        })
-      )
-    )
+    for (const item of offs) {
+      addRow(database, TABLES.scheduledDaysOff, {
+        staffId: item.staffId,
+        workDate: item.workDate,
+        weekStart,
+        source: item.source,
+        note: "rekomendasi",
+        createdAt: now,
+      })
+    }
   })
 }
 
@@ -673,21 +652,22 @@ export async function publishWeek(
   if (!canManage(actor.roles)) {
     throw new Error("Lantai tidak boleh mem-publish roster.")
   }
-  const rows = await assignmentCollection(database).query().fetch()
-  const inWeek = rows.filter((row) => {
-    return row.workDate >= weekStart && row.workDate <= addDaysLocal(weekStart, 6)
-  })
-  await database.write(async () => {
-    await Promise.all(
-      inWeek
-        .filter((row) => row.status === "draft")
-        .map((row) =>
-          row.update((assignment) => {
-            assignment.status = "published"
-            assignment.stamp(Date.now(), "updated")
-          })
-        )
-    )
+  await database.ready
+  const weekEnd = addDaysLocal(weekStart, 6)
+  transact(database, () => {
+    for (const row of listRows(database, TABLES.shiftAssignments)) {
+      const workDate = cellStr(row, "workDate")
+      if (
+        workDate >= weekStart &&
+        workDate <= weekEnd &&
+        cellStr(row, "status") === "draft"
+      ) {
+        updateRow(database, TABLES.shiftAssignments, row.id, {
+          status: "published",
+          updatedAt: Date.now(),
+        })
+      }
+    }
   })
 }
 

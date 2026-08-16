@@ -1,6 +1,13 @@
-import type { Database } from "@nozbe/watermelondb"
-
-import Product from "./models/Product"
+import {
+  addRow,
+  deleteRow,
+  listRows,
+  transact,
+  type Database,
+  TABLES,
+} from "@/db/database"
+import { loadProducts } from "@/db/snapshot"
+import type { ProductRecord } from "@/lib/types"
 
 export type ProductInput = {
   name: string
@@ -16,64 +23,72 @@ export const DEMO_PRODUCTS: ProductInput[] = [
   { name: "Butter Croissant", sku: "RNB-CRO", price: 18_000, stock: 16 },
 ]
 
-export function productsCollection(database: Database) {
-  return database.get<Product>("products")
-}
+const catalogSeed = new WeakMap<object, Promise<boolean>>()
 
 export async function createProduct(
   database: Database,
   input: ProductInput
-): Promise<Product> {
+): Promise<ProductRecord> {
+  await database.ready
   const now = Date.now()
-
-  return database.write(async () => {
-    return productsCollection(database).create((product) => {
-      product.name = input.name
-      product.sku = input.sku
-      product.price = input.price
-      product.stock = input.stock
-      product.createdAt = now
-      product.updatedAt = now
-    })
+  const id = addRow(database, TABLES.products, {
+    name: input.name,
+    sku: input.sku,
+    price: input.price,
+    stock: input.stock,
+    createdAt: now,
+    updatedAt: now,
   })
+  return {
+    id,
+    name: input.name,
+    sku: input.sku,
+    price: input.price,
+    stock: input.stock,
+    createdAt: now,
+    updatedAt: now,
+  }
 }
 
 export async function deleteProduct(
   database: Database,
-  product: Product
+  product: { id: string }
 ): Promise<void> {
-  await database.write(async () => {
-    await product.destroyPermanently()
-  })
+  await database.ready
+  deleteRow(database, TABLES.products, product.id)
 }
 
-let seedInFlight: Promise<boolean> | null = null
-
 export function seedCatalogIfEmpty(database: Database): Promise<boolean> {
-  seedInFlight ??= seedCatalogOnce(database)
-  return seedInFlight
+  const key = database.store
+  let pending = catalogSeed.get(key)
+  if (!pending) {
+    pending = seedCatalogOnce(database)
+    catalogSeed.set(key, pending)
+  }
+  return pending
 }
 
 async function seedCatalogOnce(database: Database): Promise<boolean> {
-  const existing = await productsCollection(database).query().fetchCount()
-  if (existing > 0) {
+  await database.ready
+  if (listRows(database, TABLES.products).length > 0) {
     return false
   }
 
-  await database.write(async () => {
-    const now = Date.now()
-    const records = DEMO_PRODUCTS.map((item) =>
-      productsCollection(database).prepareCreate((product) => {
-        product.name = item.name
-        product.sku = item.sku
-        product.price = item.price
-        product.stock = item.stock
-        product.createdAt = now
-        product.updatedAt = now
+  const now = Date.now()
+  transact(database, () => {
+    for (const item of DEMO_PRODUCTS) {
+      addRow(database, TABLES.products, {
+        name: item.name,
+        sku: item.sku,
+        price: item.price,
+        stock: item.stock,
+        createdAt: now,
+        updatedAt: now,
       })
-    )
-    await database.batch(records)
+    }
   })
 
   return true
 }
+
+export { loadProducts }
