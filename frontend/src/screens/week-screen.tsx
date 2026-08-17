@@ -703,7 +703,7 @@ function AssignDialog({
           })}
         </ul>
         <div>
-          <p className="mb-2 text-sm font-medium">Tambah orang</p>
+          <p className="mb-2 text-sm font-medium">Tambah staff</p>
           <div className="flex flex-wrap gap-2">
             {available.map((member) => (
               <div key={member.id} className="flex gap-1">

@@ -80,7 +80,7 @@ export function MenuScreen({
           <div className="flex flex-col gap-3">
             <p className="text-sm">
               Terbuka sebagai <span className="font-medium">{actor.name}</span>. Jadwal,
-              orang, stok, dan laporan bisa diubah.
+              staff, stok, dan laporan bisa diubah.
             </p>
             <Button type="button" variant="outline" size="touch" onClick={onLock}>
               <LockOpen className="size-5" />

@@ -223,7 +223,7 @@ function SlotEditor({
       <div className="grid gap-3 sm:grid-cols-3">
         <Field id={`${slot.id}-mulai`} label="Mulai" value={start} onChange={setStart} />
         <Field id={`${slot.id}-selesai`} label="Selesai" value={end} onChange={setEnd} />
-        <Field id={`${slot.id}-min`} label="Min orang" value={minStaff} onChange={setMinStaff} />
+        <Field id={`${slot.id}-min`} label="Min staff" value={minStaff} onChange={setMinStaff} />
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         {FLOOR_ROLES.map((role) => (

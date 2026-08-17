@@ -128,7 +128,7 @@ describe("path per screen", () => {
     expect(PAGE_PATH.prefs).toBe("/shift")
     expect(PAGE_PATH.pin).toBe("/pin")
     expect(PAGE_PATH.week).toBe("/jadwal")
-    expect(PAGE_PATH.staff).toBe("/orang")
+    expect(PAGE_PATH.staff).toBe("/staff")
     expect(PAGE_PATH.reports).toBe("/laporan")
     expect(PAGE_PATH.settings).toBe("/outlet")
   })
@@ -148,12 +148,15 @@ describe("path per screen", () => {
     expect(pageFromPath("/products")).toBe("products")
     expect(normalizePath("/Jadwal/")).toBe("/jadwal")
     expect(pageFromPath("/tidak-ada")).toBeNull()
+    expect(pageFromPath("/staff")).toBe("staff")
+    expect(pageFromPath("/orang")).toBe("staff")
   })
 
   test("judul tab browser memakai label screen", () => {
     expect(pageTitle("menu")).toBe("Roll n Brew")
     expect(pageTitle("clock")).toBe("Absensi · Roll n Brew")
     expect(pageTitle("week")).toBe("Jadwal · Roll n Brew")
+    expect(pageTitle("staff")).toBe("Staff · Roll n Brew")
   })
 
   test("klik biasa ditangani in-app, modifier tetap ke browser", () => {

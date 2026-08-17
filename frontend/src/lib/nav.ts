@@ -173,7 +173,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         id: "staff",
-        label: "Orang",
+        label: "Staff",
         hint: "Staff, role, dan PIN",
         icon: Users,
         ready: true,
@@ -239,7 +239,7 @@ export const PAGE_PATH: Record<AppPage, string> = {
   prefs: "/shift",
   pin: "/pin",
   week: "/jadwal",
-  staff: "/orang",
+  staff: "/staff",
   reports: "/laporan",
   settings: "/outlet",
 }

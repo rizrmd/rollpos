@@ -96,7 +96,7 @@ function run(
 }
 
 describe("recommendSchedule fair default", () => {
-  test("setiap orang dapat target libur dan hari sisanya jadi kerja", () => {
+  test("setiap staff dapat target libur dan hari sisanya jadi kerja", () => {
     const result = run()
     for (const member of crew) {
       const offs = result.offs.filter((row) => row.staffId === member.id)

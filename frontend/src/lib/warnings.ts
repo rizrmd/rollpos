@@ -50,7 +50,7 @@ export function detectWarnings(input: WarningInput): ScheduleWarning[] {
       warnings.push({
         code: "off_pileup",
         workDate: date,
-        message: `${suggested.length} orang suggest libur ${date}.`,
+        message: `${suggested.length} staff suggest libur ${date}.`,
       })
     }
 

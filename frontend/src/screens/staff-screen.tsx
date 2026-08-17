@@ -58,11 +58,11 @@ export function StaffScreen({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2 sm:flex-row">
-        <Label htmlFor="cari-orang" className="sr-only">
-          Cari orang
+        <Label htmlFor="cari-staff" className="sr-only">
+          Cari staff
         </Label>
         <Input
-          id="cari-orang"
+          id="cari-staff"
           className="min-h-12"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -195,7 +195,7 @@ function StaffDialog({
       <DialogContent className="sm:max-w-md" showCloseButton>
         <DialogHeader>
           <DialogTitle>{member ? member.name : "Staff baru"}</DialogTitle>
-          <DialogDescription>Satu orang boleh merangkap role.</DialogDescription>
+          <DialogDescription>Satu staff boleh merangkap role.</DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-3"

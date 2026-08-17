@@ -150,8 +150,8 @@ describe("groupClockCards", () => {
 describe("onDutyLabel", () => {
   test("kalimat Indonesia sesuai jumlah", () => {
     expect(onDutyLabel(0)).toBe("Belum ada yang masuk")
-    expect(onDutyLabel(1)).toBe("1 orang sedang masuk")
-    expect(onDutyLabel(3)).toBe("3 orang sedang masuk")
+    expect(onDutyLabel(1)).toBe("1 staff sedang masuk")
+    expect(onDutyLabel(3)).toBe("3 staff sedang masuk")
   })
 })
 

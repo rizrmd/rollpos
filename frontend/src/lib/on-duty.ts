@@ -100,8 +100,8 @@ export function groupClockCards<T extends { kind: ClockCardKind }>(cards: T[]): 
 
 export function onDutyLabel(count: number): string {
   if (count === 0) return "Belum ada yang masuk"
-  if (count === 1) return "1 orang sedang masuk"
-  return `${count} orang sedang masuk`
+  if (count === 1) return "1 staff sedang masuk"
+  return `${count} staff sedang masuk`
 }
 
 export type ClockCardView = {

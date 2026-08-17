@@ -77,7 +77,7 @@ export function MonthApprovals({
         <div className="min-w-0 flex-1 text-center">
           <p className="text-base font-medium">{formatMonthYear(monthCursor)}</p>
           <p className="text-sm text-muted-foreground">
-            {summary.approved} libur disetujui · {summary.peopleOff} orang
+            {summary.approved} libur disetujui · {summary.peopleOff} staff
             {summary.pending > 0 ? ` · ${summary.pending} menunggu` : ""}
             {summary.declined > 0 ? ` · ${summary.declined} ditolak` : ""}
           </p>
