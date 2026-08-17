@@ -7,6 +7,8 @@ import {
   NAV_BY_ID,
   isNavBranch,
   navEntryContainsPage,
+  pathForPage,
+  shouldHandleInAppClick,
   visibleNavGroups,
   type AppPage,
   type NavEntry,
@@ -81,9 +83,13 @@ export function AppSidebar({
       </div>
 
       <div className="px-3 pt-3">
-        <button
-          type="button"
-          onClick={() => onOpen(kasir.id)}
+        <a
+          href={pathForPage(kasir.id)}
+          onClick={(event) => {
+            if (!shouldHandleInAppClick(event)) return
+            event.preventDefault()
+            onOpen(kasir.id)
+          }}
           aria-current={kasirActive ? "page" : undefined}
           className={cn(
             "flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold text-primary-foreground transition-colors",
@@ -102,7 +108,7 @@ export function AppSidebar({
             className="size-4 shrink-0 opacity-70"
             aria-hidden="true"
           />
-        </button>
+        </a>
       </div>
 
       <nav
@@ -252,9 +258,13 @@ function NavLeafButton({
   const Icon = item.icon
   const current = page === item.id
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(item.id)}
+    <a
+      href={pathForPage(item.id)}
+      onClick={(event) => {
+        if (!shouldHandleInAppClick(event)) return
+        event.preventDefault()
+        onOpen(item.id)
+      }}
       aria-current={current ? "page" : undefined}
       className={cn(
         "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
@@ -278,6 +288,6 @@ function NavLeafButton({
           segera
         </span>
       ) : null}
-    </button>
+    </a>
   )
 }

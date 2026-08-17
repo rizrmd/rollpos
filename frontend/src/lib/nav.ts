@@ -165,7 +165,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "week",
         label: "Jadwal",
-        hint: "Papan minggu, kalender approve sebulan, publish",
+        hint: "Papan minggu dan kalender approve sebulan",
         icon: CalendarRange,
         ready: true,
         access: "manage",
@@ -228,8 +228,92 @@ export const MANAGE_PAGES = new Set<AppPage>(
   NAV_ITEMS.filter((item) => item.access === "manage").map((item) => item.id)
 )
 
+/** Path kanonik per screen — dipakai di address bar, bookmark, dan tautan. */
+export const PAGE_PATH: Record<AppPage, string> = {
+  menu: "/",
+  kasir: "/kasir",
+  clock: "/absensi",
+  orders: "/pesanan",
+  products: "/katalog",
+  stock: "/stok",
+  prefs: "/shift",
+  pin: "/pin",
+  week: "/jadwal",
+  staff: "/orang",
+  reports: "/laporan",
+  settings: "/outlet",
+}
+
+const PATH_ALIAS: Record<string, AppPage> = {
+  "": "menu",
+  menu: "menu",
+  kasir: "kasir",
+  clock: "clock",
+  absensi: "clock",
+  masuk: "clock",
+  orders: "orders",
+  pesanan: "orders",
+  products: "products",
+  katalog: "products",
+  produk: "products",
+  stock: "stock",
+  stok: "stock",
+  prefs: "prefs",
+  shift: "prefs",
+  preferensi: "prefs",
+  pin: "pin",
+  week: "week",
+  jadwal: "week",
+  staff: "staff",
+  orang: "staff",
+  reports: "reports",
+  laporan: "reports",
+  settings: "settings",
+  outlet: "settings",
+  atur: "settings",
+}
+
 export function isAppPage(value: string): value is Exclude<AppPage, "menu"> {
   return value in NAV_BY_ID
+}
+
+export function pathForPage(page: AppPage): string {
+  return PAGE_PATH[page]
+}
+
+export function normalizePath(pathname: string): string {
+  const path = pathname.split(/[?#]/, 1)[0] ?? ""
+  if (!path || path === "/") return "/"
+  return `/${path.replace(/^\/+|\/+$/g, "").toLowerCase()}`
+}
+
+export function pageFromPath(pathname: string): AppPage | null {
+  const normalized = normalizePath(pathname)
+  const slug = normalized === "/" ? "" : normalized.slice(1)
+  return PATH_ALIAS[slug] ?? null
+}
+
+export function pageTitle(page: AppPage): string {
+  if (page === "menu") return "Roll n Brew"
+  return `${NAV_BY_ID[page].label} · Roll n Brew`
+}
+
+export function shouldHandleInAppClick(event: {
+  defaultPrevented: boolean
+  button: number
+  metaKey: boolean
+  ctrlKey: boolean
+  shiftKey: boolean
+  altKey: boolean
+}): boolean {
+  return (
+    !event.defaultPrevented &&
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  )
 }
 
 export function canSeeNavItem(

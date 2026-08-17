@@ -3,6 +3,8 @@ import { ChevronRight, Lock, LockOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   isNavBranch,
+  pathForPage,
+  shouldHandleInAppClick,
   visibleNavGroups,
   type AppPage,
   type NavItem,
@@ -114,9 +116,13 @@ function MenuCard({
 }) {
   const Icon = item.icon
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(item.id)}
+    <a
+      href={pathForPage(item.id)}
+      onClick={(event) => {
+        if (!shouldHandleInAppClick(event)) return
+        event.preventDefault()
+        onOpen(item.id)
+      }}
       className={cn(
         "flex w-full items-center gap-4 rounded-2xl border bg-card px-4 py-4 text-left transition-colors",
         "hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
@@ -143,6 +149,6 @@ function MenuCard({
         <span className="mt-0.5 block text-sm text-muted-foreground">{item.hint}</span>
       </span>
       <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
-    </button>
+    </a>
   )
 }

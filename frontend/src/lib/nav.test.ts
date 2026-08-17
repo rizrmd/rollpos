@@ -2,10 +2,16 @@ import { describe, expect, test } from "bun:test"
 
 import {
   NAV_ITEMS,
+  PAGE_PATH,
   canSeeNavItem,
   flattenNavEntries,
   isNavBranch,
   isSidebarDefaultOpen,
+  normalizePath,
+  pageFromPath,
+  pageTitle,
+  pathForPage,
+  shouldHandleInAppClick,
   visibleNavGroups,
 } from "@/lib/nav"
 
@@ -106,5 +112,61 @@ describe("isSidebarDefaultOpen", () => {
     expect(isSidebarDefaultOpen("products")).toBe(true)
     expect(isSidebarDefaultOpen("pin")).toBe(true)
     expect(isSidebarDefaultOpen("prefs")).toBe(true)
+  })
+})
+
+describe("path per screen", () => {
+  test("setiap screen punya path unik", () => {
+    const paths = Object.values(PAGE_PATH)
+    expect(new Set(paths).size).toBe(paths.length)
+    expect(PAGE_PATH.menu).toBe("/")
+    expect(PAGE_PATH.kasir).toBe("/kasir")
+    expect(PAGE_PATH.clock).toBe("/absensi")
+    expect(PAGE_PATH.orders).toBe("/pesanan")
+    expect(PAGE_PATH.products).toBe("/katalog")
+    expect(PAGE_PATH.stock).toBe("/stok")
+    expect(PAGE_PATH.prefs).toBe("/shift")
+    expect(PAGE_PATH.pin).toBe("/pin")
+    expect(PAGE_PATH.week).toBe("/jadwal")
+    expect(PAGE_PATH.staff).toBe("/orang")
+    expect(PAGE_PATH.reports).toBe("/laporan")
+    expect(PAGE_PATH.settings).toBe("/outlet")
+  })
+
+  test("pathForPage dan pageFromPath bolak-balik untuk path kanonik", () => {
+    for (const page of Object.keys(PAGE_PATH) as (keyof typeof PAGE_PATH)[]) {
+      const path = pathForPage(page)
+      expect(pageFromPath(path)).toBe(page)
+    }
+  })
+
+  test("menerima alias bahasa Inggris/lama dan trailing slash", () => {
+    expect(pageFromPath("/clock")).toBe("clock")
+    expect(pageFromPath("/week/")).toBe("week")
+    expect(pageFromPath("/menu")).toBe("menu")
+    expect(pageFromPath("/settings")).toBe("settings")
+    expect(pageFromPath("/products")).toBe("products")
+    expect(normalizePath("/Jadwal/")).toBe("/jadwal")
+    expect(pageFromPath("/tidak-ada")).toBeNull()
+  })
+
+  test("judul tab browser memakai label screen", () => {
+    expect(pageTitle("menu")).toBe("Roll n Brew")
+    expect(pageTitle("clock")).toBe("Absensi · Roll n Brew")
+    expect(pageTitle("week")).toBe("Jadwal · Roll n Brew")
+  })
+
+  test("klik biasa ditangani in-app, modifier tetap ke browser", () => {
+    const base = {
+      defaultPrevented: false,
+      button: 0,
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+    }
+    expect(shouldHandleInAppClick(base)).toBe(true)
+    expect(shouldHandleInAppClick({ ...base, ctrlKey: true })).toBe(false)
+    expect(shouldHandleInAppClick({ ...base, button: 1 })).toBe(false)
   })
 })

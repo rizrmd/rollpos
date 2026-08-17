@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ArrowLeft, PanelLeft } from "lucide-react"
 
 import { AppSidebar } from "@/components/app-sidebar"
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { authenticateStaff } from "@/db/staffing-write"
 import { seedStaffingIfEmpty } from "@/db/seed"
+import { useAppPage } from "@/hooks/use-app-page"
 import { useLandscape } from "@/hooks/use-landscape"
 import { useStaffing } from "@/hooks/use-staffing"
 import { canManage } from "@/lib/permissions"
@@ -34,14 +35,16 @@ import {
   NAV_BY_ID,
   canSeeNavItem,
   isSidebarDefaultOpen,
+  pathForPage,
+  shouldHandleInAppClick,
   type AppPage,
 } from "@/lib/nav"
 
 export function App() {
   const staffing = useStaffing()
   const landscape = useLandscape()
+  const { page, navigate } = useAppPage()
   const [actor, setActor] = useState<StaffRecord | null>(null)
-  const [page, setPage] = useState<AppPage>("menu")
   const [unlockWho, setUnlockWho] = useState<StaffRecord | null>(null)
   const [pickManager, setPickManager] = useState(false)
   const [pendingPage, setPendingPage] = useState<Exclude<AppPage, "menu"> | null>(
@@ -50,6 +53,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [nowLabel, setNowLabel] = useState(() => formatJakartaClock())
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const unlockAttemptedFor = useRef<AppPage | null>(null)
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowLabel(formatJakartaClock()), 15_000)
@@ -66,8 +70,8 @@ export function App() {
   }, [staffing.database, staffing.ready, staffing.refresh])
 
   useEffect(() => {
-    if (landscape && page === "menu") setPage(DEFAULT_PAGE)
-  }, [landscape, page])
+    if (landscape && page === "menu") navigate(DEFAULT_PAGE, { replace: true })
+  }, [landscape, page, navigate])
 
   useEffect(() => {
     if (!landscape) return
@@ -88,13 +92,13 @@ export function App() {
   )
 
   function goMenu() {
-    setPage("menu")
+    navigate("menu")
   }
 
   function lock() {
     setActor(null)
     if (MANAGE_PAGES.has(page)) {
-      setPage(landscape ? DEFAULT_PAGE : "menu")
+      navigate(landscape ? DEFAULT_PAGE : "menu")
     }
   }
 
@@ -105,10 +109,10 @@ export function App() {
       startUnlock()
       return
     }
-    setPage(next)
+    navigate(next)
   }
 
-  function startUnlock() {
+  const startUnlock = useCallback(() => {
     if (managers.length === 1) {
       setUnlockWho(managers[0])
       return
@@ -118,7 +122,19 @@ export function App() {
       return
     }
     setNotice("Belum ada owner atau manager.")
-  }
+  }, [managers])
+
+  useEffect(() => {
+    if (!staffing.ready) return
+    if (actor || !MANAGE_PAGES.has(page)) {
+      if (actor) unlockAttemptedFor.current = null
+      return
+    }
+    if (unlockAttemptedFor.current === page) return
+    unlockAttemptedFor.current = page
+    setPendingPage(page as Exclude<AppPage, "menu">)
+    startUnlock()
+  }, [actor, page, staffing.ready, startUnlock])
 
   const item = page === "menu" ? null : NAV_BY_ID[page]
   const content = !staffing.ready ? (
@@ -241,8 +257,8 @@ export function App() {
           )
         }
         setActor(member)
-        if (pendingPage) setPage(pendingPage)
-        else if (landscape) setPage("week")
+        if (pendingPage) navigate(pendingPage)
+        else if (landscape) navigate("week")
         setPendingPage(null)
       }}
     />
@@ -319,11 +335,19 @@ export function App() {
       {page === "menu" ? null : (
         <div className="border-b px-4 py-2">
           <Button
-            type="button"
             variant="outline"
             size="icon-touch"
-            onClick={goMenu}
-            aria-label="Kembali ke menu"
+            render={
+              <a
+                href={pathForPage("menu")}
+                aria-label="Kembali ke menu"
+                onClick={(event) => {
+                  if (!shouldHandleInAppClick(event)) return
+                  event.preventDefault()
+                  goMenu()
+                }}
+              />
+            }
           >
             <ArrowLeft className="size-5" />
           </Button>
