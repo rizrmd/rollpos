@@ -126,6 +126,7 @@ export async function saveOutletSettings(
       updatedAt: now,
     })
   })
+  await rebuildOpenSystemWeeks(database)
 }
 
 export async function saveSlot(
@@ -280,6 +281,12 @@ export async function upsertStaff(
         writePreferredSlots(database, target.id, input.preferredTemplateIds)
       }
     })
+    if (
+      input.preferredTemplateIds !== undefined &&
+      !sameTemplateIds(target.preferredTemplateIds, input.preferredTemplateIds)
+    ) {
+      await rebuildOpenSystemWeeks(database)
+    }
     return target.id
   }
 
@@ -306,7 +313,15 @@ export async function upsertStaff(
     }
     writePreferredSlots(database, staffId, input.preferredTemplateIds ?? [])
   })
+  if (input.preferredTemplateIds !== undefined) {
+    await rebuildOpenSystemWeeks(database)
+  }
   return staffId
+}
+
+function sameTemplateIds(left: string[] = [], right: string[] = []): boolean {
+  if (left.length !== right.length) return false
+  return left.every((id, index) => id === right[index])
 }
 
 function writePreferredSlots(
@@ -576,6 +591,7 @@ export async function submitPreferences(
       })
     }
   })
+  await rebuildOpenSystemWeeks(database)
 }
 
 export async function requestDayOff(
@@ -817,12 +833,13 @@ export async function writeFairDefaultDraft(
 /** Isi kerja minggu ini + depan jika masih kosong, lalu langsung terbitkan. Libur resmi tidak ditulis. */
 export async function ensureFairDefaultWeeks(
   database: Database,
-  weekStarts: string[]
+  weekStarts: string[],
+  options?: { rebuildSystem?: boolean }
 ): Promise<number> {
   await database.ready
   const settings = await loadSettings(database, DEFAULT_OUTLET_ID)
   if (!settings) return 0
-  const [staff, slots, requirements, assignments, suggestions, offs, preferences] =
+  const [staff, slots, requirements, loadedAssignments, suggestions, offs, preferences] =
     await Promise.all([
       loadStaff(database),
       loadSlots(database),
@@ -832,6 +849,7 @@ export async function ensureFairDefaultWeeks(
       loadDayOffs(database),
       loadPreferences(database),
     ])
+  let assignments = loadedAssignments
   const activeSlots = slots.filter((slot) => slot.isActive)
   if (staff.filter((row) => row.isActive).length === 0 || activeSlots.length === 0) {
     return 0
@@ -846,13 +864,16 @@ export async function ensureFairDefaultWeeks(
         row.workDate >= weekStart &&
         row.workDate <= weekEnd
     )
+    const systemOnly =
+      weekRows.length > 0 &&
+      weekRows.every((row) => row.note === SYSTEM_DRAFT_NOTE)
     const publishedOrManual = weekRows.some(
       (row) => row.status === "published" || row.note !== SYSTEM_DRAFT_NOTE
     )
     const shouldReplace =
       weekRows.length > 0 &&
-      !publishedOrManual &&
-      hasConsecutiveShifts(weekRows, activeSlots)
+      ((Boolean(options?.rebuildSystem) && systemOnly) ||
+        (!publishedOrManual && hasConsecutiveShifts(weekRows, activeSlots)))
     if (weekHasActiveAssignments(assignments, weekStart) && !shouldReplace) {
       continue
     }
@@ -875,10 +896,22 @@ export async function ensureFairDefaultWeeks(
       historyWorkDates: history,
     })
     const ok = await writeFairDefaultDraft(database, weekStart, result.assignments)
-    if (ok) wrote += 1
+    if (ok) {
+      wrote += 1
+      assignments = await loadAssignments(database)
+    }
   }
   await promoteDraftsToPublished(database, weekStarts)
   return wrote
+}
+
+/** Hitung ulang minggu berjalan + depan jika masih murni usulan sistem. */
+export async function rebuildOpenSystemWeeks(database: Database): Promise<number> {
+  const settings = await loadSettings(database, DEFAULT_OUTLET_ID)
+  const weekStartsOn = settings?.weekStartsOn ?? 1
+  return ensureFairDefaultWeeks(database, defaultScheduleWeeks(weekStartsOn), {
+    rebuildSystem: true,
+  })
 }
 
 /** Jadwal berubah langsung terbit — draft lama di minggu yang dibuka ikut dipromosikan. */

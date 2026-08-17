@@ -18,6 +18,8 @@ import {
   authenticateStaff,
   changeStaffPin,
   clockPunch,
+  defaultScheduleWeeks,
+  ensureFairDefaultWeeks,
   hasOpenSession,
   removeOfficialOff,
   requestDayOff,
@@ -150,6 +152,156 @@ describe("staffing persist + schedule", () => {
     })
     const cleared = (await loadStaff(database)).find((row) => row.id === id)
     expect(cleared?.preferredTemplateIds).toEqual([])
+  })
+
+  test("ubah preferensi shift menghitung ulang usulan sistem", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista", "kitchen"],
+      pin: "3333",
+    })
+    await createPerson(database, {
+      name: "Dimas",
+      roles: ["kasir", "manager"],
+      pin: "2222",
+    })
+    await createPerson(database, {
+      name: "Raka",
+      roles: ["kasir", "kitchen"],
+      pin: "4444",
+    })
+    await createPerson(database, {
+      name: "Sinta",
+      roles: ["barista"],
+      pin: "5555",
+    })
+    const pagiId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 2,
+      isActive: true,
+    })
+    const soreId = await saveSlot(database, owner, {
+      name: "Sore",
+      startMinutes: 900,
+      endMinutes: 1320,
+      sortOrder: 2,
+      minStaffCount: 2,
+      isActive: true,
+    })
+    const weeks = defaultScheduleWeeks(1)
+    expect(await ensureFairDefaultWeeks(database, weeks)).toBeGreaterThan(0)
+
+    await upsertStaff(database, owner, {
+      id: nia.id,
+      name: "Nia",
+      nickname: "Nia",
+      isActive: true,
+      roles: ["barista", "kitchen"],
+      preferredTemplateIds: [pagiId],
+    })
+
+    const after = (await loadAssignments(database)).filter(
+      (row) => row.staffId === nia.id && row.status !== "cancelled"
+    )
+    const pagiCount = after.filter((row) => row.templateId === pagiId).length
+    const soreCount = after.filter((row) => row.templateId === soreId).length
+    expect(pagiCount).toBeGreaterThan(soreCount)
+    expect(after.every((row) => row.note === "usulan sistem")).toBe(true)
+  })
+
+  test("ubah preferensi tidak menimpa assignment yang diisi manual", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    const weekStart = defaultScheduleWeeks(1)[0]
+    if (!weekStart) throw new Error("missing week")
+    await upsertAssignment(database, owner, {
+      staffId: nia.id,
+      templateId: slotId,
+      workDate: weekStart,
+      startMinutes: 420,
+      endMinutes: 900,
+      dutyRole: "barista",
+      note: "manual",
+    })
+    const before = await loadAssignments(database)
+    const manual = before.find(
+      (row) => row.staffId === nia.id && row.workDate === weekStart
+    )
+    expect(manual?.note).toBe("manual")
+
+    await upsertStaff(database, owner, {
+      id: nia.id,
+      name: "Nia",
+      nickname: "Nia",
+      isActive: true,
+      roles: ["barista"],
+      preferredTemplateIds: [slotId],
+    })
+
+    const after = await loadAssignments(database)
+    const kept = after.find((row) => row.id === manual?.id)
+    expect(kept?.status).toBe("published")
+    expect(kept?.note).toBe("manual")
+    expect(
+      after.filter(
+        (row) => row.workDate === weekStart && row.status !== "cancelled"
+      )
+    ).toHaveLength(1)
+  })
+
+  test("simpan staff tanpa ubah preferensi tidak menghitung ulang", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    expect(
+      await ensureFairDefaultWeeks(database, defaultScheduleWeeks(1))
+    ).toBeGreaterThan(0)
+    const before = (await loadAssignments(database))
+      .filter((row) => row.status !== "cancelled")
+      .map((row) => `${row.id}:${row.staffId}:${row.templateId}:${row.workDate}`)
+      .sort()
+
+    await upsertStaff(database, owner, {
+      id: nia.id,
+      name: "Nia Sari",
+      nickname: "Nia Sari",
+      isActive: true,
+      roles: ["barista"],
+    })
+
+    const after = (await loadAssignments(database))
+      .filter((row) => row.status !== "cancelled")
+      .map((row) => `${row.id}:${row.staffId}:${row.templateId}:${row.workDate}`)
+      .sort()
+    expect(after).toEqual(before)
+    expect(slotId).toBeTruthy()
   })
 
   test("multi-role persist survives a write-and-reload snapshot", async () => {
