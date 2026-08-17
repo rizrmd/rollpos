@@ -126,7 +126,6 @@ function StaffDialog({
   }) => Promise<void>
 }) {
   const [name, setName] = useState(member?.name ?? "")
-  const [nickname, setNickname] = useState(member?.nickname ?? "")
   const [pin, setPin] = useState("")
   const [active, setActive] = useState(member?.isActive ?? true)
   const [roles, setRoles] = useState<StaffRole[]>(member?.roles ?? ["kasir"])
@@ -147,7 +146,6 @@ function StaffDialog({
       onOpenChange={(next) => {
         if (next) {
           setName(member?.name ?? "")
-          setNickname(member?.nickname ?? "")
           setPin("")
           setActive(member?.isActive ?? true)
           setRoles(member?.roles ?? ["kasir"])
@@ -169,7 +167,7 @@ function StaffDialog({
               await onSave({
                 id: member?.id,
                 name,
-                nickname: nickname || name,
+                nickname: name,
                 pin: pin || undefined,
                 isActive: active,
                 roles,
@@ -187,15 +185,6 @@ function StaffDialog({
               value={name}
               onChange={(event) => setName(event.target.value)}
               required
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="staff-nick">Panggilan</Label>
-            <Input
-              id="staff-nick"
-              className="min-h-12"
-              value={nickname}
-              onChange={(event) => setNickname(event.target.value)}
             />
           </div>
           <div className="flex flex-col gap-1">
