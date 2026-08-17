@@ -458,7 +458,7 @@ export async function upsertAssignment(
     startMinutes: input.startMinutes,
     endMinutes: input.endMinutes,
     dutyRole: input.dutyRole,
-    status: input.status ?? "draft",
+    status: input.status ?? "published",
     outletId: DEFAULT_OUTLET_ID,
     note: input.note ?? "",
     createdAt: now,
@@ -745,7 +745,7 @@ export async function removeOfficialOff(
   deleteRow(database, TABLES.scheduledDaysOff, offId)
 }
 
-/** Tulis draft kerja usulan sistem. Tidak menimpa minggu yang sudah diisi, tidak menulis libur resmi. */
+/** Tulis usulan kerja sistem dan langsung terbitkan. Tidak menimpa minggu yang sudah diisi, tidak menulis libur resmi. */
 export async function writeFairDefaultDraft(
   database: Database,
   weekStart: string,
@@ -778,7 +778,7 @@ export async function writeFairDefaultDraft(
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
         dutyRole: item.dutyRole,
-        status: "draft",
+        status: "published",
         outletId: DEFAULT_OUTLET_ID,
         note: SYSTEM_DRAFT_NOTE,
         createdAt: now,
@@ -789,7 +789,7 @@ export async function writeFairDefaultDraft(
   return true
 }
 
-/** Isi draft kerja minggu ini + depan jika masih kosong. Libur resmi tidak ditulis. */
+/** Isi kerja minggu ini + depan jika masih kosong, lalu langsung terbitkan. Libur resmi tidak ditulis. */
 export async function ensureFairDefaultWeeks(
   database: Database,
   weekStarts: string[]
@@ -852,7 +852,34 @@ export async function ensureFairDefaultWeeks(
     const ok = await writeFairDefaultDraft(database, weekStart, result.assignments)
     if (ok) wrote += 1
   }
+  await promoteDraftsToPublished(database, weekStarts)
   return wrote
+}
+
+/** Jadwal berubah langsung terbit — draft lama di minggu yang dibuka ikut dipromosikan. */
+async function promoteDraftsToPublished(
+  database: Database,
+  weekStarts: string[]
+): Promise<void> {
+  const now = Date.now()
+  transact(database, () => {
+    for (const weekStart of weekStarts) {
+      const weekEnd = weekDates(weekStart)[6] ?? weekStart
+      for (const row of listRows(database, TABLES.shiftAssignments)) {
+        const workDate = cellStr(row, "workDate")
+        if (
+          workDate >= weekStart &&
+          workDate <= weekEnd &&
+          cellStr(row, "status") === "draft"
+        ) {
+          updateRow(database, TABLES.shiftAssignments, row.id, {
+            status: "published",
+            updatedAt: now,
+          })
+        }
+      }
+    }
+  })
 }
 
 async function clearSystemDraftWeek(
@@ -922,7 +949,7 @@ export async function applyRecommendationDraft(
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
         dutyRole: item.dutyRole,
-        status: "draft",
+        status: "published",
         outletId: DEFAULT_OUTLET_ID,
         note: "rekomendasi",
         createdAt: now,

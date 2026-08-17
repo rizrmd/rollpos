@@ -516,7 +516,7 @@ describe("staffing persist + schedule", () => {
     expect(wouldViolateConsecutive(history, "2026-08-18", 6)).toBe(false)
   })
 
-  test("apply recommendation writes draft assignments only, not attendance", async () => {
+  test("apply recommendation writes published assignments only, not attendance", async () => {
     const { database, owner } = await bootstrap()
     const before = await loadAttendance(database)
     const nia = await createPerson(database, {
@@ -552,14 +552,14 @@ describe("staffing persist + schedule", () => {
     const assignments = await loadAssignments(database)
     expect(
       assignments.some(
-        (row) => row.status === "draft" && row.staffId === nia.id
+        (row) => row.status === "published" && row.staffId === nia.id
       )
     ).toBe(true)
     const after = await loadAttendance(database)
     expect(after.length).toBe(before.length)
   })
 
-  test("fair default draft fills an empty week once and skips the second write", async () => {
+  test("fair default writes published assignments once and skips the second write", async () => {
     const { writeFairDefaultDraft, ensureFairDefaultWeeks } = await import(
       "@/db/staffing-write"
     )
@@ -601,9 +601,54 @@ describe("staffing persist + schedule", () => {
     expect(second).toBe(false)
     const assignments = await loadAssignments(database)
     expect(
-      assignments.filter((row) => row.status === "draft" && row.note === "usulan sistem")
+      assignments.filter(
+        (row) => row.status === "published" && row.note === "usulan sistem"
+      )
     ).toHaveLength(1)
     expect(await ensureFairDefaultWeeks(database, ["2026-08-17"])).toBe(0)
+  })
+
+  test("manual assignment and leftover drafts are published immediately", async () => {
+    const { ensureFairDefaultWeeks } = await import("@/db/staffing-write")
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 300,
+      endMinutes: 600,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    await upsertAssignment(database, owner, {
+      staffId: nia.id,
+      templateId: slotId,
+      workDate: "2026-08-17",
+      startMinutes: 300,
+      endMinutes: 600,
+      dutyRole: "barista",
+    })
+    const written = await loadAssignments(database)
+    expect(written.find((row) => row.staffId === nia.id)?.status).toBe(
+      "published"
+    )
+
+    await upsertAssignment(database, owner, {
+      staffId: owner.id,
+      templateId: slotId,
+      workDate: "2026-08-18",
+      startMinutes: 300,
+      endMinutes: 600,
+      dutyRole: "barista",
+      status: "draft",
+    })
+    expect(await ensureFairDefaultWeeks(database, ["2026-08-17"])).toBe(0)
+    const after = await loadAssignments(database)
+    expect(after.every((row) => row.status === "published")).toBe(true)
   })
 
   test("manager can add then remove official day off", async () => {

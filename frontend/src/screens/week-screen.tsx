@@ -20,7 +20,6 @@ import {
   ensureFairDefaultWeeks,
   cancelAssignment,
   declineSuggestion,
-  publishWeek,
   removeOfficialOff,
   upsertAssignment,
 } from "@/db/staffing-write"
@@ -120,7 +119,6 @@ export function WeekScreen({
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [inboxOpen, setInboxOpen] = useState(false)
-  const [publishOpen, setPublishOpen] = useState(false)
   const [recommendOpen, setRecommendOpen] = useState(false)
   const [cell, setCell] = useState<{ date: string; slot: SlotRecord } | null>(
     null
@@ -213,7 +211,7 @@ export function WeekScreen({
       recommendPreview.result.assignments,
       recommendPreview.result.offs
     )
-    setNotice("Draft rekomendasi diterapkan. Cek papan lalu publish.")
+    setNotice("Usulan adil diterapkan dan langsung terbit.")
   }
 
   return (
@@ -257,7 +255,7 @@ export function WeekScreen({
               <div className="min-w-0 flex-1 text-center">
                 <p className="text-base font-medium">{formatWeekRange(weekStart)}</p>
                 <p className="text-sm text-muted-foreground">
-                  {WEEK_LABEL[relation]} · {published ? "terbit" : "draft"}
+                  {WEEK_LABEL[relation]}
                   {settings
                     ? ` · pref tutup ${preferenceDeadlineLabel(
                         settings.preferenceDeadlineWeekday,
@@ -330,49 +328,26 @@ export function WeekScreen({
         </p>
       ) : null}
 
-      {actor ? (
-        <ol className="grid gap-2 sm:grid-cols-3">
-          <li>
-            <Button
-              type="button"
-              variant="outline"
-              size="touch"
-              className="h-full w-full flex-col items-start gap-1 py-3"
-              onClick={() => setInboxOpen(true)}
-            >
-              <span className="text-xs text-muted-foreground">1 · Putuskan</span>
-              <span>
-                Inbox libur
-                {pendingSuggest.length > 0 ? ` (${pendingSuggest.length})` : ""}
-              </span>
-            </Button>
-          </li>
-          <li>
-            <Button
-              type="button"
-              variant="outline"
-              size="touch"
-              className="h-full w-full flex-col items-start gap-1 py-3"
-              onClick={() => setRecommendOpen(true)}
-            >
-              <span className="text-xs text-muted-foreground">2 · Isi ulang</span>
-              <span>Usulan adil</span>
-            </Button>
-          </li>
-          <li>
-            <Button
-              type="button"
-              size="touch"
-              className="h-full w-full flex-col items-start gap-1 py-3"
-              onClick={() => setPublishOpen(true)}
-            >
-              <span className="text-xs text-primary-foreground/80">
-                3 · Terbitkan
-              </span>
-              <span>Publish…</span>
-            </Button>
-          </li>
-        </ol>
+      {actor && boardView === "week" ? (
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setInboxOpen(true)}
+          >
+            Permintaan libur
+            {pendingSuggest.length > 0 ? ` (${pendingSuggest.length})` : ""}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setRecommendOpen(true)}
+          >
+            Usulan adil
+          </Button>
+        </div>
       ) : null}
 
       {boardView === "month" ? (
@@ -670,6 +645,14 @@ export function WeekScreen({
           if (!actor) return
           await guarded(() => removeOfficialOff(database, actor, offId))
         }}
+        onAcceptSuggest={async (suggestionId) => {
+          if (!actor) return
+          await guarded(() => acceptSuggestion(database, actor, suggestionId))
+        }}
+        onDeclineSuggest={async (suggestionId) => {
+          if (!actor) return
+          await guarded(() => declineSuggestion(database, actor, suggestionId))
+        }}
         canEdit={Boolean(actor)}
       />
 
@@ -794,7 +777,8 @@ export function WeekScreen({
             <DialogTitle>Isi ulang usulan adil?</DialogTitle>
             <DialogDescription>
               Kerja default dari mesin yang membagi shift dan libur secara
-              adil. Absensi tidak berubah. Draft minggu ini ditimpa.
+              adil. Absensi tidak berubah. Jadwal minggu ini ditimpa dan
+              langsung terbit.
             </DialogDescription>
           </DialogHeader>
           {recommendPreview ? (
@@ -811,8 +795,7 @@ export function WeekScreen({
               </li>
               {recommendPreview.summary.replaces > 0 ? (
                 <li className="text-muted-foreground">
-                  Menimpa {recommendPreview.summary.replaces} assignment draft
-                  yang ada.
+                  Menimpa {recommendPreview.summary.replaces} penugasan yang ada.
                 </li>
               ) : null}
             </ul>
@@ -842,42 +825,6 @@ export function WeekScreen({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
-        <DialogContent showCloseButton>
-          <DialogHeader>
-            <DialogTitle>Publish {formatWeekRange(weekStart)}?</DialogTitle>
-            <DialogDescription>
-              {counts.understaffed > 0
-                ? `${counts.understaffed} sel masih kurang orang. Staff akan melihat jadwal ini di Absensi.`
-                : "Staff akan melihat jadwal ini di halaman Absensi."}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              size="touch"
-              onClick={() => setPublishOpen(false)}
-            >
-              Batal
-            </Button>
-            <Button
-              type="button"
-              size="touch"
-              onClick={() =>
-                void guarded(async () => {
-                  if (!actor) return
-                  await publishWeek(database, actor, weekStart)
-                  setPublishOpen(false)
-                  setNotice("Minggu dipublish.")
-                })
-              }
-            >
-              {counts.understaffed > 0 ? "Publish tetap" : "Publish"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
@@ -1096,6 +1043,8 @@ function DaySheet({
   onOpenChange,
   onOff,
   onClearOff,
+  onAcceptSuggest,
+  onDeclineSuggest,
 }: {
   date: string | null
   staff: StaffRecord[]
@@ -1107,6 +1056,8 @@ function DaySheet({
   onOpenChange: (open: boolean) => void
   onOff: (member: StaffRecord) => Promise<void>
   onClearOff: (offId: string) => Promise<void>
+  onAcceptSuggest: (suggestionId: string) => Promise<void>
+  onDeclineSuggest: (suggestionId: string) => Promise<void>
 }) {
   const roster = date
     ? dayRoster({
@@ -1191,11 +1142,35 @@ function DaySheet({
             {daySuggest.length === 0 ? (
               <p className="text-muted-foreground">Tidak ada.</p>
             ) : (
-              <ul>
+              <ul className="flex flex-col gap-2">
                 {daySuggest.map((row) => (
-                  <li key={row.id}>
-                    {nameOf(staff, row.staffId)}
-                    {row.note ? ` · ${row.note}` : ""}
+                  <li
+                    key={row.id}
+                    className="flex items-center justify-between gap-2"
+                  >
+                    <span>
+                      {nameOf(staff, row.staffId)}
+                      {row.note ? ` · ${row.note}` : ""}
+                    </span>
+                    {canEdit ? (
+                      <span className="flex shrink-0 gap-1">
+                        <Button
+                          type="button"
+                          size="xs"
+                          onClick={() => void onAcceptSuggest(row.id)}
+                        >
+                          Terima
+                        </Button>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={() => void onDeclineSuggest(row.id)}
+                        >
+                          Tolak
+                        </Button>
+                      </span>
+                    ) : null}
                   </li>
                 ))}
               </ul>
