@@ -33,6 +33,10 @@ import {
 } from "@/db/staffing-write"
 import { canEditSlots, canManage, isOwner } from "@/lib/permissions"
 import { recommendSchedule, wouldViolateConsecutive } from "@/lib/recommend"
+import {
+  preferredSlotIdsFromMember,
+  preferredSlotIdsToStore,
+} from "@/lib/staff-prefs"
 import { isStaffDeleted, type OutletSettingsRecord, type StaffRecord } from "@/lib/types"
 import { DEFAULT_OUTLET_ID } from "@/lib/types"
 
@@ -112,6 +116,56 @@ function settingsFrom(row: OutletSettingsRecord): OutletSettingsRecord {
 }
 
 describe("staffing persist + schedule", () => {
+  test("preferensi shift dari form (semua atau sebagian) tetap ada setelah simpan dan buka ulang", async () => {
+    const { database, owner } = await bootstrap()
+    const pagiId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    const soreId = await saveSlot(database, owner, {
+      name: "Sore",
+      startMinutes: 900,
+      endMinutes: 1320,
+      sortOrder: 2,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    const slots = [
+      { id: pagiId },
+      { id: soreId },
+    ]
+    const id = await upsertStaff(database, owner, {
+      name: "Nia",
+      nickname: "Nia",
+      pin: "3333",
+      isActive: true,
+      roles: ["barista"],
+      preferredTemplateIds: preferredSlotIdsToStore(
+        preferredSlotIdsFromMember(undefined, slots),
+        slots
+      ),
+    })
+    const afterAll = (await loadStaff(database)).find((row) => row.id === id)
+    expect(afterAll?.preferredTemplateIds).toEqual([pagiId, soreId])
+    expect(preferredSlotIdsFromMember(afterAll, slots)).toEqual([pagiId, soreId])
+
+    await upsertStaff(database, owner, {
+      id,
+      name: "Nia",
+      nickname: "Nia",
+      isActive: true,
+      roles: ["barista"],
+      preferredTemplateIds: preferredSlotIdsToStore([pagiId], slots),
+    })
+    const afterOne = (await loadStaff(database)).find((row) => row.id === id)
+    expect(afterOne?.preferredTemplateIds).toEqual([pagiId])
+    expect(preferredSlotIdsFromMember(afterOne, slots)).toEqual([pagiId])
+  })
+
   test("preferensi shift tersimpan dan tidak terhapus saat update tanpa field itu", async () => {
     const { database, owner } = await bootstrap()
     const slotId = await saveSlot(database, owner, {

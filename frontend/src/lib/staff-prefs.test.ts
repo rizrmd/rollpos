@@ -8,6 +8,8 @@ import {
   prefsDayCaption,
   isPreferenceDeadlinePassed,
   prefsDaysForMonth,
+  preferredSlotIdsFromMember,
+  preferredSlotIdsToStore,
   resolvePrefsDay,
   slotPreferenceRank,
   staffInitials,
@@ -445,6 +447,30 @@ describe("preferensi shift profil", () => {
     ]
     expect(slotPreferenceRank(nia, "sore", week, "2026-08-17")).toBe(1)
     expect(slotPreferenceRank(nia, "pagi", week, "2026-08-17")).toBe(99)
+  })
+
+  test("form menyimpan semua slot yang dicentang, bukan mengosongkannya", () => {
+    const slots = [{ id: "pagi" }, { id: "sore" }]
+    const unset = preferredSlotIdsFromMember(undefined, slots)
+    expect(unset).toEqual(["pagi", "sore"])
+    expect(preferredSlotIdsToStore(unset, slots)).toEqual(["pagi", "sore"])
+
+    expect(preferredSlotIdsToStore(["pagi"], slots)).toEqual(["pagi"])
+    expect(preferredSlotIdsToStore([], slots)).toEqual([])
+
+    const saved = preferredSlotIdsFromMember(
+      { ...nia, preferredTemplateIds: ["pagi"] },
+      slots
+    )
+    expect(saved).toEqual(["pagi"])
+    expect(preferredSlotIdsToStore(saved, slots)).toEqual(["pagi"])
+
+    const both = preferredSlotIdsFromMember(
+      { ...nia, preferredTemplateIds: ["pagi", "sore"] },
+      slots
+    )
+    expect(both).toEqual(["pagi", "sore"])
+    expect(preferredSlotIdsToStore(both, slots)).toEqual(["pagi", "sore"])
   })
 })
 

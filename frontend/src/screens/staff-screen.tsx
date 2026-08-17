@@ -18,6 +18,10 @@ import { staffFromStore } from "@/db/snapshot"
 import { softDeleteStaff, upsertStaff } from "@/db/staffing-write"
 import { capitalizePersonName } from "@/lib/format"
 import { canGrantLeadership } from "@/lib/permissions"
+import {
+  preferredSlotIdsFromMember,
+  preferredSlotIdsToStore,
+} from "@/lib/staff-prefs"
 import { formatMinutes } from "@/lib/time"
 import {
   FLOOR_ROLES,
@@ -51,7 +55,7 @@ export function StaffScreen({
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return staff.filter((member) => {
+    return liveStaff.filter((member) => {
       if (isStaffDeleted(member)) return false
       if (!needle) return true
       return (
@@ -60,7 +64,7 @@ export function StaffScreen({
         member.roles.some((role) => role.includes(needle))
       )
     })
-  }, [query, staff])
+  }, [query, liveStaff])
 
   return (
     <div className="flex flex-col gap-4">
@@ -159,7 +163,7 @@ function StaffDialog({
   const [active, setActive] = useState(member?.isActive ?? true)
   const [roles, setRoles] = useState<StaffRole[]>(member?.roles ?? ["kasir"])
   const [preferred, setPreferred] = useState<string[]>(() =>
-    initialPreferred(member, activeSlots)
+    preferredSlotIdsFromMember(member, activeSlots)
   )
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -174,12 +178,13 @@ function StaffDialog({
     )
   }
 
-  function toggleShift(templateId: string) {
-    setPreferred((current) =>
-      current.includes(templateId)
-        ? current.filter((item) => item !== templateId)
-        : [...current, templateId]
-    )
+  function setShiftChecked(templateId: string, checked: boolean) {
+    setPreferred((current) => {
+      if (checked) {
+        return current.includes(templateId) ? current : [...current, templateId]
+      }
+      return current.filter((item) => item !== templateId)
+    })
   }
 
   return (
@@ -191,7 +196,7 @@ function StaffDialog({
           setPin("")
           setActive(member?.isActive ?? true)
           setRoles(member?.roles ?? ["kasir"])
-          setPreferred(initialPreferred(member, activeSlots))
+          setPreferred(preferredSlotIdsFromMember(member, activeSlots))
           setError(null)
           setConfirmDelete(false)
           setBusy(false)
@@ -218,7 +223,7 @@ function StaffDialog({
                 pin: member ? undefined : pin,
                 isActive: active,
                 roles,
-                preferredTemplateIds: storedPreferred(preferred, activeSlots),
+                preferredTemplateIds: preferredSlotIdsToStore(preferred, activeSlots),
               })
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err))
@@ -273,20 +278,27 @@ function StaffDialog({
                 Belum ada slot shift. Tambah di pengaturan outlet.
               </p>
             ) : (
-              <div className="flex flex-wrap gap-3">
-                {activeSlots.map((slot) => (
-                  <label key={slot.id} className="flex min-h-12 items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={preferred.includes(slot.id)}
-                      onCheckedChange={() => toggleShift(slot.id)}
-                    />
-                    {slot.name}
-                    <span className="text-muted-foreground">
-                      {formatMinutes(slot.startMinutes)}–{formatMinutes(slot.endMinutes)}
-                    </span>
-                  </label>
-                ))}
-              </div>
+              <>
+                <div className="flex flex-wrap gap-3">
+                  {activeSlots.map((slot) => (
+                    <label key={slot.id} className="flex min-h-12 items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={preferred.includes(slot.id)}
+                        onCheckedChange={(checked) =>
+                          setShiftChecked(slot.id, checked === true)
+                        }
+                      />
+                      {slot.name}
+                      <span className="text-muted-foreground">
+                        {formatMinutes(slot.startMinutes)}–{formatMinutes(slot.endMinutes)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Centang shift yang diutamakan. Pilihan ini tersimpan di profil.
+                </p>
+              </>
             )}
           </fieldset>
           <fieldset>
@@ -355,16 +367,4 @@ function preferredShiftLabel(member: StaffRecord, slots: SlotRecord[]): string {
     .map((id) => slots.find((slot) => slot.id === id)?.name)
     .filter((name): name is string => Boolean(name))
   return names.length > 0 ? ` · ${names.join("/")}` : ""
-}
-
-function initialPreferred(member: StaffRecord | undefined, slots: SlotRecord[]): string[] {
-  const saved = member?.preferredTemplateIds ?? []
-  if (saved.length > 0) return saved.filter((id) => slots.some((slot) => slot.id === id))
-  return slots.map((slot) => slot.id)
-}
-
-/** Semua atau tidak ada = tanpa preferensi (bisa isi shift mana saja). */
-function storedPreferred(selected: string[], slots: SlotRecord[]): string[] {
-  if (selected.length === 0 || selected.length === slots.length) return []
-  return slots.filter((slot) => selected.includes(slot.id)).map((slot) => slot.id)
 }

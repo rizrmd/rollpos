@@ -511,6 +511,26 @@ export function standingPreferredSlots(member: StaffRecord): PreferenceSlotRecor
   }))
 }
 
+/** Centang yang tampil di form: isian tersimpan, atau semua slot jika belum ada. */
+export function preferredSlotIdsFromMember(
+  member: StaffRecord | undefined,
+  slots: Pick<SlotRecord, "id">[]
+): string[] {
+  const known = new Set(slots.map((slot) => slot.id))
+  const saved = (member?.preferredTemplateIds ?? []).filter((id) => known.has(id))
+  if (saved.length > 0) return saved
+  return slots.map((slot) => slot.id)
+}
+
+/** Simpan persis yang dicentang. Jangan ubah “semua” menjadi kosong — itu yang membuat isian terlihat tidak tersimpan. */
+export function preferredSlotIdsToStore(
+  selected: string[],
+  slots: Pick<SlotRecord, "id">[]
+): string[] {
+  const picked = new Set(selected.filter(Boolean))
+  return slots.map((slot) => slot.id).filter((id) => picked.has(id))
+}
+
 export function effectivePreferenceSlots(
   member: StaffRecord,
   preferences: PreferenceRecord[],
