@@ -19,8 +19,12 @@ import {
   formatOccurredClock,
   minutesFromOccurred,
 } from "@/lib/format"
-import { groupClockCards } from "@/lib/on-duty"
-import { deviceId, formatMinutes, todayJakarta } from "@/lib/time"
+import {
+  describeClockCard,
+  groupClockCards,
+  openClockInAt,
+} from "@/lib/on-duty"
+import { deviceId } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import type {
   AssignmentRecord,
@@ -58,7 +62,7 @@ export function ClockScreen({
   const cards = useMemo(
     () =>
       active.map((member) =>
-        describeMember({
+        describeClockCard({
           member,
           today,
           slots,
@@ -96,8 +100,18 @@ export function ClockScreen({
                   "bg-card hover:bg-muted"
               )}
             >
-              <span className="text-lg font-medium">
-                {card.member.nickname || card.member.name}
+              <span className="flex w-full items-baseline justify-between gap-3">
+                <span className="text-lg font-medium">
+                  {card.member.nickname || card.member.name}
+                </span>
+                {card.clockInAt != null ? (
+                  <time
+                    dateTime={new Date(card.clockInAt).toISOString()}
+                    className="text-2xl font-semibold tabular-nums tracking-tight"
+                  >
+                    {formatOccurredClock(card.clockInAt)}
+                  </time>
+                ) : null}
               </span>
               <span
                 className={cn(
@@ -251,92 +265,6 @@ export function ClockScreen({
   )
 }
 
-function describeMember({
-  member,
-  today,
-  slots,
-  assignments,
-  attendance,
-  offs,
-  onDuty,
-}: {
-  member: StaffRecord
-  today: string
-  slots: SlotRecord[]
-  assignments: AssignmentRecord[]
-  attendance: AttendanceEventRecord[]
-  offs: DayOffRecord[]
-  onDuty: boolean
-}): {
-  member: StaffRecord
-  kind: "off" | "on_duty" | "scheduled" | "unscheduled"
-  line: string
-  action: string
-} {
-  if (offs.some((row) => row.staffId === member.id && row.workDate === today)) {
-    return {
-      member,
-      kind: "off",
-      line: "Libur resmi hari ini",
-      action: "Tidak bisa clock-in",
-    }
-  }
-
-  const assignment = assignments.find(
-    (row) =>
-      row.staffId === member.id &&
-      row.workDate === today &&
-      row.status !== "cancelled"
-  )
-  const slot = assignment
-    ? slots.find((item) => item.id === assignment.templateId)
-    : undefined
-  const clockIn = lastToday(attendance, member.id, "clock_in", today)
-
-  if (onDuty) {
-    return {
-      member,
-      kind: "on_duty",
-      line: clockIn
-        ? `Masuk sejak ${formatOccurredClock(clockIn.occurredAt)}`
-        : "Sedang masuk",
-      action: "Ketuk untuk pulang",
-    }
-  }
-
-  if (assignment && slot) {
-    return {
-      member,
-      kind: "scheduled",
-      line: `${slot.name} ${formatMinutes(assignment.startMinutes)}–${formatMinutes(assignment.endMinutes)}`,
-      action: "Ketuk untuk masuk",
-    }
-  }
-
-  return {
-    member,
-    kind: "unscheduled",
-    line: "Tidak ada di jadwal hari ini",
-    action: "Ketuk untuk masuk",
-  }
-}
-
-function lastToday(
-  attendance: AttendanceEventRecord[],
-  staffId: string,
-  type: "clock_in" | "clock_out",
-  today: string
-): AttendanceEventRecord | undefined {
-  return [...attendance]
-    .reverse()
-    .find(
-      (event) =>
-        event.staffId === staffId &&
-        event.type === type &&
-        todayJakarta(new Date(event.occurredAt)) === today
-    )
-}
-
 function pinDescription(
   member: StaffRecord,
   onDuty: boolean,
@@ -345,12 +273,10 @@ function pinDescription(
   if (!onDuty) {
     return `Masukkan PIN ${member.nickname}.`
   }
-  const clockIn = [...attendance]
-    .reverse()
-    .find((event) => event.staffId === member.id && event.type === "clock_in")
-  if (!clockIn) {
+  const clockInAt = openClockInAt(attendance, member.id)
+  if (clockInAt == null) {
     return `Masukkan PIN untuk pulang.`
   }
   const now = Date.now()
-  return `Masuk ${formatOccurredClock(clockIn.occurredAt)} · sekarang ${formatClockFromMinutes(minutesFromOccurred(now))} (${formatDuration(clockIn.occurredAt, now)}). Masukkan PIN untuk pulang.`
+  return `Masuk ${formatOccurredClock(clockInAt)} · sekarang ${formatClockFromMinutes(minutesFromOccurred(now))} (${formatDuration(clockInAt, now)}). Masukkan PIN untuk pulang.`
 }

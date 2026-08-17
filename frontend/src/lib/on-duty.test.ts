@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  describeClockCard,
   groupClockCards,
   listOnDuty,
   onDutyLabel,
   openClockInAt,
 } from "@/lib/on-duty"
+import { formatOccurredClock } from "@/lib/format"
 import type {
   AssignmentRecord,
   AttendanceEventRecord,
@@ -150,5 +152,48 @@ describe("onDutyLabel", () => {
     expect(onDutyLabel(0)).toBe("Belum ada yang masuk")
     expect(onDutyLabel(1)).toBe("1 orang sedang masuk")
     expect(onDutyLabel(3)).toBe("3 orang sedang masuk")
+  })
+})
+
+describe("describeClockCard", () => {
+  const ayu = person("ayu", "Ayu")
+  const jakarta = (isoUtc: string) => Date.parse(isoUtc)
+
+  test("card sedang masuk menampilkan jam clock-in, termasuk sesi semalam", () => {
+    const clockInAt = jakarta("2026-08-16T16:00:00.000Z") // 23.00 WIB
+    const card = describeClockCard({
+      member: ayu,
+      today: "2026-08-17",
+      slots: [pagi],
+      assignments: [assignment("ayu")],
+      attendance: [punch("ayu", "clock_in", clockInAt)],
+      offs: [],
+      onDuty: true,
+    })
+    expect(card.kind).toBe("on_duty")
+    expect(card.clockInAt).toBe(clockInAt)
+    expect(formatOccurredClock(card.clockInAt ?? 0)).toBe("23.00")
+    expect(card.line).toBe("Pagi 07:00–15:00")
+    expect(card.action).toBe("Ketuk untuk pulang")
+  })
+
+  test("setelah pulang, card menampilkan jam masuk dan pulang", () => {
+    const clockInAt = jakarta("2026-08-17T01:15:00.000Z") // 08.15 WIB
+    const clockOutAt = jakarta("2026-08-17T10:05:00.000Z") // 17.05 WIB
+    const card = describeClockCard({
+      member: ayu,
+      today: "2026-08-17",
+      slots: [pagi],
+      assignments: [assignment("ayu")],
+      attendance: [
+        punch("ayu", "clock_in", clockInAt),
+        punch("ayu", "clock_out", clockOutAt),
+      ],
+      offs: [],
+      onDuty: false,
+    })
+    expect(card.kind).toBe("scheduled")
+    expect(card.clockInAt).toBeNull()
+    expect(card.line).toBe("Masuk 08.15 · pulang 17.05")
   })
 })

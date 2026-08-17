@@ -1,3 +1,5 @@
+import { formatOccurredClock } from "@/lib/format"
+import { formatMinutes, todayJakarta } from "@/lib/time"
 import type {
   AssignmentRecord,
   AttendanceEventRecord,
@@ -99,4 +101,112 @@ export function onDutyLabel(count: number): string {
   if (count === 0) return "Belum ada yang masuk"
   if (count === 1) return "1 orang sedang masuk"
   return `${count} orang sedang masuk`
+}
+
+export type ClockCardView = {
+  member: StaffRecord
+  kind: ClockCardKind
+  line: string
+  action: string
+  clockInAt: number | null
+}
+
+function lastEventToday(
+  attendance: readonly AttendanceEventRecord[],
+  staffId: string,
+  type: "clock_in" | "clock_out",
+  today: string
+): AttendanceEventRecord | undefined {
+  return attendance
+    .filter(
+      (event) =>
+        event.staffId === staffId &&
+        event.type === type &&
+        todayJakarta(new Date(event.occurredAt)) === today
+    )
+    .sort((left, right) => right.occurredAt - left.occurredAt)[0]
+}
+
+function shiftLine(
+  assignment: AssignmentRecord | undefined,
+  slot: SlotRecord | undefined
+): string | null {
+  if (!assignment || !slot) return null
+  return `${slot.name} ${formatMinutes(assignment.startMinutes)}–${formatMinutes(assignment.endMinutes)}`
+}
+
+export function describeClockCard({
+  member,
+  today,
+  slots,
+  assignments,
+  attendance,
+  offs,
+  onDuty,
+}: {
+  member: StaffRecord
+  today: string
+  slots: readonly SlotRecord[]
+  assignments: readonly AssignmentRecord[]
+  attendance: readonly AttendanceEventRecord[]
+  offs: readonly { staffId: string; workDate: string }[]
+  onDuty: boolean
+}): ClockCardView {
+  if (offs.some((row) => row.staffId === member.id && row.workDate === today)) {
+    return {
+      member,
+      kind: "off",
+      line: "Libur resmi hari ini",
+      action: "Tidak bisa clock-in",
+      clockInAt: null,
+    }
+  }
+
+  const assignment = assignments.find(
+    (row) =>
+      row.staffId === member.id &&
+      row.workDate === today &&
+      row.status !== "cancelled"
+  )
+  const slot = assignment
+    ? slots.find((item) => item.id === assignment.templateId)
+    : undefined
+  const openAt = openClockInAt(attendance, member.id)
+  const clockInToday = lastEventToday(attendance, member.id, "clock_in", today)
+  const clockOutToday = lastEventToday(attendance, member.id, "clock_out", today)
+  const finishedToday =
+    clockInToday &&
+    clockOutToday &&
+    clockOutToday.occurredAt >= clockInToday.occurredAt
+      ? `Masuk ${formatOccurredClock(clockInToday.occurredAt)} · pulang ${formatOccurredClock(clockOutToday.occurredAt)}`
+      : null
+  const scheduled = shiftLine(assignment, slot)
+
+  if (onDuty) {
+    return {
+      member,
+      kind: "on_duty",
+      clockInAt: openAt ?? clockInToday?.occurredAt ?? null,
+      line: scheduled ?? "Tidak di jadwal",
+      action: "Ketuk untuk pulang",
+    }
+  }
+
+  if (assignment && slot) {
+    return {
+      member,
+      kind: "scheduled",
+      clockInAt: null,
+      line: finishedToday ?? scheduled,
+      action: "Ketuk untuk masuk",
+    }
+  }
+
+  return {
+    member,
+    kind: "unscheduled",
+    clockInAt: null,
+    line: finishedToday ?? "Tidak ada di jadwal hari ini",
+    action: "Ketuk untuk masuk",
+  }
 }
