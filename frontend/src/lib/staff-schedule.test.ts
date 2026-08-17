@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { createRollposDatabase } from "@/db/database"
 import { seedCatalogIfEmpty } from "@/db/catalog"
-import { SEED_DEFAULTS, seedStaffingIfEmpty } from "@/db/seed"
+import { SEED_DEFAULTS, applyStaffingSeed, seedStaffingIfEmpty } from "@/db/seed"
 import {
   loadAssignments,
   loadAttendance,
@@ -369,6 +369,35 @@ describe("staffing persist + schedule", () => {
     expect(dimas.isActive).toBe(true)
     expect(dimas.roles.sort()).toEqual(["kasir", "manager"])
     expect(people.filter((row) => row.name === "Ayu")).toHaveLength(1)
+  })
+
+  test("seed tidak menimpa role, aktif, dan preferensi Dimas yang sudah disimpan", async () => {
+    const database = await freshDb()
+    await seedStaffingIfEmpty(database)
+    const people = await loadStaff(database)
+    const owner = people.find((row) => isOwner(row.roles))
+    const dimas = people.find((row) => row.nickname === "Dimas")
+    if (!owner || !dimas) throw new Error("seed missing owner or Dimas")
+
+    const pagi = (await loadSlots(database)).find((slot) => slot.name === "Pagi")
+    if (!pagi) throw new Error("seed missing Pagi")
+
+    await upsertStaff(database, owner, {
+      id: dimas.id,
+      name: dimas.name,
+      nickname: dimas.nickname,
+      isActive: false,
+      roles: ["barista"],
+      preferredTemplateIds: [pagi.id],
+    })
+
+    await applyStaffingSeed(database)
+    const after = await loadStaff(database)
+    const again = after.find((row) => row.id === dimas.id)
+    expect(again?.isActive).toBe(false)
+    expect(again?.roles).toEqual(["barista"])
+    expect(again?.preferredTemplateIds).toEqual([pagi.id])
+    expect(after.filter((row) => row.name === "Ayu")).toHaveLength(1)
   })
 
   test("seed staff PIN is 000000 and existing staff get PIN backfill", async () => {

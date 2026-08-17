@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { staffFromStore } from "@/db/snapshot"
 import { softDeleteStaff, upsertStaff } from "@/db/staffing-write"
 import { capitalizePersonName } from "@/lib/format"
 import { canGrantLeadership } from "@/lib/permissions"
@@ -39,8 +40,14 @@ export function StaffScreen({
   slots: SlotRecord[]
 }) {
   const [query, setQuery] = useState("")
-  const [editing, setEditing] = useState<StaffRecord | "new" | null>(null)
+  const [editingId, setEditingId] = useState<string | "new" | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const liveStaff = staffFromStore(database)
+  const editingMember =
+    editingId && editingId !== "new"
+      ? (liveStaff.find((member) => member.id === editingId) ??
+        staff.find((member) => member.id === editingId))
+      : undefined
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -68,7 +75,7 @@ export function StaffScreen({
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Cari nama atau role"
         />
-        <Button type="button" size="touch" onClick={() => setEditing("new")}>
+        <Button type="button" size="touch" onClick={() => setEditingId("new")}>
           Tambah
         </Button>
       </div>
@@ -78,7 +85,7 @@ export function StaffScreen({
           <li key={member.id}>
             <button
               type="button"
-              onClick={() => setEditing(member)}
+              onClick={() => setEditingId(member.id)}
               className="flex min-h-16 w-full items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               <span>
@@ -96,23 +103,23 @@ export function StaffScreen({
       </ul>
 
       <StaffDialog
-        key={editing === "new" ? "new" : editing?.id ?? "closed"}
-        open={editing !== null}
-        member={editing === "new" ? undefined : (editing ?? undefined)}
+        key={editingId === "new" ? "new" : editingId ?? "closed"}
+        open={editingId !== null && (editingId === "new" || Boolean(editingMember))}
+        member={editingId === "new" ? undefined : editingMember}
         actor={actor}
         slots={slots}
         onOpenChange={(open) => {
-          if (!open) setEditing(null)
+          if (!open) setEditingId(null)
         }}
         onSave={async (input) => {
           await upsertStaff(database, actor, input)
           setNotice(`${input.name} tersimpan.`)
-          setEditing(null)
+          setEditingId(null)
         }}
         onDelete={async (member) => {
           await softDeleteStaff(database, actor, member.id)
           setNotice(`${member.name} dihapus.`)
-          setEditing(null)
+          setEditingId(null)
         }}
       />
     </div>

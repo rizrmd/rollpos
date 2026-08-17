@@ -169,8 +169,7 @@ export async function loadSettings(
   return row ? toSettings(row) : null
 }
 
-export async function loadStaff(database: Database): Promise<StaffRecord[]> {
-  await database.ready
+export function staffFromStore(database: Database): StaffRecord[] {
   const people = listRows(database, TABLES.staffMembers)
   const roles = listRows(database, TABLES.staffMemberRoles)
   const preferred = listRows(database, TABLES.staffPreferredSlots)
@@ -192,6 +191,11 @@ export async function loadStaff(database: Database): Promise<StaffRecord[]> {
       .map((row) => cellStr(row, "templateId"))
       .filter(Boolean),
   }))
+}
+
+export async function loadStaff(database: Database): Promise<StaffRecord[]> {
+  await database.ready
+  return staffFromStore(database)
 }
 
 export async function loadSlots(database: Database): Promise<SlotRecord[]> {

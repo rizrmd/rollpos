@@ -1,6 +1,5 @@
 import {
   addRow,
-  cellFlag,
   cellStr,
   listRows,
   transact,
@@ -70,7 +69,7 @@ export function seedStaffingIfEmpty(database: Database): Promise<void> {
   const key = database.store
   let pending = staffingSeed.get(key)
   if (!pending) {
-    pending = seedOnce(database)
+    pending = applyStaffingSeed(database)
     staffingSeed.set(key, pending)
   }
   return pending
@@ -125,29 +124,8 @@ function insertSeedPerson(
   }
 }
 
-function grantMissingRoles(
-  database: Database,
-  staffId: string,
-  roles: readonly StaffRole[],
-  now: number
-): void {
-  const have = new Set(
-    listRows(database, TABLES.staffMemberRoles)
-      .filter((row) => cellStr(row, "staffId") === staffId)
-      .map((row) => cellStr(row, "role"))
-  )
-  for (const role of roles) {
-    if (!have.has(role)) {
-      addRow(database, TABLES.staffMemberRoles, {
-        staffId,
-        role,
-        createdAt: now,
-      })
-    }
-  }
-}
-
-async function seedOnce(database: Database): Promise<void> {
+/** Seed sekali per store. Tes yang mensimulasikan reload memakai `applyStaffingSeed`. */
+export async function applyStaffingSeed(database: Database): Promise<void> {
   await seedCatalogIfEmpty(database)
   await database.ready
 
@@ -211,27 +189,13 @@ async function backfillMissingSeedStaff(
   const missing = SEED_DEFAULTS.staff.filter(
     (person) => !existing.some((row) => matchesSeedPerson(row, person))
   )
+  if (missing.length === 0) return
   const hashedMissing = await hashSeedPeople(missing)
-  const dimas = SEED_DEFAULTS.staff.find((person) => person.nickname === "Dimas")
 
   transact(database, () => {
     for (const person of hashedMissing) {
       insertSeedPerson(database, person, now)
     }
-
-    if (!dimas) return
-    const dimasRow =
-      listRows(database, TABLES.staffMembers).find((row) =>
-        matchesSeedPerson(row, dimas)
-      ) ?? null
-    if (!dimasRow) return
-    if (!cellFlag(dimasRow, "isActive")) {
-      updateRow(database, TABLES.staffMembers, dimasRow.id, {
-        isActive: true,
-        updatedAt: now,
-      })
-    }
-    grantMissingRoles(database, dimasRow.id, dimas.roles, now)
   })
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useDatabase } from "@/db/database-provider"
 import {
@@ -44,7 +44,10 @@ export function useStaffing() {
     Awaited<ReturnType<typeof loadAttendance>>
   >([])
 
+  const refreshSeq = useRef(0)
+
   const refresh = useCallback(async () => {
+    const gen = ++refreshSeq.current
     try {
       await database.ready
       const [
@@ -68,27 +71,30 @@ export function useStaffing() {
         loadPreferences(database),
         loadAttendance(database),
       ])
-      const weekStartsOn = nextSettings?.weekStartsOn ?? 1
-      let assignments = nextAssignments
-      const filled = await ensureFairDefaultWeeks(
-        database,
-        defaultScheduleWeeks(weekStartsOn)
-      )
-      if (filled > 0) {
-        assignments = await loadAssignments(database)
-      }
+      if (gen !== refreshSeq.current) return
       setSettings(nextSettings)
       setStaff(nextStaff)
       setSlots(nextSlots)
       setRequirements(nextRequirements)
-      setAssignments(assignments)
+      setAssignments(nextAssignments)
       setSuggestions(nextSuggestions)
       setOffs(nextOffs)
       setPreferences(nextPreferences)
       setAttendance(nextAttendance)
       setReady(true)
       setError(null)
+
+      const weekStartsOn = nextSettings?.weekStartsOn ?? 1
+      const filled = await ensureFairDefaultWeeks(
+        database,
+        defaultScheduleWeeks(weekStartsOn)
+      )
+      if (gen !== refreshSeq.current) return
+      if (filled > 0) {
+        setAssignments(await loadAssignments(database))
+      }
     } catch (err) {
+      if (gen !== refreshSeq.current) return
       setError(err instanceof Error ? err.message : String(err))
     }
   }, [database])
