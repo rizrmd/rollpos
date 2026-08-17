@@ -146,7 +146,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         id: "prefs",
-        label: "Shift & libur",
+        label: "Shift Kerja",
         hint: "Kalender sebulan; ketuk tanggal untuk lihat siapa kerja",
         icon: SlidersHorizontal,
         ready: true,

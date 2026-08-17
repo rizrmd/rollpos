@@ -58,7 +58,7 @@ describe("visibleNavGroups", () => {
     }
   })
 
-  test("Karyawan menampilkan Absensi, Shift & libur, dan Ubah PIN langsung", () => {
+  test("Karyawan menampilkan Absensi, Shift Kerja, dan Ubah PIN langsung", () => {
     const karyawan = visibleNavGroups(null).find((group) => group.id === "tim")
     expect(karyawan).toBeDefined()
     expect(karyawan!.title).toBe("Karyawan")
@@ -69,7 +69,7 @@ describe("visibleNavGroups", () => {
     const ids = flattenNavEntries(karyawan!.items).map((item) => item.id)
     const labels = flattenNavEntries(karyawan!.items).map((item) => item.label)
     expect(ids).toEqual(["clock", "prefs", "pin"])
-    expect(labels).toEqual(["Absensi", "Shift & libur", "Ubah PIN"])
+    expect(labels).toEqual(["Absensi", "Shift Kerja", "Ubah PIN"])
     expect(labels).not.toContain("Masuk")
     expect(labels).not.toContain("Hari ini")
     expect(labels).not.toContain("Preferensi")
@@ -155,6 +155,7 @@ describe("path per screen", () => {
   test("judul tab browser memakai label screen", () => {
     expect(pageTitle("menu")).toBe("Roll n Brew")
     expect(pageTitle("clock")).toBe("Absensi · Roll n Brew")
+    expect(pageTitle("prefs")).toBe("Shift Kerja · Roll n Brew")
     expect(pageTitle("week")).toBe("Jadwal · Roll n Brew")
     expect(pageTitle("staff")).toBe("Staff · Roll n Brew")
   })
