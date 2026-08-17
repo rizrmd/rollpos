@@ -12,9 +12,9 @@ import {
 import {
   dayRoster,
   OFF_SOURCE_LABEL,
-  staffInitials,
   summarizeTeamMonth,
   teamMonthDays,
+  visibleStaffInitials,
   workingInitials,
   type TeamDayStatus,
 } from "@/lib/staff-prefs"
@@ -57,13 +57,16 @@ export function MonthApprovals({
   const days = teamMonthDays({ cells, offs, suggestions })
   const summary = summarizeTeamMonth(days)
   const headers = weekdayHeaders(weekStartsOn)
+  const visibleIds = new Set(staff.map((member) => member.id))
   const approvedRows = days
     .filter((day) => day.inMonth && day.approved.length > 0)
     .flatMap((day) =>
-      day.approved.map((row) => ({
-        date: day.date,
-        ...row,
-      }))
+      day.approved
+        .filter((row) => visibleIds.has(row.staffId))
+        .map((row) => ({
+          date: day.date,
+          ...row,
+        }))
     )
   const [dragOrigin, setDragOrigin] = useState<string | null>(null)
   const [dragHover, setDragHover] = useState<string | null>(null)
@@ -241,17 +244,14 @@ function MonthDayCell({
   onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void
 }) {
   const isToday = day.date === today
-  const tone =
-    day.approved.length > 0
-      ? "border-emerald-700/20 bg-emerald-50 dark:bg-emerald-950/30"
-      : day.pending.length > 0
-        ? "border-amber-700/25 bg-amber-50 dark:bg-amber-950/20"
-        : ""
-  const offInitials = day.approved.map((row) => {
+  const offInitials = visibleStaffInitials(
+    staff,
+    day.approved.map((row) => row.staffId)
+  )
+  const pendingNames = day.pending.flatMap((row) => {
     const member = staff.find((item) => item.id === row.staffId)
-    return staffInitials(member?.nickname || member?.name || row.staffId)
+    return member ? [member.nickname || member.name] : []
   })
-  const pendingNames = day.pending.map((row) => nick(staff, row.staffId))
   const body = (
     <>
       <span className="text-xs font-medium">{Number(day.date.slice(8))}</span>
@@ -283,7 +283,7 @@ function MonthDayCell({
         className={cn(
           "flex h-full min-h-[4.5rem] w-full flex-col gap-0.5 p-1.5 text-left",
           "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-          day.inMonth ? tone : "bg-muted/20 text-muted-foreground/60",
+          day.inMonth ? "" : "bg-muted/20 text-muted-foreground/60",
           isToday ? "ring-2 ring-ring ring-inset" : "",
           selected
             ? "bg-primary/15 ring-2 ring-primary ring-inset dark:bg-primary/25"
@@ -299,17 +299,13 @@ function MonthDayCell({
     <div
       className={cn(
         "flex h-full min-h-[4.5rem] flex-col gap-0.5 p-1.5",
-        day.inMonth ? tone : "bg-muted/20 text-muted-foreground/60",
+        day.inMonth ? "" : "bg-muted/20 text-muted-foreground/60",
         isToday ? "ring-2 ring-ring ring-inset" : ""
       )}
     >
       {body}
     </div>
   )
-}
-
-function nick(staff: StaffRecord[], id: string): string {
-  return staff.find((item) => item.id === id)?.nickname ?? id
 }
 
 function nameOf(staff: StaffRecord[], id: string): string {

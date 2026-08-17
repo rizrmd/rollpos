@@ -19,6 +19,7 @@ import {
   summarizePrefsMonth,
   summarizeTeamMonth,
   teamMonthDays,
+  visibleStaffInitials,
   workingInitials,
 } from "@/lib/staff-prefs"
 import { addMonths, monthGrid, monthStartOf } from "@/lib/time"
@@ -274,6 +275,24 @@ describe("staffInitials", () => {
     expect(staffInitials("Dimas")).toBe("DI")
     expect(staffInitials("Nia Putri")).toBe("NP")
     expect(staffInitials("")).toBe("?")
+  })
+})
+
+describe("visibleStaffInitials", () => {
+  test("mengabaikan id TinyBase yang tidak ada di daftar staff", () => {
+    const staff = [
+      {
+        id: "nia",
+        name: "Nia",
+        nickname: "Nia",
+        pinHash: "",
+        pinSalt: "",
+        isActive: true,
+        outletId: "main",
+        roles: ["barista" as const],
+      },
+    ]
+    expect(visibleStaffInitials(staff, ["0", "nia", "1"])).toEqual(["NI"])
   })
 })
 

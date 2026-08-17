@@ -276,6 +276,23 @@ export function workingInitials(roster: DayRoster): string[] {
   return list
 }
 
+/** Inisial staff yang ada di daftar — jangan jatuh ke id TinyBase ("0", "1"). */
+export function visibleStaffInitials(
+  staff: StaffRecord[],
+  staffIds: string[]
+): string[] {
+  const list: string[] = []
+  const seen = new Set<string>()
+  for (const id of staffIds) {
+    if (seen.has(id)) continue
+    const member = staff.find((item) => item.id === id)
+    if (!member) continue
+    seen.add(id)
+    list.push(staffInitials(member.nickname || member.name))
+  }
+  return list
+}
+
 /** Label pendek di sel kalender — setiap tanggal punya status. */
 export function prefsDayCaption(day: PrefsDay, today: string): string {
   if (day.kind === "work") {
