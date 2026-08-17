@@ -108,7 +108,7 @@ export function PrefsScreen({
   const [pendingWho, setPendingWho] = useState<StaffRecord | null>(null)
   const [who, setWho] = useState<StaffRecord | null>(null)
   const [monthCursor, setMonthCursor] = useState(() => monthStartOf(today))
-  const [picked, setPicked] = useState<PrefsDay | null>(null)
+  const [pickedDate, setPickedDate] = useState<string | null>(null)
   const [note, setNote] = useState("")
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -119,7 +119,7 @@ export function PrefsScreen({
     [monthCursor, weekStartsOn]
   )
   const proposed = useMemo(() => {
-    if (!settings || !who) {
+    if (!settings) {
       return { assignments: [], offs: [] }
     }
     const weekStarts = [
@@ -155,7 +155,6 @@ export function PrefsScreen({
     return { assignments: nextAssignments, offs: nextOffs }
   }, [
     settings,
-    who,
     cells,
     weekStartsOn,
     assignments,
@@ -168,7 +167,9 @@ export function PrefsScreen({
     preferences,
   ])
   const days = useMemo(() => {
-    if (!who) return []
+    if (!who) {
+      return cells.map((cell) => publicPrefsDay(cell))
+    }
     return prefsDaysForMonth({
       cells,
       staffId: who.id,
@@ -189,6 +190,9 @@ export function PrefsScreen({
   }
   const decided = decidedPrefsDays(days)
   const headers = weekdayHeaders(weekStartsOn)
+  const picked = pickedDate
+    ? (days.find((day) => day.date === pickedDate) ?? null)
+    : null
   const action = picked ? dayOffAction(picked, today) : "view"
   const roster = picked
     ? dayRoster({
@@ -246,20 +250,130 @@ export function PrefsScreen({
       <header className="flex flex-col gap-1">
         <h1 className="text-lg font-medium">Shift & libur</h1>
         <p className="text-sm text-muted-foreground">
-          Inisial di tanggal = siapa yang masuk. Ketuk untuk detail atau
-          minta libur.
+          Kalender langsung tampil. Inisial = siapa yang masuk. Ketuk tanggal
+          untuk detail atau minta libur.
         </p>
       </header>
 
       <LiveNotice message={notice} />
       <LiveNotice message={error} tone="error" />
 
+      <section className="flex flex-col gap-3" aria-labelledby="kalender-bulan">
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-touch"
+            aria-label="Bulan sebelumnya"
+            onClick={() => setMonthCursor((current) => addMonths(current, -1))}
+          >
+            <ChevronLeft className="size-5" />
+          </Button>
+          <div className="min-w-0 flex-1 text-center">
+            <h2 id="kalender-bulan" className="text-base font-medium">
+              {formatMonthYear(monthCursor)}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {who
+                ? `${who.nickname} · ${summary.approved} disetujui${
+                    summary.pending > 0 ? ` · ${summary.pending} menunggu` : ""
+                  }${
+                    summary.declined > 0 ? ` · ${summary.declined} ditolak` : ""
+                  }${
+                    summary.workDays > 0 ? ` · ${summary.workDays} hari kerja` : ""
+                  }`
+                : "Inisial = siapa yang masuk"}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-touch"
+            aria-label="Bulan berikutnya"
+            onClick={() => setMonthCursor((current) => addMonths(current, 1))}
+          >
+            <ChevronRight className="size-5" />
+          </Button>
+        </div>
+
+        {who ? (
+          <ol className="grid grid-cols-3 gap-2 text-xs sm:grid-cols-6">
+            <Legend swatch={KIND_CLASS.off}>Libur</Legend>
+            <Legend swatch={KIND_CLASS.pending}>Menunggu</Legend>
+            <Legend swatch={KIND_CLASS.declined}>Ditolak</Legend>
+            <Legend swatch={KIND_CLASS.offered}>Tawaran</Legend>
+            <Legend swatch={KIND_CLASS.work}>Kerja</Legend>
+            <Legend swatch={KIND_CLASS.fair_off}>Giliran</Legend>
+          </ol>
+        ) : null}
+
+        <div className="overflow-hidden border bg-card">
+          <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-xs font-medium text-muted-foreground">
+            {headers.map((label) => (
+              <div key={label} className="px-1 py-2">
+                {label}
+              </div>
+            ))}
+          </div>
+          <ol className="grid grid-cols-7">
+            {days.map((day) => {
+              const isToday = day.date === today
+              const initials = initialsByDate.get(day.date) ?? []
+              const status =
+                !who || day.kind === "work" || day.kind === "empty"
+                  ? ""
+                  : prefsDayCaption(day, today)
+              return (
+                <li
+                  key={day.date}
+                  className="min-h-16 border-t border-l first:border-l-0 [&:nth-child(7n+1)]:border-l-0"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickedDate(day.date)
+                      setNote(day.kind === "pending" ? day.note : "")
+                      setError(null)
+                    }}
+                    className={cn(
+                      "flex h-full min-h-16 w-full flex-col gap-0.5 p-1.5 text-left",
+                      "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                      day.inMonth
+                        ? who
+                          ? KIND_CLASS[day.kind]
+                          : initials.length > 0
+                            ? KIND_CLASS.work
+                            : KIND_CLASS.empty
+                        : "bg-muted/20 text-muted-foreground/60",
+                      isToday ? "ring-2 ring-ring ring-inset" : ""
+                    )}
+                  >
+                    <span className="text-xs font-medium">
+                      {Number(day.date.slice(8))}
+                    </span>
+                    {day.inMonth && initials.length > 0 ? (
+                      <span className="text-[0.65rem] leading-tight font-medium tracking-wide">
+                        {initials.join(" ")}
+                      </span>
+                    ) : null}
+                    {day.inMonth && status ? (
+                      <span className="text-[0.65rem] leading-tight">
+                        {status}
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+      </section>
+
       <Card>
         <CardHeader>
-          <CardTitle>Siapa yang melihat?</CardTitle>
+          <CardTitle>Minta libur sebagai</CardTitle>
           <CardDescription>
-            PIN membuka kalender orang itu. Ketuk tanggal untuk melihat siapa
-            yang kerja hari itu.
+            Kalender sudah tampil. PIN hanya untuk minta atau cabut libur.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -284,160 +398,54 @@ export function PrefsScreen({
         </CardContent>
       </Card>
 
-      {who ? (
-        <section className="flex flex-col gap-3" aria-labelledby="kalender-bulan">
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-touch"
-              aria-label="Bulan sebelumnya"
-              onClick={() => setMonthCursor((current) => addMonths(current, -1))}
-            >
-              <ChevronLeft className="size-5" />
-            </Button>
-            <div className="min-w-0 flex-1 text-center">
-              <h2 id="kalender-bulan" className="text-base font-medium">
-                {formatMonthYear(monthCursor)}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                {who.nickname} · {summary.approved} disetujui
-                {summary.pending > 0 ? ` · ${summary.pending} menunggu` : ""}
-                {summary.declined > 0 ? ` · ${summary.declined} ditolak` : ""}
-                {summary.workDays > 0 ? ` · ${summary.workDays} hari kerja` : ""}
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-touch"
-              aria-label="Bulan berikutnya"
-              onClick={() => setMonthCursor((current) => addMonths(current, 1))}
-            >
-              <ChevronRight className="size-5" />
-            </Button>
-          </div>
-
-          <ol className="grid grid-cols-3 gap-2 text-xs sm:grid-cols-6">
-            <Legend swatch={KIND_CLASS.off}>Libur</Legend>
-            <Legend swatch={KIND_CLASS.pending}>Menunggu</Legend>
-            <Legend swatch={KIND_CLASS.declined}>Ditolak</Legend>
-            <Legend swatch={KIND_CLASS.offered}>Tawaran</Legend>
-            <Legend swatch={KIND_CLASS.work}>Kerja</Legend>
-            <Legend swatch={KIND_CLASS.fair_off}>Giliran</Legend>
-          </ol>
-
-          <div className="overflow-hidden border bg-card">
-            <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-xs font-medium text-muted-foreground">
-              {headers.map((label) => (
-                <div key={label} className="px-1 py-2">
-                  {label}
-                </div>
-              ))}
-            </div>
-            <ol className="grid grid-cols-7">
-              {days.map((day) => {
-                const isToday = day.date === today
-                const initials = initialsByDate.get(day.date) ?? []
-                const status =
-                  day.kind === "work" || day.kind === "empty"
-                    ? ""
-                    : prefsDayCaption(day, today)
-                return (
-                  <li
-                    key={day.date}
-                    className="min-h-16 border-t border-l first:border-l-0 [&:nth-child(7n+1)]:border-l-0"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPicked(day)
-                        setNote(day.kind === "pending" ? day.note : "")
-                        setError(null)
-                      }}
-                      className={cn(
-                        "flex h-full min-h-16 w-full flex-col gap-0.5 p-1.5 text-left",
-                        "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                        day.inMonth
-                          ? KIND_CLASS[day.kind]
-                          : "bg-muted/20 text-muted-foreground/60",
-                        isToday ? "ring-2 ring-ring ring-inset" : ""
-                      )}
-                    >
-                      <span className="text-xs font-medium">
-                        {Number(day.date.slice(8))}
-                      </span>
-                      {day.inMonth && initials.length > 0 ? (
-                        <span className="text-[0.65rem] leading-tight font-medium tracking-wide">
-                          {initials.join(" ")}
-                        </span>
-                      ) : null}
-                      {day.inMonth && status ? (
-                        <span className="text-[0.65rem] leading-tight">
-                          {status}
-                        </span>
-                      ) : null}
-                    </button>
-                  </li>
-                )
-              })}
-            </ol>
-          </div>
-
-          {decided.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Belum ada permintaan di {formatMonthYear(monthCursor)}. Ketuk
-              tanggal untuk melihat siapa kerja, atau minta libur.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {decided.map((day) => (
-                <li key={`${day.date}-${day.kind}`}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPicked(day)
-                      setNote(day.kind === "pending" ? day.note : "")
-                      setError(null)
-                    }}
-                    className="flex w-full items-start justify-between gap-3 border bg-card px-3 py-2 text-left"
-                  >
-                    <span>
-                      <span className="block font-medium">
-                        {formatIsoWeekday(day.date)}
-                      </span>
-                      <span className="block text-sm text-muted-foreground">
-                        {decisionDetail(day)}
-                      </span>
-                    </span>
-                    <Badge
-                      variant={
-                        day.kind === "off"
-                          ? "secondary"
-                          : day.kind === "declined"
-                            ? "destructive"
-                            : "outline"
-                      }
-                    >
-                      {day.label}
-                    </Badge>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ) : (
+      {who && decided.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Pilih nama, lalu masukkan PIN. Kalender sebulan baru muncul setelah
-          PIN benar.
+          Belum ada permintaan di {formatMonthYear(monthCursor)}. Ketuk tanggal
+          untuk melihat siapa kerja, atau minta libur.
         </p>
-      )}
+      ) : null}
+      {who && decided.length > 0 ? (
+        <ul className="flex flex-col gap-2">
+          {decided.map((day) => (
+            <li key={`${day.date}-${day.kind}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  setPickedDate(day.date)
+                  setNote(day.kind === "pending" ? day.note : "")
+                  setError(null)
+                }}
+                className="flex w-full items-start justify-between gap-3 border bg-card px-3 py-2 text-left"
+              >
+                <span>
+                  <span className="block font-medium">
+                    {formatIsoWeekday(day.date)}
+                  </span>
+                  <span className="block text-sm text-muted-foreground">
+                    {decisionDetail(day)}
+                  </span>
+                </span>
+                <Badge
+                  variant={
+                    day.kind === "off"
+                      ? "secondary"
+                      : day.kind === "declined"
+                        ? "destructive"
+                        : "outline"
+                  }
+                >
+                  {day.label}
+                </Badge>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       <Dialog
         open={Boolean(picked)}
         onOpenChange={(open) => {
-          if (!open) setPicked(null)
+          if (!open) setPickedDate(null)
         }}
       >
         <DialogContent className="sm:max-w-md" showCloseButton>
@@ -452,7 +460,30 @@ export function PrefsScreen({
           {roster ? (
             <DayRosterList roster={roster} viewerId={who?.id} />
           ) : null}
-          {picked && action === "request" ? (
+          {picked && !who && action === "request" ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-muted-foreground">
+                Pilih nama, lalu masukkan PIN untuk minta libur tanggal ini.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {activeStaff.map((member) => (
+                  <Button
+                    key={member.id}
+                    type="button"
+                    size="touch"
+                    variant="outline"
+                    onClick={() => {
+                      setError(null)
+                      setPendingWho(member)
+                    }}
+                  >
+                    {member.nickname}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {picked && who && action === "request" ? (
             <div className="flex flex-col gap-1">
               <Label htmlFor="off-note">Catatan (opsional)</Label>
               <Textarea
@@ -467,7 +498,7 @@ export function PrefsScreen({
               type="button"
               variant="outline"
               size="touch"
-              onClick={() => setPicked(null)}
+              onClick={() => setPickedDate(null)}
             >
               Tutup
             </Button>
@@ -484,7 +515,7 @@ export function PrefsScreen({
                       weekStartsOn,
                       note
                     )
-                    setPicked(null)
+                    setPickedDate(null)
                   }, `Diminta ${formatIsoWeekdayShort(picked.date)}. Menunggu manager.`)
                 }
               >
@@ -503,7 +534,7 @@ export function PrefsScreen({
                       who.id,
                       picked.suggestionId
                     )
-                    setPicked(null)
+                    setPickedDate(null)
                   }, `Permintaan ${formatIsoWeekdayShort(picked.date)} dicabut.`)
                 }
               >
@@ -517,7 +548,7 @@ export function PrefsScreen({
       <PinDialog
         open={Boolean(pendingWho)}
         title={pendingWho ? `PIN ${pendingWho.name}` : "PIN"}
-        description="Hanya pemilik PIN ini yang boleh melihat dan meminta libur."
+        description="Hanya pemilik PIN ini yang boleh minta atau cabut libur."
         onOpenChange={(open) => {
           if (!open) setPendingWho(null)
         }}
@@ -525,7 +556,6 @@ export function PrefsScreen({
           if (!pendingWho) return
           const member = await authenticateStaff(database, pendingWho.id, pin)
           setWho(member)
-          setMonthCursor(monthStartOf(today))
           setPendingWho(null)
         }}
       />
@@ -600,6 +630,20 @@ function Legend({
       <span>{children}</span>
     </li>
   )
+}
+
+function publicPrefsDay(cell: { date: string; inMonth: boolean }): PrefsDay {
+  return {
+    date: cell.date,
+    inMonth: cell.inMonth,
+    kind: "empty",
+    label: "",
+    note: "",
+    alternativeDate: "",
+    source: "",
+    slotNames: [],
+    suggestionId: "",
+  }
 }
 
 function decisionDetail(day: PrefsDay): string {
