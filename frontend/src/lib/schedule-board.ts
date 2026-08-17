@@ -9,6 +9,7 @@ import {
   type ProposedAssignment,
   type ProposedOff,
   type RoleRequirementRecord,
+  type ScheduleWarning,
   type SlotRecord,
   type StaffRecord,
   type SuggestionRecord,
