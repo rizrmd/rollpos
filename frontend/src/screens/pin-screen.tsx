@@ -57,27 +57,28 @@ export function PinScreen({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <LiveNotice message={notice} />
-          <fieldset className="flex flex-col gap-2">
-            <legend className="text-sm font-medium">Siapa yang mengubah PIN?</legend>
-            <div className="flex flex-wrap gap-2">
-              {activeStaff.map((member) => (
-                <Button
-                  key={member.id}
-                  type="button"
-                  size="touch"
-                  variant={who?.id === member.id ? "default" : "outline"}
-                  aria-pressed={who?.id === member.id}
-                  onClick={() => {
-                    setWho(member)
-                    resetForm()
-                    setNotice(null)
-                  }}
-                >
-                  {member.nickname || member.name}
-                </Button>
-              ))}
-            </div>
-          </fieldset>
+          <div
+            className="flex flex-wrap gap-2"
+            role="group"
+            aria-label="Pilih staff"
+          >
+            {activeStaff.map((member) => (
+              <Button
+                key={member.id}
+                type="button"
+                size="touch"
+                variant={who?.id === member.id ? "default" : "outline"}
+                aria-pressed={who?.id === member.id}
+                onClick={() => {
+                  setWho(member)
+                  resetForm()
+                  setNotice(null)
+                }}
+              >
+                {member.nickname || member.name}
+              </Button>
+            ))}
+          </div>
 
           {who ? (
             <form
