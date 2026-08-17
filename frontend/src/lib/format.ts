@@ -139,3 +139,11 @@ export function preferenceDeadlineLabel(
 ): string {
   return `${WEEKDAY_LONG[weekday] ?? "—"} pukul ${formatClockFromMinutes(minutes)}`
 }
+
+/** Kapitalisasi huruf pertama setiap kata nama orang. Spasi di ujung tetap. */
+export function capitalizePersonName(value: string): string {
+  return value.replace(
+    /(^|[\s\-'])(\S)/g,
+    (_match, sep: string, ch: string) => sep + ch.toLocaleUpperCase("id-ID")
+  )
+}

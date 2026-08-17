@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { upsertStaff } from "@/db/staffing-write"
+import { capitalizePersonName } from "@/lib/format"
 import { canGrantLeadership } from "@/lib/permissions"
 import { formatMinutes } from "@/lib/time"
 import {
@@ -188,10 +189,11 @@ function StaffDialog({
           onSubmit={async (event) => {
             event.preventDefault()
             try {
+              const personName = capitalizePersonName(name.trim())
               await onSave({
                 id: member?.id,
-                name,
-                nickname: name,
+                name: personName,
+                nickname: personName,
                 pin: pin || undefined,
                 isActive: active,
                 roles,
@@ -208,7 +210,8 @@ function StaffDialog({
               id="staff-name"
               className="min-h-12"
               value={name}
-              onChange={(event) => setName(event.target.value)}
+              onChange={(event) => setName(capitalizePersonName(event.target.value))}
+              autoCapitalize="words"
               required
             />
           </div>
