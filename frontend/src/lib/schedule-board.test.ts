@@ -12,6 +12,7 @@ import {
   summarizeRecommendation,
   unscheduledOnDate,
   weekRelation,
+  WORKLOAD_BAND_LABEL,
   workloadBand,
 } from "@/lib/schedule-board"
 import type {
@@ -262,6 +263,9 @@ describe("schedule board helpers", () => {
     expect(workloadBand(16, [16, 16, 16], 25)).toBe("pas")
     expect(workloadBand(8, [16, 16, 16], 25)).toBe("longgar")
     expect(workloadBand(24, [16, 16, 16], 25)).toBe("padat")
+    expect(WORKLOAD_BAND_LABEL.pas).toBe("")
+    expect(WORKLOAD_BAND_LABEL.padat).toBe("padat")
+    expect(WORKLOAD_BAND_LABEL.longgar).toBe("longgar")
   })
 
   test("replacementOptions hanya orang available, longgar di atas, padat di bawah", () => {

@@ -488,22 +488,24 @@ export function PrefsScreen({
                         {option.workDays} hari · {option.hours.toFixed(1)} jam
                       </span>
                     </span>
-                    <Badge
-                      variant={
-                        option.band === "padat"
-                          ? "destructive"
-                          : option.band === "longgar"
-                            ? "secondary"
-                            : "outline"
-                      }
-                      className={
-                        option.band === "longgar"
-                          ? "border-emerald-700/20 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
-                          : undefined
-                      }
-                    >
-                      {WORKLOAD_BAND_LABEL[option.band]}
-                    </Badge>
+                    {WORKLOAD_BAND_LABEL[option.band] ? (
+                      <Badge
+                        variant={
+                          option.band === "padat"
+                            ? "destructive"
+                            : option.band === "longgar"
+                              ? "secondary"
+                              : "outline"
+                        }
+                        className={
+                          option.band === "longgar"
+                            ? "border-emerald-700/20 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+                            : undefined
+                        }
+                      >
+                        {WORKLOAD_BAND_LABEL[option.band]}
+                      </Badge>
+                    ) : null}
                   </button>
                 </li>
               ))}

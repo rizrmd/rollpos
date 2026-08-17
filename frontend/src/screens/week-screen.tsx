@@ -304,6 +304,8 @@ export function WeekScreen({
 }
 
 function BandBadge({ band }: { band: WorkloadBand }) {
+  const label = WORKLOAD_BAND_LABEL[band]
+  if (!label) return null
   return (
     <Badge
       variant={
@@ -315,7 +317,7 @@ function BandBadge({ band }: { band: WorkloadBand }) {
           : undefined
       }
     >
-      {WORKLOAD_BAND_LABEL[band]}
+      {label}
     </Badge>
   )
 }

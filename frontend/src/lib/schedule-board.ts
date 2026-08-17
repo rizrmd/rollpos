@@ -295,7 +295,7 @@ export type WorkloadBand = "longgar" | "pas" | "padat"
 
 export const WORKLOAD_BAND_LABEL: Record<WorkloadBand, string> = {
   longgar: "longgar",
-  pas: "pas",
+  pas: "",
   padat: "padat",
 }
 
