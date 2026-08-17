@@ -308,4 +308,49 @@ describe("recommendSchedule fair default", () => {
     expect(weekHasActiveAssignments(rows, weekStart)).toBe(true)
     expect(weekHasActiveAssignments(rows, "2026-08-24")).toBe(false)
   })
+
+  test("tanggal terkunci tidak diisi ulang dan jadi beban saat generate sisa", () => {
+    const locked = "2026-08-17"
+    const pinned: AssignmentRecord[] = [
+      {
+        id: "pin-ayu",
+        staffId: "ayu",
+        templateId: "pagi",
+        workDate: locked,
+        startMinutes: 420,
+        endMinutes: 900,
+        dutyRole: "barista",
+        status: "published",
+        outletId: "main",
+        note: "ditetapkan manager",
+      },
+      {
+        id: "pin-dimas",
+        staffId: "dimas",
+        templateId: "sore",
+        workDate: locked,
+        startMinutes: 900,
+        endMinutes: 1320,
+        dutyRole: "kasir",
+        status: "published",
+        outletId: "main",
+        note: "ditetapkan manager",
+      },
+    ]
+    const result = run({
+      assignments: pinned,
+      lockedDates: [locked],
+    })
+    expect(result.assignments.some((row) => row.workDate === locked)).toBe(false)
+    const otherDays = result.assignments.filter((row) => row.workDate !== locked)
+    expect(otherDays.length).toBeGreaterThan(0)
+    expect(new Set(otherDays.map((row) => row.workDate)).has(locked)).toBe(false)
+    const ayuDays = new Set(
+      result.assignments
+        .filter((row) => row.staffId === "ayu")
+        .map((row) => row.workDate)
+    )
+    expect(ayuDays.has(locked)).toBe(false)
+    expect(result.offs.some((row) => row.workDate === locked)).toBe(false)
+  })
 })

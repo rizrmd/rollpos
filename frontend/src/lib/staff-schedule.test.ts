@@ -15,11 +15,13 @@ import {
 import {
   acceptSuggestion,
   addOfficialOff,
+  assignStaffToDates,
   authenticateStaff,
   changeStaffPin,
   clockPunch,
   defaultScheduleWeeks,
   ensureFairDefaultWeeks,
+  generateFairRemainingWeeks,
   hasOpenSession,
   removeOfficialOff,
   replaceAssignment,
@@ -32,6 +34,7 @@ import {
   upsertStaff,
   withdrawDayOffRequest,
 } from "@/db/staffing-write"
+import { MANAGER_ASSIGN_NOTE, SYSTEM_DRAFT_NOTE } from "@/lib/recommend"
 import { canEditSlots, canManage, isOwner } from "@/lib/permissions"
 import { recommendSchedule, wouldViolateConsecutive } from "@/lib/recommend"
 import {
@@ -1214,5 +1217,72 @@ describe("staffing persist + schedule", () => {
     expect(offs).toHaveLength(1)
     await removeOfficialOff(database, owner, offs[0]!.id)
     expect(await loadDayOffs(database, "2026-08-17")).toHaveLength(0)
+  })
+
+  test("manager menetapkan tanggal, sistem generate sisa secara adil", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const dimas = await createPerson(database, {
+      name: "Dimas",
+      roles: ["kasir", "manager"],
+      pin: "2222",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    for (const member of [owner, nia, dimas]) {
+      await upsertStaff(database, owner, {
+        id: member.id,
+        name: member.name,
+        nickname: member.nickname,
+        isActive: true,
+        roles: member.roles,
+        preferredTemplateIds: [slotId],
+      })
+    }
+    const pinned = ["2026-08-17", "2026-08-18"]
+    await assignStaffToDates(database, owner, {
+      dates: pinned,
+      workingStaffIds: [nia.id],
+      weekStartsOn: 1,
+    })
+    const afterPin = (await loadAssignments(database)).filter(
+      (row) => row.status !== "cancelled" && pinned.includes(row.workDate)
+    )
+    expect(afterPin.length).toBeGreaterThan(0)
+    expect(afterPin.every((row) => row.staffId === nia.id)).toBe(true)
+    expect(afterPin.every((row) => row.note === MANAGER_ASSIGN_NOTE)).toBe(true)
+    expect(afterPin.every((row) => row.templateId === slotId)).toBe(true)
+
+    expect(await generateFairRemainingWeeks(database, ["2026-08-17"])).toBeGreaterThan(
+      0
+    )
+    const after = (await loadAssignments(database)).filter(
+      (row) => row.status !== "cancelled"
+    )
+    const pinnedRows = after.filter((row) => pinned.includes(row.workDate))
+    expect(pinnedRows.every((row) => row.staffId === nia.id)).toBe(true)
+    expect(pinnedRows.every((row) => row.note === MANAGER_ASSIGN_NOTE)).toBe(true)
+    expect(
+      after.some(
+        (row) =>
+          !pinned.includes(row.workDate) && row.note === SYSTEM_DRAFT_NOTE
+      )
+    ).toBe(true)
+    expect(after.some((row) => row.staffId === dimas.id)).toBe(true)
+    expect(
+      after.some(
+        (row) => row.staffId === dimas.id && pinned.includes(row.workDate)
+      )
+    ).toBe(false)
   })
 })

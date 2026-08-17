@@ -165,7 +165,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "week",
         label: "Jadwal",
-        hint: "Papan minggu dan kalender approve sebulan",
+        hint: "Kalender sebulan; seret tanggal untuk tentukan siapa kerja",
         icon: CalendarRange,
         ready: true,
         access: "manage",

@@ -65,6 +65,15 @@ export function formatIsoWeekdayShort(iso: string): string {
   return `${WEEKDAY_SHORT[weekdayOf(iso)]} ${parseIso(iso).day}`
 }
 
+export function formatSelectedDates(dates: string[]): string {
+  const sorted = [...dates].sort()
+  if (sorted.length === 0) return ""
+  if (sorted.length === 1) return formatIsoWeekday(sorted[0] ?? "")
+  const first = sorted[0] ?? ""
+  const last = sorted[sorted.length - 1] ?? ""
+  return `${formatIsoWeekdayShort(first)} – ${formatIsoWeekdayShort(last)} · ${sorted.length} hari`
+}
+
 export function formatMonthYear(iso: string): string {
   const { year, month } = parseIso(iso)
   return `${MONTH_LONG[month - 1]} ${year}`

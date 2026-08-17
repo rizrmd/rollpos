@@ -23,10 +23,17 @@ import {
 import {
   hasConsecutiveShifts,
   historyWorkDatesFrom,
+  MANAGER_ASSIGN_NOTE,
   recommendSchedule,
   SYSTEM_DRAFT_NOTE,
   weekHasActiveAssignments,
 } from "@/lib/recommend"
+import { lockedWorkDates } from "@/lib/calendar-select"
+import {
+  allocatedSlotIds,
+  canBeAssignedToSlot,
+  isStaleSystemAssignment,
+} from "@/lib/staff-prefs"
 import { hashPin, newPinSalt, validatePin, verifyPin } from "@/lib/pin"
 import {
   assertCanChangeRoles,
@@ -48,7 +55,6 @@ import type {
   StaffRole,
   SuggestionStatus,
 } from "@/lib/types"
-import { canBeAssignedToSlot, isStaleSystemAssignment } from "@/lib/staff-prefs"
 import { DEFAULT_OUTLET_ID, isStaffDeleted } from "@/lib/types"
 import { nextWeekStart, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 
@@ -998,6 +1004,238 @@ export async function writeFairDefaultDraft(
     }
   })
   return true
+}
+
+/** Owner/manager menetapkan siapa kerja di tanggal yang dipilih. */
+export async function assignStaffToDates(
+  database: Database,
+  actor: StaffRecord,
+  input: {
+    dates: string[]
+    workingStaffIds: string[]
+    weekStartsOn: number
+  }
+): Promise<void> {
+  if (!canManage(actor.roles)) {
+    throw new Error("Lantai tidak boleh mengubah roster.")
+  }
+  if (input.dates.length === 0) {
+    throw new Error("Pilih minimal satu tanggal.")
+  }
+  await database.ready
+  const [people, slots, preferences] = await Promise.all([
+    loadStaff(database),
+    loadSlots(database),
+    loadPreferences(database),
+  ])
+  const activeSlots = slots
+    .filter((slot) => slot.isActive)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+  if (activeSlots.length === 0) {
+    throw new Error("Belum ada slot shift aktif.")
+  }
+  const working = new Set(input.workingStaffIds)
+  const now = Date.now()
+  transact(database, () => {
+    for (const date of input.dates) {
+      const weekStart = weekStartOn(date, input.weekStartsOn)
+      for (const row of listRows(database, TABLES.scheduledDaysOff)) {
+        if (
+          cellStr(row, "workDate") === date &&
+          working.has(cellStr(row, "staffId"))
+        ) {
+          deleteRow(database, TABLES.scheduledDaysOff, row.id)
+        }
+      }
+      for (const row of listRows(database, TABLES.shiftAssignments)) {
+        if (
+          cellStr(row, "workDate") !== date ||
+          cellStr(row, "status") === "cancelled"
+        ) {
+          continue
+        }
+        if (!working.has(cellStr(row, "staffId"))) {
+          updateRow(database, TABLES.shiftAssignments, row.id, {
+            status: "cancelled",
+            updatedAt: now,
+          })
+        }
+      }
+      for (const staffId of working) {
+        const member = people.find((item) => item.id === staffId)
+        if (!member || !member.isActive || isStaffDeleted(member)) continue
+        const allocated = allocatedSlotIds(member, preferences, weekStart)
+        const targets =
+          allocated.length > 0
+            ? activeSlots.filter((slot) => allocated.includes(slot.id))
+            : activeSlots.slice(0, 1)
+        const dutyRole = floorRolesOf(member.roles)[0] ?? ""
+        for (const slot of targets) {
+          const existing = listRows(database, TABLES.shiftAssignments).find(
+            (row) =>
+              cellStr(row, "staffId") === staffId &&
+              cellStr(row, "templateId") === slot.id &&
+              cellStr(row, "workDate") === date &&
+              cellStr(row, "status") !== "cancelled"
+          )
+          if (existing) {
+            updateRow(database, TABLES.shiftAssignments, existing.id, {
+              startMinutes: slot.startMinutes,
+              endMinutes: slot.endMinutes,
+              dutyRole,
+              status: "published",
+              note: MANAGER_ASSIGN_NOTE,
+              updatedAt: now,
+            })
+            continue
+          }
+          addRow(database, TABLES.shiftAssignments, {
+            staffId,
+            templateId: slot.id,
+            workDate: date,
+            startMinutes: slot.startMinutes,
+            endMinutes: slot.endMinutes,
+            dutyRole,
+            status: "published",
+            outletId: DEFAULT_OUTLET_ID,
+            note: MANAGER_ASSIGN_NOTE,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
+      }
+    }
+  })
+}
+
+/** Tulis usulan sistem hanya di tanggal yang belum dikunci manager. */
+export async function writeFairRemaining(
+  database: Database,
+  weekStart: string,
+  assignments: {
+    staffId: string
+    templateId: string
+    workDate: string
+    startMinutes: number
+    endMinutes: number
+    dutyRole: string
+  }[],
+  lockedDates: string[]
+): Promise<boolean> {
+  await database.ready
+  const weekEnd = weekDates(weekStart)[6] ?? weekStart
+  const locked = new Set(lockedDates)
+  const incoming = assignments.filter((row) => !locked.has(row.workDate))
+  const unlockedDays = weekDates(weekStart).filter((date) => !locked.has(date))
+  if (unlockedDays.length === 0) return false
+
+  const now = Date.now()
+  let changed = false
+  transact(database, () => {
+    for (const row of listRows(database, TABLES.shiftAssignments)) {
+      const workDate = cellStr(row, "workDate")
+      if (
+        workDate < weekStart ||
+        workDate > weekEnd ||
+        locked.has(workDate) ||
+        cellStr(row, "status") === "cancelled"
+      ) {
+        continue
+      }
+      updateRow(database, TABLES.shiftAssignments, row.id, {
+        status: "cancelled",
+        updatedAt: now,
+      })
+      changed = true
+    }
+    for (const item of incoming) {
+      if (item.workDate < weekStart || item.workDate > weekEnd) continue
+      addRow(database, TABLES.shiftAssignments, {
+        staffId: item.staffId,
+        templateId: item.templateId,
+        workDate: item.workDate,
+        startMinutes: item.startMinutes,
+        endMinutes: item.endMinutes,
+        dutyRole: item.dutyRole,
+        status: "published",
+        outletId: DEFAULT_OUTLET_ID,
+        note: SYSTEM_DRAFT_NOTE,
+        createdAt: now,
+        updatedAt: now,
+      })
+      changed = true
+    }
+  })
+  return changed
+}
+
+/** Isi tanggal yang belum ditetapkan manager, paling adil menurut beban yang sudah dikunci. */
+export async function generateFairRemainingWeeks(
+  database: Database,
+  weekStarts: string[]
+): Promise<number> {
+  await database.ready
+  const settings = await loadSettings(database, DEFAULT_OUTLET_ID)
+  if (!settings) return 0
+  const [staff, slots, requirements, loadedAssignments, suggestions, offs, preferences] =
+    await Promise.all([
+      loadStaff(database),
+      loadSlots(database),
+      loadRequirements(database),
+      loadAssignments(database),
+      loadSuggestions(database),
+      loadDayOffs(database),
+      loadPreferences(database),
+    ])
+  let assignments = loadedAssignments
+  const activeSlots = slots.filter((slot) => slot.isActive)
+  if (staff.filter((row) => row.isActive).length === 0 || activeSlots.length === 0) {
+    return 0
+  }
+
+  let wrote = 0
+  for (const weekStart of weekStarts) {
+    const weekEnd = weekDates(weekStart)[6] ?? weekStart
+    const weekRows = assignments.filter(
+      (row) =>
+        row.status !== "cancelled" &&
+        row.workDate >= weekStart &&
+        row.workDate <= weekEnd
+    )
+    const lockedDates = lockedWorkDates(weekRows)
+    if (lockedDates.length === 0 && weekHasActiveAssignments(assignments, weekStart)) {
+      continue
+    }
+    const history = historyWorkDatesFrom(assignments, weekStart)
+    const result = recommendSchedule({
+      settings,
+      staff,
+      slots: activeSlots,
+      requirements,
+      assignments,
+      offs,
+      suggestions,
+      preferences,
+      weekStart,
+      historyWorkDates: history,
+      lockedDates,
+    })
+    const ok =
+      lockedDates.length === 0
+        ? await writeFairDefaultDraft(database, weekStart, result.assignments)
+        : await writeFairRemaining(
+            database,
+            weekStart,
+            result.assignments,
+            lockedDates
+          )
+    if (ok) {
+      wrote += 1
+      assignments = await loadAssignments(database)
+    }
+  }
+  await promoteDraftsToPublished(database, weekStarts)
+  return wrote
 }
 
 /** Isi kerja minggu ini + depan jika masih kosong, lalu langsung terbitkan. Libur resmi tidak ditulis. */

@@ -21,6 +21,7 @@ import {
 } from "@/lib/types"
 
 export const SYSTEM_DRAFT_NOTE = "usulan sistem"
+export const MANAGER_ASSIGN_NOTE = "ditetapkan manager"
 
 export type RecommendInput = {
   settings: OutletSettingsRecord
@@ -33,6 +34,8 @@ export type RecommendInput = {
   preferences: PreferenceRecord[]
   weekStart: string
   historyWorkDates?: Record<string, string[]>
+  /** Tanggal yang sudah ditetapkan manager — tidak diisi ulang. */
+  lockedDates?: string[]
 }
 
 export type RecommendResult = {
@@ -260,6 +263,7 @@ function grantStaffSuggestions({
   maxConsecutive,
   preferences,
   weekStart,
+  lockedDates,
 }: {
   staff: StaffRecord[]
   slots: SlotRecord[]
@@ -271,6 +275,7 @@ function grantStaffSuggestions({
   maxConsecutive: number
   preferences: PreferenceRecord[]
   weekStart: string
+  lockedDates: Set<string>
 }): {
   grantedSuggestionIds: string[]
   recommendedDayOff: { staffId: string; workDate: string }[]
@@ -279,7 +284,7 @@ function grantStaffSuggestions({
   const recommendedDayOff: { staffId: string; workDate: string }[] = []
   const emptyWork = new Map<string, string[]>()
   const ranked = [...suggestions]
-    .filter((row) => row.status === "suggested")
+    .filter((row) => row.status === "suggested" && !lockedDates.has(row.workDate))
     .sort((a, b) => a.rank - b.rank || a.staffId.localeCompare(b.staffId))
 
   for (const suggestion of ranked) {
@@ -312,6 +317,7 @@ function grantStaffSuggestions({
     const alternative = dates.find(
       (date) =>
         date !== suggestion.workDate &&
+        !lockedDates.has(date) &&
         canCoverDay(
           staff,
           slots,
@@ -363,8 +369,14 @@ function allocateFairOffs({
 
   const emptyWork = new Map<string, string[]>()
   const added: { staffId: string; workDate: string }[] = []
-  const offCount = (staffId: string) =>
-    dates.filter((date) => grantedOff.has(offKey(staffId, date))).length
+  const offCount = (staffId: string) => {
+    const prefix = `${staffId}:`
+    let count = 0
+    for (const key of grantedOff) {
+      if (key.startsWith(prefix)) count += 1
+    }
+    return count
+  }
   const offsOn = (date: string) =>
     staff.filter((member) => grantedOff.has(offKey(member.id, date))).length
 
@@ -506,6 +518,7 @@ function assignFairWork({
   settings,
   preferences,
   weekStart,
+  seed = [],
 }: {
   staff: StaffRecord[]
   slots: SlotRecord[]
@@ -516,10 +529,22 @@ function assignFairWork({
   settings: OutletSettingsRecord
   preferences: PreferenceRecord[]
   weekStart: string
+  seed?: ProposedAssignment[]
 }): ProposedAssignment[] {
-  const assignments: ProposedAssignment[] = []
+  const assignments: ProposedAssignment[] = [...seed]
   const hours = new Map<string, number>()
   const proposedWork = new Map<string, string[]>()
+  for (const row of seed) {
+    hours.set(
+      row.staffId,
+      (hours.get(row.staffId) ?? 0) +
+        slotHours(row.startMinutes, row.endMinutes)
+    )
+    const days = proposedWork.get(row.staffId) ?? []
+    if (!days.includes(row.workDate)) {
+      proposedWork.set(row.staffId, [...days, row.workDate])
+    }
+  }
 
   const scoreOf = (member: StaffRecord, slot: SlotRecord, date: string) =>
     workScore({
@@ -641,6 +666,8 @@ function assignFairWork({
 
 export function recommendSchedule(input: RecommendInput): RecommendResult {
   const dates = weekDates(input.weekStart)
+  const lockedDates = new Set(input.lockedDates ?? [])
+  const unlockedDates = dates.filter((date) => !lockedDates.has(date))
   const slots = input.slots
     .filter((slot) => slot.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -651,27 +678,46 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
   const maxConsecutive = input.settings.maxConsecutiveWorkDays
 
   const grantedOff = new Set(
-    input.offs.map((row) => offKey(row.staffId, row.workDate))
+    input.offs
+      .filter((row) => dates.includes(row.workDate))
+      .map((row) => offKey(row.staffId, row.workDate))
   )
+
+  const seedAssignments: ProposedAssignment[] = input.assignments
+    .filter(
+      (row) =>
+        row.status !== "cancelled" &&
+        lockedDates.has(row.workDate) &&
+        dates.includes(row.workDate)
+    )
+    .map((row) => ({
+      staffId: row.staffId,
+      templateId: row.templateId,
+      workDate: row.workDate,
+      startMinutes: row.startMinutes,
+      endMinutes: row.endMinutes,
+      dutyRole: row.dutyRole,
+    }))
 
   const { grantedSuggestionIds, recommendedDayOff } = grantStaffSuggestions({
     staff,
     slots,
     requirements: input.requirements,
     suggestions: input.suggestions,
-    dates,
+    dates: unlockedDates,
     grantedOff,
     history,
     maxConsecutive,
     preferences: input.preferences,
     weekStart: input.weekStart,
+    lockedDates,
   })
 
   const fairOffs = allocateFairOffs({
     staff,
     slots,
     requirements: input.requirements,
-    dates,
+    dates: unlockedDates,
     grantedOff,
     history,
     settings: input.settings,
@@ -692,13 +738,14 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
     staff,
     slots,
     requirements: input.requirements,
-    dates,
+    dates: unlockedDates,
     grantedOff,
     history,
     settings: input.settings,
     preferences: input.preferences,
     weekStart: input.weekStart,
-  })
+    seed: seedAssignments,
+  }).filter((row) => !lockedDates.has(row.workDate))
 
   const offs: ProposedOff[] = [...grantedOff].map((key) => {
     const [staffId, workDate] = key.split(":") as [string, string]

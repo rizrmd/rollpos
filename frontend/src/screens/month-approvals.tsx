@@ -1,7 +1,9 @@
+import { useState, type PointerEvent } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { datesInMonth, datesInRange } from "@/lib/calendar-select"
 import {
   formatIsoWeekday,
   formatMonthYear,
@@ -36,7 +38,8 @@ export function MonthApprovals({
   assignments = [],
   offs,
   suggestions,
-  onPickDate,
+  selectedDates = [],
+  onSelectDates,
 }: {
   monthCursor: string
   onMonthChange: (next: string) => void
@@ -47,7 +50,8 @@ export function MonthApprovals({
   assignments?: AssignmentRecord[]
   offs: DayOffRecord[]
   suggestions: SuggestionRecord[]
-  onPickDate?: (date: string) => void
+  selectedDates?: string[]
+  onSelectDates?: (dates: string[]) => void
 }) {
   const cells = monthGrid(monthCursor, weekStartsOn)
   const days = teamMonthDays({ cells, offs, suggestions })
@@ -61,6 +65,38 @@ export function MonthApprovals({
         ...row,
       }))
     )
+  const [dragOrigin, setDragOrigin] = useState<string | null>(null)
+  const [dragHover, setDragHover] = useState<string | null>(null)
+  const preview = dragOrigin
+    ? new Set(
+        datesInMonth(
+          datesInRange(dragOrigin, dragHover ?? dragOrigin),
+          monthCursor
+        )
+      )
+    : new Set(selectedDates)
+  const selectable = Boolean(onSelectDates)
+
+  function dateFromPoint(clientX: number, clientY: number): string | null {
+    const el = document.elementFromPoint(clientX, clientY)
+    const node = el?.closest("[data-cal-date]")
+    return node?.getAttribute("data-cal-date") ?? null
+  }
+
+  function finishDrag() {
+    if (!dragOrigin || !onSelectDates) {
+      setDragOrigin(null)
+      setDragHover(null)
+      return
+    }
+    const dates = datesInMonth(
+      datesInRange(dragOrigin, dragHover ?? dragOrigin),
+      monthCursor
+    )
+    setDragOrigin(null)
+    setDragHover(null)
+    if (dates.length > 0) onSelectDates(dates)
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -77,9 +113,15 @@ export function MonthApprovals({
         <div className="min-w-0 flex-1 text-center">
           <p className="text-base font-medium">{formatMonthYear(monthCursor)}</p>
           <p className="text-sm text-muted-foreground">
-            {summary.approved} libur disetujui · {summary.peopleOff} staff
-            {summary.pending > 0 ? ` · ${summary.pending} menunggu` : ""}
-            {summary.declined > 0 ? ` · ${summary.declined} ditolak` : ""}
+            {selectable
+              ? "Seret tanggal untuk menentukan siapa kerja"
+              : `${summary.approved} libur disetujui · ${summary.peopleOff} staff`}
+            {!selectable && summary.pending > 0
+              ? ` · ${summary.pending} menunggu`
+              : ""}
+            {!selectable && summary.declined > 0
+              ? ` · ${summary.declined} ditolak`
+              : ""}
           </p>
         </div>
         <Button
@@ -101,7 +143,19 @@ export function MonthApprovals({
             </div>
           ))}
         </div>
-        <ol className="grid grid-cols-7">
+        <ol
+          className={cn(
+            "grid grid-cols-7",
+            selectable ? "touch-none select-none" : ""
+          )}
+          onPointerMove={(event) => {
+            if (!dragOrigin) return
+            const date = dateFromPoint(event.clientX, event.clientY)
+            if (date) setDragHover(date)
+          }}
+          onPointerUp={finishDrag}
+          onPointerCancel={finishDrag}
+        >
           {days.map((day) => (
             <li
               key={day.date}
@@ -111,6 +165,8 @@ export function MonthApprovals({
                 day={day}
                 today={today}
                 staff={staff}
+                selected={day.inMonth && preview.has(day.date)}
+                selectable={selectable}
                 initials={workingInitials(
                   dayRoster({
                     date: day.date,
@@ -121,7 +177,12 @@ export function MonthApprovals({
                     suggestions,
                   })
                 )}
-                onPickDate={onPickDate}
+                onPointerDown={(event) => {
+                  if (!selectable || !day.inMonth) return
+                  event.currentTarget.setPointerCapture(event.pointerId)
+                  setDragOrigin(day.date)
+                  setDragHover(day.date)
+                }}
               />
             </li>
           ))}
@@ -167,13 +228,17 @@ function MonthDayCell({
   today,
   staff,
   initials,
-  onPickDate,
+  selected,
+  selectable,
+  onPointerDown,
 }: {
   day: TeamDayStatus
   today: string
   staff: StaffRecord[]
   initials: string[]
-  onPickDate?: (date: string) => void
+  selected: boolean
+  selectable: boolean
+  onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void
 }) {
   const isToday = day.date === today
   const tone =
@@ -208,16 +273,21 @@ function MonthDayCell({
     </>
   )
 
-  if (onPickDate) {
+  if (selectable) {
     return (
       <button
         type="button"
-        onClick={() => onPickDate(day.date)}
+        data-cal-date={day.inMonth ? day.date : undefined}
+        disabled={!day.inMonth}
+        onPointerDown={onPointerDown}
         className={cn(
           "flex h-full min-h-[4.5rem] w-full flex-col gap-0.5 p-1.5 text-left",
           "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
           day.inMonth ? tone : "bg-muted/20 text-muted-foreground/60",
-          isToday ? "ring-2 ring-ring ring-inset" : ""
+          isToday ? "ring-2 ring-ring ring-inset" : "",
+          selected
+            ? "bg-primary/15 ring-2 ring-primary ring-inset dark:bg-primary/25"
+            : ""
         )}
       >
         {body}
