@@ -148,7 +148,7 @@ export function AppSidebar({
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{actor.nickname}</p>
               <p className="truncate text-xs text-muted-foreground">
-                Mode atur aktif
+                Pengaturan aktif
               </p>
             </div>
             <Button
@@ -156,8 +156,8 @@ export function AppSidebar({
               variant="outline"
               size="icon-sm"
               onClick={onLock}
-              aria-label="Kunci mode atur"
-              title="Kunci mode atur"
+              aria-label="Kunci pengaturan"
+              title="Kunci pengaturan"
             >
               <LockOpen className="size-4" />
             </Button>
@@ -171,7 +171,7 @@ export function AppSidebar({
             onClick={onUnlock}
           >
             <Lock className="size-5" />
-            Buka mode atur
+            Pengaturan
           </Button>
         )}
       </div>

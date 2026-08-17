@@ -77,7 +77,7 @@ export function MenuScreen({
 
       <section aria-labelledby="menu-kunci">
         <h2 id="menu-kunci" className="mb-3 text-sm font-medium text-muted-foreground">
-          Mode atur
+          Pengaturan
         </h2>
         {actor ? (
           <div className="flex flex-col gap-3">
@@ -87,7 +87,7 @@ export function MenuScreen({
             </p>
             <Button type="button" variant="outline" size="touch" onClick={onLock}>
               <LockOpen className="size-5" />
-              Kunci mode atur
+              Kunci pengaturan
             </Button>
           </div>
         ) : (
@@ -99,7 +99,7 @@ export function MenuScreen({
             onClick={onUnlock}
           >
             <Lock className="size-5" />
-            Buka mode atur
+            Pengaturan
             <span className="text-muted-foreground">PIN owner atau manager</span>
           </Button>
         )}

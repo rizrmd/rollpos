@@ -196,7 +196,7 @@ export function App() {
   ) : page === "menu" ? null : item && !item.ready ? (
     <ComingSoonScreen item={item} />
   ) : MANAGE_PAGES.has(page) && !actor ? (
-    <p className="text-sm text-muted-foreground">Buka mode atur untuk melihat halaman ini.</p>
+    <p className="text-sm text-muted-foreground">Buka pengaturan untuk melihat halaman ini.</p>
   ) : (
     <p className="text-sm text-muted-foreground">Halaman tidak ditemukan.</p>
   )
@@ -205,7 +205,7 @@ export function App() {
     <Dialog open={pickManager} onOpenChange={setPickManager}>
       <DialogContent showCloseButton>
         <DialogHeader>
-          <DialogTitle>Siapa yang membuka mode atur?</DialogTitle>
+          <DialogTitle>Siapa yang membuka pengaturan?</DialogTitle>
           <DialogDescription>Pilih owner atau manager, lalu masukkan PIN.</DialogDescription>
         </DialogHeader>
         <ul className="flex flex-col gap-2">
@@ -233,7 +233,7 @@ export function App() {
   const pinDialog = (
     <PinDialog
       open={Boolean(unlockWho)}
-      title={unlockWho ? `Mode atur · ${unlockWho.name}` : "PIN"}
+      title={unlockWho ? `Pengaturan · ${unlockWho.name}` : "PIN"}
       description="Owner atau manager tidak wajib sudah clock-in."
       onOpenChange={(open) => {
         if (!open) {
