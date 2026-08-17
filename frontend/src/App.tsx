@@ -168,7 +168,6 @@ export function App() {
     />
   ) : page === "prefs" ? (
     <PrefsScreen
-      database={staffing.database}
       staff={staffing.staff}
       slots={staffing.slots}
       suggestions={staffing.suggestions}

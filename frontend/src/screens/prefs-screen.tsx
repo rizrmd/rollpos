@@ -1,10 +1,6 @@
-import type { Database } from "@/db/database"
-import { useMemo, useState, type ReactNode } from "react"
+import { useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
-import { LiveNotice } from "@/components/page-header"
-import { PinDialog } from "@/components/pin-dialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -14,16 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  authenticateStaff,
-  requestDayOff,
-  withdrawDayOffRequest,
-} from "@/db/staffing-write"
 import {
   formatIsoWeekday,
-  formatIsoWeekdayShort,
   formatMonthYear,
   weekdayHeaders,
 } from "@/lib/format"
@@ -33,16 +21,10 @@ import {
   weekHasActiveAssignments,
 } from "@/lib/recommend"
 import {
-  dayOffAction,
   dayRoster,
-  decidedPrefsDays,
-  OFF_SOURCE_LABEL,
-  prefsDayCaption,
-  prefsDaysForMonth,
   workingInitials,
   type DayRoster,
   type PrefsDay,
-  type PrefsDayKind,
 } from "@/lib/staff-prefs"
 import { addMonths, monthGrid, monthStartOf, todayJakarta, weekStartOn } from "@/lib/time"
 import { cn } from "@/lib/utils"
@@ -58,22 +40,12 @@ import {
   type SuggestionRecord,
 } from "@/lib/types"
 
-const KIND_CLASS: Record<PrefsDayKind, string> = {
-  off: "border-emerald-700/30 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/40 dark:text-emerald-50",
-  pending:
-    "border-amber-700/30 bg-amber-50 text-amber-950 dark:bg-amber-950/40 dark:text-amber-50",
-  declined:
-    "border-destructive/30 bg-destructive/10 text-destructive",
-  offered:
-    "border-sky-700/30 bg-sky-50 text-sky-950 dark:bg-sky-950/40 dark:text-sky-50",
+const KIND_CLASS = {
   work: "border-border bg-muted/60",
-  fair_off:
-    "border-emerald-700/20 bg-emerald-50/60 text-emerald-950 dark:bg-emerald-950/25 dark:text-emerald-50",
   empty: "border-border bg-card",
 }
 
 export function PrefsScreen({
-  database,
   staff,
   slots,
   suggestions,
@@ -84,7 +56,6 @@ export function PrefsScreen({
   requirements = [],
   today = todayJakarta(),
 }: {
-  database: Database
   staff: StaffRecord[]
   slots: SlotRecord[]
   suggestions: SuggestionRecord[]
@@ -99,13 +70,8 @@ export function PrefsScreen({
     .filter((slot) => slot.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder)
   const weekStartsOn = settings?.weekStartsOn ?? 1
-  const [pendingWho, setPendingWho] = useState<StaffRecord | null>(null)
-  const [who, setWho] = useState<StaffRecord | null>(null)
   const [monthCursor, setMonthCursor] = useState(() => monthStartOf(today))
   const [pickedDate, setPickedDate] = useState<string | null>(null)
-  const [note, setNote] = useState("")
-  const [notice, setNotice] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const activeStaff = staff.filter(
     (member) => member.isActive && !isStaffDeleted(member)
   )
@@ -162,35 +128,14 @@ export function PrefsScreen({
     suggestions,
     preferences,
   ])
-  const days = useMemo(() => {
-    if (!who) {
-      return cells.map((cell) => publicPrefsDay(cell))
-    }
-    return prefsDaysForMonth({
-      cells,
-      staffId: who.id,
-      offs,
-      suggestions,
-      assignments,
-      slots: activeSlots,
-      proposedAssignments: proposed.assignments,
-      proposedOffs: proposed.offs,
-      today,
-    })
-  }, [who, cells, offs, suggestions, assignments, activeSlots, proposed, today])
-  const summary = {
-    approved: days.filter((day) => day.inMonth && day.kind === "off").length,
-    pending: days.filter((day) => day.inMonth && day.kind === "pending").length,
-    declined: days.filter((day) => day.inMonth && day.kind === "declined").length,
-    workDays: days.filter((day) => day.inMonth && day.kind === "work").length,
-  }
-  const decided = decidedPrefsDays(days)
+  const days = useMemo(
+    () => cells.map((cell) => publicPrefsDay(cell)),
+    [cells]
+  )
   const headers = weekdayHeaders(weekStartsOn)
   const picked = pickedDate
     ? (days.find((day) => day.date === pickedDate) ?? null)
     : null
-  const action = picked ? dayOffAction(picked, today) : "view"
-  const pickedDescription = picked ? dialogDescription(picked, today) : ""
   const roster = picked
     ? dayRoster({
         date: picked.date,
@@ -232,21 +177,8 @@ export function PrefsScreen({
     suggestions,
   ])
 
-  async function guarded(run: () => Promise<void>, ok?: string) {
-    try {
-      setError(null)
-      await run()
-      if (ok) setNotice(ok)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
-  }
-
   return (
     <div className="flex flex-col gap-4">
-      <LiveNotice message={notice} />
-      <LiveNotice message={error} tone="error" />
-
       <section className="flex flex-col gap-3" aria-labelledby="kalender-bulan">
         <div className="flex items-center gap-2">
           <Button
@@ -262,17 +194,6 @@ export function PrefsScreen({
             <h2 id="kalender-bulan" className="text-base font-medium">
               {formatMonthYear(monthCursor)}
             </h2>
-            {who ? (
-              <p className="text-sm text-muted-foreground">
-                {`${who.nickname} · ${summary.approved} disetujui${
-                  summary.pending > 0 ? ` · ${summary.pending} menunggu` : ""
-                }${
-                  summary.declined > 0 ? ` · ${summary.declined} ditolak` : ""
-                }${
-                  summary.workDays > 0 ? ` · ${summary.workDays} hari kerja` : ""
-                }`}
-              </p>
-            ) : null}
           </div>
           <Button
             type="button"
@@ -284,17 +205,6 @@ export function PrefsScreen({
             <ChevronRight className="size-5" />
           </Button>
         </div>
-
-        {who ? (
-          <ol className="grid grid-cols-3 gap-2 text-xs sm:grid-cols-6">
-            <Legend swatch={KIND_CLASS.off}>Libur</Legend>
-            <Legend swatch={KIND_CLASS.pending}>Menunggu</Legend>
-            <Legend swatch={KIND_CLASS.declined}>Ditolak</Legend>
-            <Legend swatch={KIND_CLASS.offered}>Tawaran</Legend>
-            <Legend swatch={KIND_CLASS.work}>Kerja</Legend>
-            <Legend swatch={KIND_CLASS.fair_off}>Giliran</Legend>
-          </ol>
-        ) : null}
 
         <div className="overflow-hidden border bg-card">
           <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-xs font-medium text-muted-foreground">
@@ -308,10 +218,6 @@ export function PrefsScreen({
             {days.map((day) => {
               const isToday = day.date === today
               const initials = initialsByDate.get(day.date) ?? []
-              const status =
-                !who || day.kind === "work" || day.kind === "empty"
-                  ? ""
-                  : prefsDayCaption(day, today)
               return (
                 <li
                   key={day.date}
@@ -319,20 +225,14 @@ export function PrefsScreen({
                 >
                   <button
                     type="button"
-                    onClick={() => {
-                      setPickedDate(day.date)
-                      setNote(day.kind === "pending" ? day.note : "")
-                      setError(null)
-                    }}
+                    onClick={() => setPickedDate(day.date)}
                     className={cn(
                       "flex h-full min-h-16 w-full flex-col gap-0.5 p-1.5 text-left",
                       "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                       day.inMonth
-                        ? who
-                          ? KIND_CLASS[day.kind]
-                          : initials.length > 0
-                            ? KIND_CLASS.work
-                            : KIND_CLASS.empty
+                        ? initials.length > 0
+                          ? KIND_CLASS.work
+                          : KIND_CLASS.empty
                         : "bg-muted/20 text-muted-foreground/60",
                       isToday ? "ring-2 ring-ring ring-inset" : ""
                     )}
@@ -345,11 +245,6 @@ export function PrefsScreen({
                         {initials.join(" ")}
                       </span>
                     ) : null}
-                    {day.inMonth && status ? (
-                      <span className="text-[0.65rem] leading-tight">
-                        {status}
-                      </span>
-                    ) : null}
                   </button>
                 </li>
               )
@@ -357,50 +252,6 @@ export function PrefsScreen({
           </ol>
         </div>
       </section>
-
-      {who && decided.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Belum ada permintaan di {formatMonthYear(monthCursor)}. Ketuk tanggal
-          untuk melihat siapa kerja, atau minta libur.
-        </p>
-      ) : null}
-      {who && decided.length > 0 ? (
-        <ul className="flex flex-col gap-2">
-          {decided.map((day) => (
-            <li key={`${day.date}-${day.kind}`}>
-              <button
-                type="button"
-                onClick={() => {
-                  setPickedDate(day.date)
-                  setNote(day.kind === "pending" ? day.note : "")
-                  setError(null)
-                }}
-                className="flex w-full items-start justify-between gap-3 border bg-card px-3 py-2 text-left"
-              >
-                <span>
-                  <span className="block font-medium">
-                    {formatIsoWeekday(day.date)}
-                  </span>
-                  <span className="block text-sm text-muted-foreground">
-                    {decisionDetail(day)}
-                  </span>
-                </span>
-                <Badge
-                  variant={
-                    day.kind === "off"
-                      ? "secondary"
-                      : day.kind === "declined"
-                        ? "destructive"
-                        : "outline"
-                  }
-                >
-                  {day.label}
-                </Badge>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
 
       <Dialog
         open={Boolean(picked)}
@@ -413,44 +264,11 @@ export function PrefsScreen({
             <DialogTitle>
               {picked ? formatIsoWeekday(picked.date) : "Tanggal"}
             </DialogTitle>
-            {pickedDescription ? (
-              <DialogDescription>{pickedDescription}</DialogDescription>
+            {picked && picked.date < today ? (
+              <DialogDescription>Sudah lewat</DialogDescription>
             ) : null}
           </DialogHeader>
-          {roster ? (
-            <DayRosterList roster={roster} viewerId={who?.id} />
-          ) : null}
-          {picked && !who && action === "request" ? (
-            <div className="flex flex-col gap-2">
-              <h3 className="font-medium">Minta libur</h3>
-              <div className="flex flex-wrap gap-2">
-                {activeStaff.map((member) => (
-                  <Button
-                    key={member.id}
-                    type="button"
-                    size="touch"
-                    variant="outline"
-                    onClick={() => {
-                      setError(null)
-                      setPendingWho(member)
-                    }}
-                  >
-                    {member.nickname}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          {picked && who && action === "request" ? (
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="off-note">Catatan (opsional)</Label>
-              <Textarea
-                id="off-note"
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-              />
-            </div>
-          ) : null}
+          {roster ? <DayRosterList roster={roster} /> : null}
           <DialogFooter>
             <Button
               type="button"
@@ -460,74 +278,14 @@ export function PrefsScreen({
             >
               Tutup
             </Button>
-            {picked && who && action === "request" ? (
-              <Button
-                type="button"
-                size="touch"
-                onClick={() =>
-                  void guarded(async () => {
-                    await requestDayOff(
-                      database,
-                      who.id,
-                      picked.date,
-                      weekStartsOn,
-                      note
-                    )
-                    setPickedDate(null)
-                  }, `Diminta ${formatIsoWeekdayShort(picked.date)}. Menunggu manager.`)
-                }
-              >
-                Minta libur
-              </Button>
-            ) : null}
-            {picked && who && action === "withdraw" ? (
-              <Button
-                type="button"
-                size="touch"
-                variant="destructive"
-                onClick={() =>
-                  void guarded(async () => {
-                    await withdrawDayOffRequest(
-                      database,
-                      who.id,
-                      picked.suggestionId
-                    )
-                    setPickedDate(null)
-                  }, `Permintaan ${formatIsoWeekdayShort(picked.date)} dicabut.`)
-                }
-              >
-                Cabut permintaan
-              </Button>
-            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <PinDialog
-        open={Boolean(pendingWho)}
-        title={pendingWho ? `PIN ${pendingWho.name}` : "PIN"}
-        description="Hanya pemilik PIN ini yang boleh minta atau cabut libur."
-        onOpenChange={(open) => {
-          if (!open) setPendingWho(null)
-        }}
-        onSubmit={async (pin) => {
-          if (!pendingWho) return
-          const member = await authenticateStaff(database, pendingWho.id, pin)
-          setWho(member)
-          setPendingWho(null)
-        }}
-      />
     </div>
   )
 }
 
-function DayRosterList({
-  roster,
-  viewerId,
-}: {
-  roster: DayRoster
-  viewerId?: string
-}) {
+function DayRosterList({ roster }: { roster: DayRoster }) {
   const hasWorkers = roster.slots.some((slot) => slot.people.length > 0)
   return (
     <div className="flex flex-col gap-3 text-sm">
@@ -555,7 +313,6 @@ function DayRosterList({
                         className="rounded-md border bg-background px-2.5 py-1.5 font-medium"
                       >
                         {person.name}
-                        {person.staffId === viewerId ? " · kamu" : ""}
                       </li>
                     ))}
                   </ul>
@@ -583,21 +340,6 @@ function DayRosterList({
   )
 }
 
-function Legend({
-  swatch,
-  children,
-}: {
-  swatch: string
-  children: ReactNode
-}) {
-  return (
-    <li className="flex items-center gap-1.5">
-      <span className={cn("size-3 shrink-0 border", swatch)} aria-hidden />
-      <span>{children}</span>
-    </li>
-  )
-}
-
 function publicPrefsDay(cell: { date: string; inMonth: boolean }): PrefsDay {
   return {
     date: cell.date,
@@ -610,47 +352,4 @@ function publicPrefsDay(cell: { date: string; inMonth: boolean }): PrefsDay {
     slotNames: [],
     suggestionId: "",
   }
-}
-
-function decisionDetail(day: PrefsDay): string {
-  if (day.kind === "off" && day.source) {
-    return OFF_SOURCE_LABEL[day.source]
-  }
-  if (day.kind === "declined" && day.alternativeDate) {
-    return `Manager menawarkan ${formatIsoWeekdayShort(day.alternativeDate)}`
-  }
-  if (day.kind === "offered") {
-    return `Pengganti permintaan ${formatIsoWeekdayShort(day.alternativeDate)}`
-  }
-  if (day.kind === "pending") {
-    return day.note || "Menunggu keputusan manager"
-  }
-  return day.note || day.label
-}
-
-function dialogDescription(day: PrefsDay, today: string): string {
-  const action = dayOffAction(day, today)
-  if (action === "withdraw") {
-    return day.note ? `Menunggu · ${day.note}` : "Menunggu keputusan"
-  }
-  if (day.kind === "off") {
-    return day.source
-      ? `Libur resmi · ${OFF_SOURCE_LABEL[day.source]}`
-      : "Libur resmi"
-  }
-  if (day.kind === "declined") {
-    return day.alternativeDate
-      ? `Ditolak · tawaran ${formatIsoWeekdayShort(day.alternativeDate)}`
-      : "Ditolak"
-  }
-  if (day.kind === "offered") {
-    return `Tawaran ganti dari ${formatIsoWeekdayShort(day.alternativeDate)}`
-  }
-  if (day.kind === "fair_off") {
-    return "Giliran libur (belum resmi)"
-  }
-  if (action === "view") {
-    return "Sudah lewat"
-  }
-  return ""
 }
