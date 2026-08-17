@@ -7,6 +7,7 @@ import {
   decidedPrefsDays,
   effectivePreferenceSlots,
   hasShiftAllocation,
+  isStaleSystemAssignment,
   prefsDayCaption,
   isPreferenceDeadlinePassed,
   prefsDaysForMonth,
@@ -457,6 +458,34 @@ describe("pembagian shift profil", () => {
     expect(canBeAssignedToSlot(none, "pagi", [], "2026-08-17")).toBe(false)
     expect(canBeAssignedToSlot(nia, "pagi", [], "2026-08-17")).toBe(true)
     expect(canBeAssignedToSlot(nia, "sore", [], "2026-08-17")).toBe(false)
+    expect(
+      isStaleSystemAssignment(
+        {
+          staffId: "nia",
+          templateId: "pagi",
+          status: "published",
+          note: "usulan sistem",
+        },
+        [none],
+        [],
+        "2026-08-17",
+        "usulan sistem"
+      )
+    ).toBe(true)
+    expect(
+      isStaleSystemAssignment(
+        {
+          staffId: "nia",
+          templateId: "pagi",
+          status: "published",
+          note: "usulan sistem",
+        },
+        [nia],
+        [],
+        "2026-08-17",
+        "usulan sistem"
+      )
+    ).toBe(false)
   })
 
   test("form menampilkan persis yang tersimpan, termasuk uncentang semua", () => {

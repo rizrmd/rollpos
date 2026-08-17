@@ -539,6 +539,21 @@ export function hasShiftAllocation(
   return allocatedSlotIds(member, preferences, weekStart).length > 0
 }
 
+/** Usulan sistem di luar pembagian — harus dihitung ulang / dibatalkan. */
+export function isStaleSystemAssignment(
+  row: Pick<AssignmentRecord, "staffId" | "templateId" | "status" | "note">,
+  staff: StaffRecord[],
+  preferences: PreferenceRecord[],
+  weekStart: string,
+  systemNote: string
+): boolean {
+  if (row.status === "cancelled") return false
+  if (row.note !== systemNote) return false
+  const member = staff.find((item) => item.id === row.staffId)
+  if (!member) return true
+  return !canBeAssignedToSlot(member, row.templateId, preferences, weekStart)
+}
+
 /** Centang yang tampil di form = persis yang tersimpan. Kosong tetap kosong. */
 export function preferredSlotIdsFromMember(
   member: StaffRecord | undefined,

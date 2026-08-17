@@ -47,6 +47,7 @@ import type {
   StaffRole,
   SuggestionStatus,
 } from "@/lib/types"
+import { canBeAssignedToSlot, isStaleSystemAssignment } from "@/lib/staff-prefs"
 import { DEFAULT_OUTLET_ID, isStaffDeleted } from "@/lib/types"
 import { nextWeekStart, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 
@@ -853,6 +854,7 @@ export async function writeFairDefaultDraft(
       cellStr(row, "workDate") <= weekEnd
   )
   if (already.length > 0) return false
+  if (assignments.length === 0) return false
 
   const now = Date.now()
   transact(database, () => {
@@ -915,15 +917,39 @@ export async function ensureFairDefaultWeeks(
     const publishedOrManual = weekRows.some(
       (row) => row.status === "published" || row.note !== SYSTEM_DRAFT_NOTE
     )
+    const allocationViolation = weekRows.some((row) =>
+      isStaleSystemAssignment(
+        row,
+        staff,
+        preferences,
+        weekStart,
+        SYSTEM_DRAFT_NOTE
+      )
+    )
     const shouldReplace =
       weekRows.length > 0 &&
       ((Boolean(options?.rebuildSystem) && systemOnly) ||
+        (systemOnly && allocationViolation) ||
         (!publishedOrManual && hasConsecutiveShifts(weekRows, activeSlots)))
-    if (weekHasActiveAssignments(assignments, weekStart) && !shouldReplace) {
+    if (
+      weekHasActiveAssignments(assignments, weekStart) &&
+      !shouldReplace &&
+      !allocationViolation
+    ) {
       continue
     }
+    let changed = false
     if (shouldReplace) {
       await clearSystemDraftWeek(database, weekStart)
+      changed = true
+    } else if (allocationViolation) {
+      await cancelStaleSystemAssignments(
+        database,
+        weekStart,
+        staff,
+        preferences
+      )
+      changed = true
     }
     const history = historyWorkDatesFrom(assignments, weekStart)
     const result = recommendSchedule({
@@ -941,7 +967,7 @@ export async function ensureFairDefaultWeeks(
       historyWorkDates: history,
     })
     const ok = await writeFairDefaultDraft(database, weekStart, result.assignments)
-    if (ok) {
+    if (ok || changed) {
       wrote += 1
       assignments = await loadAssignments(database)
     }
@@ -981,6 +1007,40 @@ async function promoteDraftsToPublished(
           })
         }
       }
+    }
+  })
+}
+
+async function cancelStaleSystemAssignments(
+  database: Database,
+  weekStart: string,
+  staff: StaffRecord[],
+  preferences: Awaited<ReturnType<typeof loadPreferences>>
+): Promise<void> {
+  const weekEnd = weekDates(weekStart)[6] ?? weekStart
+  const now = Date.now()
+  transact(database, () => {
+    for (const row of listRows(database, TABLES.shiftAssignments)) {
+      const workDate = cellStr(row, "workDate")
+      if (
+        workDate < weekStart ||
+        workDate > weekEnd ||
+        cellStr(row, "status") === "cancelled" ||
+        cellStr(row, "note") !== SYSTEM_DRAFT_NOTE
+      ) {
+        continue
+      }
+      const member = staff.find((item) => item.id === cellStr(row, "staffId"))
+      if (
+        member &&
+        canBeAssignedToSlot(member, cellStr(row, "templateId"), preferences, weekStart)
+      ) {
+        continue
+      }
+      updateRow(database, TABLES.shiftAssignments, row.id, {
+        status: "cancelled",
+        updatedAt: now,
+      })
     }
   })
 }
