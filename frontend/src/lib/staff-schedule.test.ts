@@ -1397,4 +1397,62 @@ describe("staffing persist + schedule", () => {
       )
     ).toBe(true)
   })
+
+  test("mengosongkan semua staff mengunci hari itu tanpa yang masuk", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const dimas = await createPerson(database, {
+      name: "Dimas",
+      roles: ["kasir", "manager"],
+      pin: "2222",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    for (const member of [owner, nia, dimas]) {
+      await upsertStaff(database, owner, {
+        id: member.id,
+        name: member.name,
+        nickname: member.nickname,
+        isActive: true,
+        roles: member.roles,
+        preferredTemplateIds: [slotId],
+      })
+    }
+    const emptyDay = "2026-08-17"
+    await assignStaffToDates(database, owner, {
+      dates: [emptyDay],
+      workingStaffIds: [nia.id, dimas.id],
+      templateIdsByStaff: { [nia.id]: [slotId], [dimas.id]: [slotId] },
+      weekStartsOn: 1,
+    })
+    await assignStaffToDates(database, owner, {
+      dates: [emptyDay],
+      workingStaffIds: [],
+      templateIdsByStaff: {},
+      weekStartsOn: 1,
+    })
+    expect(
+      (await loadAssignments(database)).filter(
+        (row) => row.status !== "cancelled" && row.workDate === emptyDay
+      )
+    ).toEqual([])
+    expect(await generateFairRemainingWeeks(database, ["2026-08-17"])).toBeGreaterThan(
+      0
+    )
+    const after = (await loadAssignments(database)).filter(
+      (row) => row.status !== "cancelled"
+    )
+    expect(after.every((row) => row.workDate !== emptyDay)).toBe(true)
+    expect(after.some((row) => row.workDate !== emptyDay)).toBe(true)
+  })
 })

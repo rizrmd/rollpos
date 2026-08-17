@@ -102,7 +102,7 @@ export function WeekScreen({
       row.workDate >= (monthDates[0] ?? "") &&
       row.workDate <= (monthDates[monthDates.length - 1] ?? "")
   )
-  const locked = lockedWorkDates(monthAssignments)
+  const locked = lockedWorkDates(monthAssignments, undefined, offs)
   const published = monthAssignments.some((row) => row.status === "published")
   const warnings = settings
     ? detectWarnings({
@@ -312,6 +312,15 @@ export function WeekScreen({
             toggleStaffTemplateIds(current, staffId, templateId)
           )
         }}
+        onSelectAll={() => {
+          const next: Record<string, string[]> = {}
+          for (const member of activeStaff) {
+            const ids = defaultShiftsFor(member.id)
+            if (ids.length > 0) next[member.id] = ids
+          }
+          setShiftByStaff(next)
+        }}
+        onClearAll={() => setShiftByStaff({})}
         onOpenChange={(open) => {
           if (!open) {
             setSelectedDates([])
@@ -352,6 +361,8 @@ function DateAssignDialog({
   busy,
   onToggle,
   onToggleShift,
+  onSelectAll,
+  onClearAll,
   onOpenChange,
   onSave,
 }: {
@@ -368,6 +379,8 @@ function DateAssignDialog({
   busy: boolean
   onToggle: (staffId: string) => void
   onToggleShift: (staffId: string, templateId: string) => void
+  onSelectAll: () => void
+  onClearAll: () => void
   onOpenChange: (open: boolean) => void
   onSave: () => void
 }) {
@@ -378,9 +391,27 @@ function DateAssignDialog({
           <DialogTitle>Siapa kerja</DialogTitle>
           <DialogDescription>
             {formatSelectedDates(dates)}. Pilih shift tiap orang; tanpa shift =
-            libur. Sisa tanggal diisi otomatis yang paling adil.
+            libur. Kosongkan semua = tidak ada yang masuk hari itu.
           </DialogDescription>
         </DialogHeader>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onSelectAll}
+          >
+            Semua
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onClearAll}
+          >
+            Kosongkan
+          </Button>
+        </div>
         <ul className="flex flex-col gap-2">
           {loads.map((load) => {
             const templateIds = shiftByStaff[load.member.id] ?? []

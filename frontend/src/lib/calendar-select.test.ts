@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   datesInMonth,
   datesInRange,
+  EMPTY_ROSTER_STAFF_ID,
   lockedWorkDates,
   monthWeekStarts,
 } from "@/lib/calendar-select"
@@ -71,5 +72,22 @@ describe("calendar select", () => {
         assignment("2026-08-20", { note: "" }),
       ])
     ).toEqual(["2026-08-17", "2026-08-20"])
+  })
+
+  test("lockedWorkDates mengunci hari yang dikosongkan manager", () => {
+    expect(
+      lockedWorkDates([], SYSTEM_DRAFT_NOTE, [
+        {
+          staffId: EMPTY_ROSTER_STAFF_ID,
+          workDate: "2026-08-17",
+          source: "manager",
+        },
+        {
+          staffId: "nia",
+          workDate: "2026-08-18",
+          source: "manager",
+        },
+      ])
+    ).toEqual(["2026-08-17"])
   })
 })

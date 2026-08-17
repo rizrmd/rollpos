@@ -1,6 +1,15 @@
 import { addDays, inSameMonth, monthGrid, weekStartOn } from "@/lib/time"
 import { SYSTEM_DRAFT_NOTE } from "@/lib/recommend"
-import type { AssignmentRecord } from "@/lib/types"
+import type { AssignmentRecord, DayOffRecord } from "@/lib/types"
+
+/** Penanda tanggal yang dikunci manager tanpa ada yang masuk. */
+export const EMPTY_ROSTER_STAFF_ID = "__empty_roster__"
+
+export function isEmptyRosterLock(
+  off: Pick<DayOffRecord, "staffId" | "source">
+): boolean {
+  return off.staffId === EMPTY_ROSTER_STAFF_ID && off.source === "manager"
+}
 
 /** Rentang inklusif, urutan mundur tetap dinormalisasi. */
 export function datesInRange(start: string, end: string): string[] {
@@ -39,15 +48,18 @@ export function monthWeekStarts(
 /** Tanggal yang sudah ditetapkan manager — tidak diisi ulang oleh usulan sistem. */
 export function lockedWorkDates(
   assignments: AssignmentRecord[],
-  systemNote = SYSTEM_DRAFT_NOTE
+  systemNote = SYSTEM_DRAFT_NOTE,
+  offs: Pick<DayOffRecord, "staffId" | "workDate" | "source">[] = []
 ): string[] {
-  return [
-    ...new Set(
-      assignments
-        .filter(
-          (row) => row.status !== "cancelled" && row.note !== systemNote
-        )
-        .map((row) => row.workDate)
-    ),
-  ].sort()
+  const dates = new Set(
+    assignments
+      .filter(
+        (row) => row.status !== "cancelled" && row.note !== systemNote
+      )
+      .map((row) => row.workDate)
+  )
+  for (const off of offs) {
+    if (isEmptyRosterLock(off)) dates.add(off.workDate)
+  }
+  return [...dates].sort()
 }

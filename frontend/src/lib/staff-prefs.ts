@@ -1,3 +1,4 @@
+import { isEmptyRosterLock } from "@/lib/calendar-select"
 import { canManage } from "@/lib/permissions"
 import { addDays, jakartaDateParts, todayJakarta, weekStartOn } from "@/lib/time"
 import {
@@ -378,7 +379,7 @@ export function teamDayStatus({
     date,
     inMonth,
     approved: offs
-      .filter((row) => row.workDate === date)
+      .filter((row) => row.workDate === date && !isEmptyRosterLock(row))
       .map((row) => ({
         staffId: row.staffId,
         source: row.source,
@@ -504,7 +505,7 @@ export function dayRoster({
       }
     }),
     off: offs
-      .filter((row) => row.workDate === date)
+      .filter((row) => row.workDate === date && !isEmptyRosterLock(row))
       .map((row) => rosterPerson(staff, row.staffId)),
     pending: suggestions
       .filter((row) => row.workDate === date && row.status === "suggested")

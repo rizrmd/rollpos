@@ -28,7 +28,7 @@ import {
   SYSTEM_DRAFT_NOTE,
   weekHasActiveAssignments,
 } from "@/lib/recommend"
-import { lockedWorkDates } from "@/lib/calendar-select"
+import { EMPTY_ROSTER_STAFF_ID, lockedWorkDates } from "@/lib/calendar-select"
 import {
   canBeAssignedToSlot,
   isStaleSystemAssignment,
@@ -1072,10 +1072,21 @@ export async function assignStaffToDates(
       for (const row of listRows(database, TABLES.scheduledDaysOff)) {
         if (
           cellStr(row, "workDate") === date &&
-          working.has(cellStr(row, "staffId"))
+          (working.has(cellStr(row, "staffId")) ||
+            cellStr(row, "staffId") === EMPTY_ROSTER_STAFF_ID)
         ) {
           deleteRow(database, TABLES.scheduledDaysOff, row.id)
         }
+      }
+      if (working.size === 0) {
+        addRow(database, TABLES.scheduledDaysOff, {
+          staffId: EMPTY_ROSTER_STAFF_ID,
+          workDate: date,
+          weekStart,
+          source: "manager",
+          note: MANAGER_ASSIGN_NOTE,
+          createdAt: now,
+        })
       }
       const targetsByStaff = new Map<string, typeof activeSlots>()
       for (const staffId of working) {
@@ -1248,7 +1259,7 @@ export async function generateFairRemainingWeeks(
         row.workDate >= weekStart &&
         row.workDate <= weekEnd
     )
-    const lockedDates = lockedWorkDates(weekRows)
+    const lockedDates = lockedWorkDates(weekRows, SYSTEM_DRAFT_NOTE, offs)
     if (lockedDates.length === 0 && weekHasActiveAssignments(assignments, weekStart)) {
       continue
     }
