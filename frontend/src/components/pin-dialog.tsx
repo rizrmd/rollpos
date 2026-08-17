@@ -1,5 +1,5 @@
-import { useState } from "react"
-import { Delete, KeyRound, ShieldCheck } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Delete, KeyRound } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -9,6 +9,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+
+const PIN_MIN = 4
+const PIN_MAX = 6
+const AUTO_CHECK_DELAY_MS = 350
+
+function isWrongPin(message: string) {
+  return /PIN salah/i.test(message)
+}
 
 export function PinDialog({
   open,
@@ -31,9 +39,12 @@ export function PinDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function submit(next = pin) {
-    if (next.length < 4) {
-      setError("Masukkan minimal 4 digit.")
+  async function submit(
+    next = pin,
+    { tolerateIncomplete = false }: { tolerateIncomplete?: boolean } = {}
+  ) {
+    if (next.length < PIN_MIN) {
+      if (!tolerateIncomplete) setError("Masukkan minimal 4 digit.")
       return
     }
     setBusy(true)
@@ -43,16 +54,33 @@ export function PinDialog({
       setPin("")
       onOpenChange(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      if (tolerateIncomplete && next.length < PIN_MAX && isWrongPin(message)) {
+        return
+      }
+      setError(message)
+      if (next.length >= PIN_MAX) setPin("")
     } finally {
       setBusy(false)
     }
   }
 
   function press(digit: string) {
-    const next = (pin + digit).slice(0, 6)
-    setPin(next)
+    setError(null)
+    setPin((value) => (value + digit).slice(0, PIN_MAX))
   }
+
+  useEffect(() => {
+    if (!open || pin.length < PIN_MIN) return
+    const next = pin
+    const delay = next.length >= PIN_MAX ? 0 : AUTO_CHECK_DELAY_MS
+    const timer = window.setTimeout(() => {
+      void submit(next, { tolerateIncomplete: next.length < PIN_MAX })
+    }, delay)
+    return () => window.clearTimeout(timer)
+    // Auto-cek hanya mengikuti isi PIN; submit memakai argumen `next`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pin])
 
   return (
     <Dialog
@@ -72,7 +100,10 @@ export function PinDialog({
           autoFocus
           onKeyDown={(event) => {
             if (/^\d$/.test(event.key)) press(event.key)
-            if (event.key === "Backspace") setPin((value) => value.slice(0, -1))
+            if (event.key === "Backspace") {
+              setError(null)
+              setPin((value) => value.slice(0, -1))
+            }
             if (event.key === "Enter") void submit()
           }}
         >
@@ -89,7 +120,7 @@ export function PinDialog({
             className="flex min-h-10 items-center justify-center gap-3"
             aria-label={pin ? `PIN ${pin.length} digit` : "PIN kosong"}
           >
-            {Array.from({ length: 6 }, (_, index) => (
+            {Array.from({ length: PIN_MAX }, (_, index) => (
               <span
                 key={index}
                 className={`size-3 rounded-full border-2 ${index < pin.length ? "border-primary bg-primary" : "border-muted-foreground/35"}`}
@@ -98,56 +129,30 @@ export function PinDialog({
             ))}
           </div>
           <div className="grid grid-cols-3 gap-2.5">
-            {[
-              "1",
-              "2",
-              "3",
-              "4",
-              "5",
-              "6",
-              "7",
-              "8",
-              "9",
-              "hapus",
-              "0",
-              "masuk",
-            ].map((key) => (
-              <Button
-                key={key}
-                type="button"
-                variant={key === "masuk" ? "default" : "outline"}
-                className="h-14 text-lg font-semibold"
-                disabled={busy}
-                aria-label={
-                  key === "hapus"
-                    ? "Hapus digit terakhir"
-                    : key === "masuk"
-                      ? "Konfirmasi PIN"
-                      : undefined
-                }
-                onClick={() => {
-                  if (key === "hapus") {
-                    setPin((value) => value.slice(0, -1))
-                    setError(null)
-                    return
+            {["1", "2", "3", "4", "5", "6", "7", "8", "9", "hapus", "0"].map(
+              (key) => (
+                <Button
+                  key={key}
+                  type="button"
+                  variant="outline"
+                  className="h-14 text-lg font-semibold"
+                  disabled={busy}
+                  aria-label={
+                    key === "hapus" ? "Hapus digit terakhir" : undefined
                   }
-                  if (key === "masuk") {
-                    void submit()
-                    return
-                  }
-                  setError(null)
-                  press(key)
-                }}
-              >
-                {key === "hapus" ? (
-                  <Delete className="size-5" />
-                ) : key === "masuk" ? (
-                  <ShieldCheck className="size-5" />
-                ) : (
-                  key
-                )}
-              </Button>
-            ))}
+                  onClick={() => {
+                    if (key === "hapus") {
+                      setError(null)
+                      setPin((value) => value.slice(0, -1))
+                      return
+                    }
+                    press(key)
+                  }}
+                >
+                  {key === "hapus" ? <Delete className="size-5" /> : key}
+                </Button>
+              )
+            )}
           </div>
           <p
             className="min-h-5 text-sm text-destructive"
