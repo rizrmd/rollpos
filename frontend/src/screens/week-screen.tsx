@@ -9,14 +9,12 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
   acceptSuggestion,
   addOfficialOff,
-  applyRecommendationDraft,
   ensureFairDefaultWeeks,
   cancelAssignment,
   declineSuggestion,
@@ -31,15 +29,11 @@ import {
   preferenceDeadlineLabel,
 } from "@/lib/format"
 import { floorRolesOf } from "@/lib/permissions"
-import { historyWorkDatesFrom, recommendSchedule } from "@/lib/recommend"
 import {
-  alternativeOffDate,
   cellCoverage,
   dayHeat,
-  groupWarnings,
   pickBoardWeekStart,
   staffWeekLoad,
-  summarizeRecommendation,
   unscheduledOnDate,
   weekRelation,
   type CoverageTone,
@@ -118,8 +112,6 @@ export function WeekScreen({
   const [monthCursor, setMonthCursor] = useState(() => monthStartOf(thisWeekStart))
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [inboxOpen, setInboxOpen] = useState(false)
-  const [recommendOpen, setRecommendOpen] = useState(false)
   const [cell, setCell] = useState<{ date: string; slot: SlotRecord } | null>(
     null
   )
@@ -153,7 +145,6 @@ export function WeekScreen({
         published,
       })
     : []
-  const counts = groupWarnings(warnings)
   const relation = weekRelation(weekStart, thisWeekStart)
   const minCoverage = activeSlots.reduce(
     (sum, slot) => sum + slot.minStaffCount,
@@ -164,34 +155,6 @@ export function WeekScreen({
     void ensureFairDefaultWeeks(database, [weekStart])
   }, [database, weekStart])
 
-  const recommendPreview =
-    settings && recommendOpen
-      ? (() => {
-          const result = recommendSchedule({
-            settings,
-            staff,
-            slots: activeSlots,
-            requirements,
-            assignments,
-            offs,
-            suggestions,
-            preferences,
-            weekStart,
-            historyWorkDates: historyWorkDatesFrom(assignments, weekStart),
-          })
-          return {
-            result,
-            summary: summarizeRecommendation({
-              proposedAssignments: result.assignments,
-              proposedOffs: result.offs,
-              grantedSuggestionIds: result.grantedSuggestionIds,
-              recommendedDayOff: result.recommendedDayOff,
-              currentAssignments: weekAssignments,
-            }),
-          }
-        })()
-      : null
-
   async function guarded(action: () => Promise<void>, ok?: string) {
     try {
       setError(null)
@@ -200,18 +163,6 @@ export function WeekScreen({
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
-  }
-
-  async function runRecommend() {
-    if (!settings || !actor || !recommendPreview) return
-    await applyRecommendationDraft(
-      database,
-      actor,
-      weekStart,
-      recommendPreview.result.assignments,
-      recommendPreview.result.offs
-    )
-    setNotice("Usulan adil diterapkan dan langsung terbit.")
   }
 
   return (
@@ -312,44 +263,6 @@ export function WeekScreen({
       <LiveNotice message={notice} />
       <LiveNotice message={error} tone="error" />
 
-      {boardView === "week" ? (
-        <p className="text-sm text-muted-foreground">
-          {counts.understaffed > 0
-            ? `${counts.understaffed} sel kurang`
-            : "Semua sel aman"}
-          {" · "}
-          {counts.pileup > 0
-            ? `${counts.pileup} hari panas`
-            : "libur tidak menumpuk"}
-          {" · "}
-          {counts.noOff > 0
-            ? `${counts.noOff} orang belum libur`
-            : "libur sudah dibagi"}
-        </p>
-      ) : null}
-
-      {actor && boardView === "week" ? (
-        <div className="flex flex-wrap justify-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setInboxOpen(true)}
-          >
-            Permintaan libur
-            {pendingSuggest.length > 0 ? ` (${pendingSuggest.length})` : ""}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setRecommendOpen(true)}
-          >
-            Usulan adil
-          </Button>
-        </div>
-      ) : null}
-
       {boardView === "month" ? (
         <MonthApprovals
           monthCursor={monthCursor}
@@ -366,21 +279,6 @@ export function WeekScreen({
             setBoardView("week")
           }}
         />
-      ) : null}
-
-      {boardView === "week" && warnings.length > 0 ? (
-        <details className="rounded-none border bg-muted/30 px-3 py-2 text-sm">
-          <summary className="cursor-pointer font-medium">
-            {warnings.length} peringatan — ketuk untuk detail
-          </summary>
-          <ul className="mt-2 flex flex-col gap-1 text-muted-foreground">
-            {warnings.slice(0, 12).map((warning, index) => (
-              <li key={`${warning.code}-${index}`}>
-                {humanWarning(warning.message)}
-              </li>
-            ))}
-          </ul>
-        </details>
       ) : null}
 
       {boardView === "week" ? (
@@ -656,175 +554,6 @@ export function WeekScreen({
         canEdit={Boolean(actor)}
       />
 
-      <Dialog open={inboxOpen} onOpenChange={setInboxOpen}>
-        <DialogContent className="sm:max-w-lg" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>Inbox libur</DialogTitle>
-            <DialogDescription>
-              Permintaan {formatWeekRange(weekStart)}. Belum jadi libur resmi.
-            </DialogDescription>
-          </DialogHeader>
-          {pendingSuggest.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Tidak ada permintaan terbuka.
-            </p>
-          ) : (
-            <ul className="flex max-h-80 flex-col gap-3 overflow-auto">
-              {dates.map((date) => {
-                const rows = pendingSuggest.filter((row) => row.workDate === date)
-                if (rows.length === 0) return null
-                const heat = dayHeat(rows.length, activeStaff.length, minCoverage)
-                return (
-                  <li key={date}>
-                    <p className="mb-2 flex items-center gap-2 text-sm font-medium">
-                      {formatIsoWeekday(date)}
-                      {heat === "hot" ? (
-                        <Badge variant="destructive">
-                          panas {rows.length}
-                        </Badge>
-                      ) : rows.length > 1 ? (
-                        <Badge variant="outline">{rows.length} orang</Badge>
-                      ) : (
-                        <Badge variant="secondary">longgar</Badge>
-                      )}
-                    </p>
-                    <ul className="flex flex-col gap-2">
-                      {rows.map((row) => {
-                        const alt = alternativeOffDate({
-                          dates,
-                          requested: date,
-                          staffId: row.staffId,
-                          suggestions: pendingSuggest,
-                          offs,
-                        })
-                        return (
-                          <li key={row.id} className="border px-3 py-2">
-                            <p className="font-medium">
-                              {nameOf(staff, row.staffId)}
-                              <span className="ml-2 text-xs font-normal text-muted-foreground">
-                                #{row.rank}
-                              </span>
-                            </p>
-                            {row.note ? (
-                              <p className="text-sm text-muted-foreground">
-                                {row.note}
-                              </p>
-                            ) : null}
-                            {actor ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <Button
-                                  type="button"
-                                  size="touch"
-                                  onClick={() =>
-                                    void guarded(() =>
-                                      acceptSuggestion(database, actor, row.id)
-                                    )
-                                  }
-                                >
-                                  Terima
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="touch"
-                                  variant="outline"
-                                  onClick={() =>
-                                    void guarded(() =>
-                                      declineSuggestion(database, actor, row.id)
-                                    )
-                                  }
-                                >
-                                  Tolak
-                                </Button>
-                                {alt ? (
-                                  <Button
-                                    type="button"
-                                    size="touch"
-                                    variant="outline"
-                                    onClick={() =>
-                                      void guarded(async () => {
-                                        await declineSuggestion(
-                                          database,
-                                          actor,
-                                          row.id,
-                                          alt
-                                        )
-                                        setNotice(
-                                          `Tawarkan ${formatIsoWeekdayShort(alt)} ke ${nick(staff, row.staffId)}.`
-                                        )
-                                      })
-                                    }
-                                  >
-                                    Tawarkan {formatIsoWeekdayShort(alt)}
-                                  </Button>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={recommendOpen} onOpenChange={setRecommendOpen}>
-        <DialogContent showCloseButton className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Isi ulang usulan adil?</DialogTitle>
-            <DialogDescription>
-              Kerja default dari mesin yang membagi shift dan libur secara
-              adil. Absensi tidak berubah. Jadwal minggu ini ditimpa dan
-              langsung terbit.
-            </DialogDescription>
-          </DialogHeader>
-          {recommendPreview ? (
-            <ul className="flex flex-col gap-1 text-sm">
-              <li>{recommendPreview.summary.assignmentCount} penugasan baru</li>
-              <li>{recommendPreview.summary.offCount} hari libur diusulkan</li>
-              <li>
-                {recommendPreview.summary.grantedCount} permintaan libur bisa
-                diterima
-              </li>
-              <li>
-                {recommendPreview.summary.alternativeCount} orang dapat hari
-                alternatif
-              </li>
-              {recommendPreview.summary.replaces > 0 ? (
-                <li className="text-muted-foreground">
-                  Menimpa {recommendPreview.summary.replaces} penugasan yang ada.
-                </li>
-              ) : null}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">Menghitung…</p>
-          )}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              size="touch"
-              onClick={() => setRecommendOpen(false)}
-            >
-              Batal
-            </Button>
-            <Button
-              type="button"
-              size="touch"
-              onClick={async () => {
-                await guarded(runRecommend)
-                setRecommendOpen(false)
-              }}
-            >
-              Terapkan usulan
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
     </div>
   )
 }
@@ -845,12 +574,6 @@ type ScheduleWarningCode =
   | "off_pileup"
   | "weekend_unfair"
   | "unscheduled"
-
-function humanWarning(message: string): string {
-  return message.replace(/\d{4}-\d{2}-\d{2}/g, (iso) =>
-    formatIsoWeekdayShort(iso)
-  )
-}
 
 function nick(staff: StaffRecord[], id: string): string {
   return staff.find((item) => item.id === id)?.nickname ?? id
