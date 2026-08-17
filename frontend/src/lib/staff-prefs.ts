@@ -616,3 +616,58 @@ export function slotPreferenceRank(
   if (slots.length === 0) return 99
   return slots.find((row) => row.templateId === slotId)?.rank ?? 99
 }
+
+/** Shift yang sudah ditetapkan manager di tanggal terpilih, per orang. */
+export function templateIdsByStaffOnDates(
+  assignments: Pick<
+    AssignmentRecord,
+    "staffId" | "templateId" | "workDate" | "status"
+  >[],
+  dates: string[]
+): Record<string, string[]> {
+  const wanted = new Set(dates)
+  const map: Record<string, string[]> = {}
+  for (const row of assignments) {
+    if (row.status === "cancelled") continue
+    if (!wanted.has(row.workDate)) continue
+    const list = map[row.staffId] ?? []
+    if (!list.includes(row.templateId)) list.push(row.templateId)
+    map[row.staffId] = list
+  }
+  return map
+}
+
+/** Shift default saat orang dicentang kerja: preferensi pertama, atau slot pertama. */
+export function defaultTemplateIdsForStaff(
+  member: StaffRecord,
+  slots: SlotRecord[],
+  preferences: PreferenceRecord[],
+  weekStart: string
+): string[] {
+  const active = slots
+    .filter((slot) => slot.isActive)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+  const known = new Set(active.map((slot) => slot.id))
+  const preferred = allocatedSlotIds(member, preferences, weekStart).filter((id) =>
+    known.has(id)
+  )
+  const first = preferred[0] ?? active[0]?.id
+  return first ? [first] : []
+}
+
+/** Tambah/lepas satu shift. Kosong = libur. */
+export function toggleStaffTemplateIds(
+  current: Record<string, string[]>,
+  staffId: string,
+  templateId: string
+): Record<string, string[]> {
+  const existing = current[staffId] ?? []
+  const next = existing.includes(templateId)
+    ? existing.filter((id) => id !== templateId)
+    : [...existing, templateId]
+  if (next.length === 0) {
+    const { [staffId]: _removed, ...rest } = current
+    return rest
+  }
+  return { ...current, [staffId]: next }
+}

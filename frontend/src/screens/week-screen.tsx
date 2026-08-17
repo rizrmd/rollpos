@@ -25,6 +25,11 @@ import {
   workloadBand,
   type WorkloadBand,
 } from "@/lib/schedule-board"
+import {
+  defaultTemplateIdsForStaff,
+  templateIdsByStaffOnDates,
+  toggleStaffTemplateIds,
+} from "@/lib/staff-prefs"
 import { MonthApprovals } from "@/screens/month-approvals"
 import { monthGrid, monthStartOf, todayJakarta, weekStartOn } from "@/lib/time"
 import { cn } from "@/lib/utils"
@@ -73,7 +78,7 @@ export function WeekScreen({
     monthStartOf(thisWeekStart)
   )
   const [selectedDates, setSelectedDates] = useState<string[]>([])
-  const [workingIds, setWorkingIds] = useState<string[]>([])
+  const [shiftByStaff, setShiftByStaff] = useState<Record<string, string[]>>({})
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -172,30 +177,37 @@ export function WeekScreen({
 
   function openSelection(dates: string[]) {
     const sorted = [...dates].sort()
-    const already = new Set(
-      monthAssignments
-        .filter((row) => sorted.includes(row.workDate))
-        .map((row) => row.staffId)
-    )
     setSelectedDates(sorted)
-    setWorkingIds(
-      already.size > 0
-        ? activeStaff.filter((member) => already.has(member.id)).map((row) => row.id)
-        : []
+    setShiftByStaff(templateIdsByStaffOnDates(monthAssignments, sorted))
+  }
+
+  function defaultShiftsFor(staffId: string): string[] {
+    const member = activeStaff.find((item) => item.id === staffId)
+    if (!member) return []
+    const date = selectedDates[0] ?? todayJakarta()
+    return defaultTemplateIdsForStaff(
+      member,
+      activeSlots,
+      preferences,
+      weekStartOn(date, weekStartsOn)
     )
   }
 
   async function saveSelection() {
     if (!actor || selectedDates.length === 0) return
+    const workingStaffIds = Object.keys(shiftByStaff).filter(
+      (id) => (shiftByStaff[id]?.length ?? 0) > 0
+    )
     await guarded(async () => {
       await assignStaffToDates(database, actor, {
         dates: selectedDates,
-        workingStaffIds: workingIds,
+        workingStaffIds,
+        templateIdsByStaff: shiftByStaff,
         weekStartsOn,
       })
       const generated = await generateFairRemainingWeeks(database, weekStarts)
       setSelectedDates([])
-      setWorkingIds([])
+      setShiftByStaff({})
       setNotice(
         generated > 0
           ? `${selectedDates.length} tanggal ditetapkan. Sisa minggu diisi otomatis yang paling adil.`
@@ -282,19 +294,28 @@ export function WeekScreen({
         open={Boolean(actor) && selectedDates.length > 0}
         dates={selectedDates}
         loads={loads}
-        workingIds={workingIds}
+        slots={activeSlots}
+        shiftByStaff={shiftByStaff}
         busy={busy}
         onToggle={(staffId) => {
-          setWorkingIds((current) =>
-            current.includes(staffId)
-              ? current.filter((id) => id !== staffId)
-              : [...current, staffId]
+          setShiftByStaff((current) => {
+            if ((current[staffId]?.length ?? 0) > 0) {
+              const { [staffId]: _removed, ...rest } = current
+              return rest
+            }
+            const next = defaultShiftsFor(staffId)
+            return next.length > 0 ? { ...current, [staffId]: next } : current
+          })
+        }}
+        onToggleShift={(staffId, templateId) => {
+          setShiftByStaff((current) =>
+            toggleStaffTemplateIds(current, staffId, templateId)
           )
         }}
         onOpenChange={(open) => {
           if (!open) {
             setSelectedDates([])
-            setWorkingIds([])
+            setShiftByStaff({})
           }
         }}
         onSave={() => void saveSelection()}
@@ -326,9 +347,11 @@ function DateAssignDialog({
   open,
   dates,
   loads,
-  workingIds,
+  slots,
+  shiftByStaff,
   busy,
   onToggle,
+  onToggleShift,
   onOpenChange,
   onSave,
 }: {
@@ -340,9 +363,11 @@ function DateAssignDialog({
     hours: number
     band: WorkloadBand
   }[]
-  workingIds: string[]
+  slots: SlotRecord[]
+  shiftByStaff: Record<string, string[]>
   busy: boolean
   onToggle: (staffId: string) => void
+  onToggleShift: (staffId: string, templateId: string) => void
   onOpenChange: (open: boolean) => void
   onSave: () => void
 }) {
@@ -352,22 +377,28 @@ function DateAssignDialog({
         <DialogHeader>
           <DialogTitle>Siapa kerja</DialogTitle>
           <DialogDescription>
-            {formatSelectedDates(dates)}. Centang yang kerja; sisanya diisi
-            otomatis yang paling adil.
+            {formatSelectedDates(dates)}. Pilih shift tiap orang; tanpa shift =
+            libur. Sisa tanggal diisi otomatis yang paling adil.
           </DialogDescription>
         </DialogHeader>
         <ul className="flex flex-col gap-2">
           {loads.map((load) => {
-            const checked = workingIds.includes(load.member.id)
+            const templateIds = shiftByStaff[load.member.id] ?? []
+            const working = templateIds.length > 0
             return (
-              <li key={load.member.id}>
+              <li
+                key={load.member.id}
+                className={cn(
+                  "border px-3 py-2.5",
+                  working ? "bg-primary/10" : "bg-background"
+                )}
+              >
                 <button
                   type="button"
                   onClick={() => onToggle(load.member.id)}
                   className={cn(
-                    "flex w-full items-center justify-between gap-3 border px-3 py-2.5 text-left",
-                    "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                    checked ? "bg-primary/10" : "bg-background hover:bg-muted"
+                    "flex w-full items-center justify-between gap-3 text-left",
+                    "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                   )}
                 >
                   <span>
@@ -379,11 +410,34 @@ function DateAssignDialog({
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
                     <BandBadge band={load.band} />
-                    <span className="text-sm font-medium">
-                      {checked ? "kerja" : "libur"}
-                    </span>
+                    {working ? null : (
+                      <span className="text-sm font-medium">libur</span>
+                    )}
                   </span>
                 </button>
+                {slots.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {slots.map((slot) => {
+                      const selected = templateIds.includes(slot.id)
+                      return (
+                        <button
+                          key={slot.id}
+                          type="button"
+                          onClick={() => onToggleShift(load.member.id, slot.id)}
+                          className={cn(
+                            "border px-2.5 py-1 text-xs font-medium",
+                            "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                            selected
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-background text-muted-foreground hover:bg-muted"
+                          )}
+                        >
+                          {slot.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
               </li>
             )
           })}

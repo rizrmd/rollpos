@@ -13,6 +13,9 @@ import {
   prefsDaysForMonth,
   preferredSlotIdsFromMember,
   preferredSlotIdsToStore,
+  defaultTemplateIdsForStaff,
+  templateIdsByStaffOnDates,
+  toggleStaffTemplateIds,
   resolvePrefsDay,
   slotPreferenceRank,
   staffInitials,
@@ -546,6 +549,63 @@ describe("pembagian shift profil", () => {
     expect(both).toEqual(["pagi", "sore"])
     expect(preferredSlotIdsToStore(both, slots)).toEqual(["pagi", "sore"])
     expect(preferredSlotIdsToStore(["pagi", "sore"], slots)).toEqual(["pagi", "sore"])
+  })
+
+  test("templateIdsByStaffOnDates mengumpulkan shift aktif per orang", () => {
+    expect(
+      templateIdsByStaffOnDates(
+        [
+          work({ workDate: "2026-08-17", staffId: "nia", templateId: "pagi" }),
+          work({
+            id: "a-sore",
+            workDate: "2026-08-17",
+            staffId: "nia",
+            templateId: "sore",
+          }),
+          work({ workDate: "2026-08-18", staffId: "ayu", templateId: "sore" }),
+          work({
+            workDate: "2026-08-17",
+            staffId: "raka",
+            templateId: "pagi",
+            status: "cancelled",
+          }),
+        ],
+        ["2026-08-17"]
+      )
+    ).toEqual({ nia: ["pagi", "sore"] })
+  })
+
+  test("defaultTemplateIdsForStaff memakai preferensi pertama, fallback slot pertama", () => {
+    const sore: SlotRecord = { ...pagi, id: "sore", name: "Sore", sortOrder: 2 }
+    expect(
+      defaultTemplateIdsForStaff(nia, [pagi, sore], [], "2026-08-17")
+    ).toEqual(["pagi"])
+    expect(
+      defaultTemplateIdsForStaff(
+        { ...nia, preferredTemplateIds: ["sore", "pagi"] },
+        [pagi, sore],
+        [],
+        "2026-08-17"
+      )
+    ).toEqual(["sore"])
+    expect(
+      defaultTemplateIdsForStaff(
+        { ...nia, preferredTemplateIds: [] },
+        [pagi, sore],
+        [],
+        "2026-08-17"
+      )
+    ).toEqual(["pagi"])
+  })
+
+  test("toggleStaffTemplateIds menambah/lepas shift dan kosong berarti libur", () => {
+    const one = toggleStaffTemplateIds({}, "nia", "pagi")
+    expect(one).toEqual({ nia: ["pagi"] })
+    const both = toggleStaffTemplateIds(one, "nia", "sore")
+    expect(both).toEqual({ nia: ["pagi", "sore"] })
+    const pagiOnly = toggleStaffTemplateIds(both, "nia", "sore")
+    expect(pagiOnly).toEqual({ nia: ["pagi"] })
+    expect(toggleStaffTemplateIds(pagiOnly, "nia", "pagi")).toEqual({})
   })
 })
 

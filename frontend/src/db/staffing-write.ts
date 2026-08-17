@@ -1018,7 +1018,24 @@ export async function writeFairDefaultDraft(
   return true
 }
 
-/** Owner/manager menetapkan siapa kerja di tanggal yang dipilih. */
+function slotsForAssignedStaff(
+  member: StaffRecord,
+  activeSlots: Awaited<ReturnType<typeof loadSlots>>,
+  preferences: Awaited<ReturnType<typeof loadPreferences>>,
+  weekStart: string,
+  explicitIds: string[] | undefined
+) {
+  if (explicitIds !== undefined) {
+    const wanted = new Set(explicitIds)
+    return activeSlots.filter((slot) => wanted.has(slot.id))
+  }
+  const allocated = activeSlots.filter((slot) =>
+    canBeAssignedToSlot(member, slot.id, preferences, weekStart)
+  )
+  return allocated.length > 0 ? allocated : activeSlots.slice(0, 1)
+}
+
+/** Owner/manager menetapkan siapa kerja dan shift-nya di tanggal yang dipilih. */
 export async function assignStaffToDates(
   database: Database,
   actor: StaffRecord,
@@ -1026,6 +1043,7 @@ export async function assignStaffToDates(
     dates: string[]
     workingStaffIds: string[]
     weekStartsOn: number
+    templateIdsByStaff?: Record<string, string[]>
   }
 ): Promise<void> {
   if (!canManage(actor.roles)) {
@@ -1059,6 +1077,22 @@ export async function assignStaffToDates(
           deleteRow(database, TABLES.scheduledDaysOff, row.id)
         }
       }
+      const targetsByStaff = new Map<string, typeof activeSlots>()
+      for (const staffId of working) {
+        const member = people.find((item) => item.id === staffId)
+        if (!member || !member.isActive || isStaffDeleted(member)) continue
+        if (!isIncludedInAttendance(member)) continue
+        targetsByStaff.set(
+          staffId,
+          slotsForAssignedStaff(
+            member,
+            activeSlots,
+            preferences,
+            weekStart,
+            input.templateIdsByStaff?.[staffId]
+          )
+        )
+      }
       for (const row of listRows(database, TABLES.shiftAssignments)) {
         if (
           cellStr(row, "workDate") !== date ||
@@ -1066,22 +1100,21 @@ export async function assignStaffToDates(
         ) {
           continue
         }
-        if (!working.has(cellStr(row, "staffId"))) {
+        const staffId = cellStr(row, "staffId")
+        const keep = targetsByStaff.get(staffId)
+        if (
+          !keep ||
+          !keep.some((slot) => slot.id === cellStr(row, "templateId"))
+        ) {
           updateRow(database, TABLES.shiftAssignments, row.id, {
             status: "cancelled",
             updatedAt: now,
           })
         }
       }
-      for (const staffId of working) {
+      for (const [staffId, targets] of targetsByStaff) {
         const member = people.find((item) => item.id === staffId)
-        if (!member || !member.isActive || isStaffDeleted(member)) continue
-        if (!isIncludedInAttendance(member)) continue
-        const allocated = activeSlots.filter((slot) =>
-          canBeAssignedToSlot(member, slot.id, preferences, weekStart)
-        )
-        const targets =
-          allocated.length > 0 ? allocated : activeSlots.slice(0, 1)
+        if (!member) continue
         const dutyRole = floorRolesOf(member.roles)[0] ?? ""
         for (const slot of targets) {
           const existing = listRows(database, TABLES.shiftAssignments).find(

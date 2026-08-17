@@ -1332,4 +1332,69 @@ describe("staffing persist + schedule", () => {
       )
     ).toBe(false)
   })
+
+  test("manager menetapkan shift spesifik, ganti shift membatalkan yang lama", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const pagiId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    const soreId = await saveSlot(database, owner, {
+      name: "Sore",
+      startMinutes: 900,
+      endMinutes: 1320,
+      sortOrder: 2,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    await upsertStaff(database, owner, {
+      id: nia.id,
+      name: nia.name,
+      nickname: nia.nickname,
+      isActive: true,
+      roles: nia.roles,
+      preferredTemplateIds: [pagiId, soreId],
+    })
+    await assignStaffToDates(database, owner, {
+      dates: ["2026-08-17"],
+      workingStaffIds: [nia.id],
+      templateIdsByStaff: { [nia.id]: [soreId] },
+      weekStartsOn: 1,
+    })
+    const first = (await loadAssignments(database)).filter(
+      (row) =>
+        row.status !== "cancelled" && row.workDate === "2026-08-17"
+    )
+    expect(first).toHaveLength(1)
+    expect(first[0]?.staffId).toBe(nia.id)
+    expect(first[0]?.templateId).toBe(soreId)
+    expect(first[0]?.note).toBe(MANAGER_ASSIGN_NOTE)
+
+    await assignStaffToDates(database, owner, {
+      dates: ["2026-08-17"],
+      workingStaffIds: [nia.id],
+      templateIdsByStaff: { [nia.id]: [pagiId] },
+      weekStartsOn: 1,
+    })
+    const second = (await loadAssignments(database)).filter(
+      (row) =>
+        row.status !== "cancelled" && row.workDate === "2026-08-17"
+    )
+    expect(second).toHaveLength(1)
+    expect(second[0]?.templateId).toBe(pagiId)
+    expect(
+      (await loadAssignments(database)).some(
+        (row) => row.templateId === soreId && row.status === "cancelled"
+      )
+    ).toBe(true)
+  })
 })
