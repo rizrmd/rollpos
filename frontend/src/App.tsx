@@ -185,6 +185,7 @@ export function App() {
       database={staffing.database}
       actor={actor}
       staff={staffing.staff}
+      slots={staffing.slots}
     />
   ) : page === "settings" && actor ? (
     <SettingsScreen

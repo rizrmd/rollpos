@@ -9,6 +9,7 @@ export const TABLES = {
   outletSettings: "outletSettings",
   staffMembers: "staffMembers",
   staffMemberRoles: "staffMemberRoles",
+  staffPreferredSlots: "staffPreferredSlots",
   shiftTemplates: "shiftTemplates",
   shiftRoleRequirements: "shiftRoleRequirements",
   shiftAssignments: "shiftAssignments",
@@ -72,6 +73,11 @@ export const tablesSchema = {
     staffId: text,
     role: text,
     createdAt: amount,
+  },
+  staffPreferredSlots: {
+    staffId: text,
+    templateId: text,
+    rank: amount,
   },
   shiftTemplates: {
     name: text,

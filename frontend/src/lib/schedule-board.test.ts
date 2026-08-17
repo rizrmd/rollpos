@@ -206,6 +206,20 @@ describe("schedule board helpers", () => {
     expect(load.warningCodes).toEqual(["no_off"])
   })
 
+  test("preferredSlotId jatuh ke preferensi profil jika minggu kosong", () => {
+    const load = staffWeekLoad({
+      member: { ...person("ayu", "Ayu"), preferredTemplateIds: ["sore"] },
+      dates: ["2026-08-17"],
+      assignments: [],
+      offs: [],
+      suggestions: [],
+      preferences: [],
+      warnings: [],
+      weekStart: "2026-08-17",
+    })
+    expect(load.preferredSlotId).toBe("sore")
+  })
+
   test("recommendation summary counts replacements and alternatives", () => {
     const summary = summarizeRecommendation({
       proposedAssignments: [

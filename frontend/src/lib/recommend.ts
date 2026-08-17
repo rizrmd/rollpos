@@ -1,4 +1,5 @@
 import { floorRolesOf } from "@/lib/permissions"
+import { slotPreferenceRank } from "@/lib/staff-prefs"
 import { addDays, consecutiveRunEnding, isWeekend, slotHours, weekDates } from "@/lib/time"
 import type {
   AssignmentRecord,
@@ -453,11 +454,7 @@ function workScore({
   history: Record<string, string[]>
   weekendFairness: boolean
 }): number {
-  const pref = preferences.find(
-    (row) => row.staffId === member.id && row.weekStart === weekStart
-  )
-  const rank =
-    pref?.slots.find((row) => row.templateId === slot.id)?.rank ?? 99
+  const rank = slotPreferenceRank(member, slot.id, preferences, weekStart)
   const weekendPenalty =
     weekendFairness && isWeekend(date)
       ? weekendWorkCount(member.id, history, proposedWork.get(member.id))

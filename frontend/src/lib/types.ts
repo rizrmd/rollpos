@@ -71,6 +71,7 @@ export type StaffRecord = {
   isActive: boolean
   outletId: string
   roles: StaffRole[]
+  preferredTemplateIds?: string[]
 }
 
 export type SlotRecord = {

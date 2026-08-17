@@ -211,6 +211,7 @@ export async function upsertStaff(
     pin?: string
     isActive: boolean
     roles: StaffRole[]
+    preferredTemplateIds?: string[]
     outletId?: string
   }
 ): Promise<string> {
@@ -275,6 +276,9 @@ export async function upsertStaff(
           createdAt: now,
         })
       }
+      if (input.preferredTemplateIds !== undefined) {
+        writePreferredSlots(database, target.id, input.preferredTemplateIds)
+      }
     })
     return target.id
   }
@@ -300,8 +304,29 @@ export async function upsertStaff(
         createdAt: now,
       })
     }
+    writePreferredSlots(database, staffId, input.preferredTemplateIds ?? [])
   })
   return staffId
+}
+
+function writePreferredSlots(
+  database: Database,
+  staffId: string,
+  templateIds: string[]
+): void {
+  deleteMatching(
+    database,
+    TABLES.staffPreferredSlots,
+    (row) => cellStr(row, "staffId") === staffId
+  )
+  const unique = [...new Set(templateIds.filter(Boolean))]
+  unique.forEach((templateId, index) => {
+    addRow(database, TABLES.staffPreferredSlots, {
+      staffId,
+      templateId,
+      rank: index + 1,
+    })
+  })
 }
 
 export async function authenticateStaff(

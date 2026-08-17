@@ -4,10 +4,12 @@ import {
   dayOffAction,
   dayRoster,
   decidedPrefsDays,
+  effectivePreferenceSlots,
   prefsDayCaption,
   isPreferenceDeadlinePassed,
   prefsDaysForMonth,
   resolvePrefsDay,
+  slotPreferenceRank,
   staffInitials,
   summarizePrefsMonth,
   summarizeTeamMonth,
@@ -406,6 +408,43 @@ describe("teamMonthDays", () => {
       declined: 1,
       peopleOff: 2,
     })
+  })
+})
+
+describe("preferensi shift profil", () => {
+  const nia = {
+    id: "nia",
+    name: "Nia",
+    nickname: "Nia",
+    pinHash: "",
+    pinSalt: "",
+    isActive: true,
+    outletId: "main",
+    roles: ["barista"] as const,
+    preferredTemplateIds: ["pagi"],
+  }
+
+  test("profil dipakai jika tidak ada preferensi minggu", () => {
+    expect(effectivePreferenceSlots(nia, [], "2026-08-17")).toEqual([
+      { templateId: "pagi", rank: 1 },
+    ])
+    expect(slotPreferenceRank(nia, "pagi", [], "2026-08-17")).toBe(1)
+    expect(slotPreferenceRank(nia, "sore", [], "2026-08-17")).toBe(99)
+  })
+
+  test("preferensi minggu menimpa profil", () => {
+    const week = [
+      {
+        id: "p1",
+        staffId: "nia",
+        weekStart: "2026-08-17",
+        note: "",
+        status: "submitted" as const,
+        slots: [{ templateId: "sore", rank: 1 }],
+      },
+    ]
+    expect(slotPreferenceRank(nia, "sore", week, "2026-08-17")).toBe(1)
+    expect(slotPreferenceRank(nia, "pagi", week, "2026-08-17")).toBe(99)
   })
 })
 

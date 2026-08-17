@@ -206,6 +206,40 @@ describe("recommendSchedule fair default", () => {
     }
   })
 
+  test("preferensi tetap mengutamakan shift yang dicentang", () => {
+    const staff = crew.map((member) =>
+      member.id === "nia" ? { ...member, preferredTemplateIds: ["pagi"] } : member
+    )
+    const result = run({ staff })
+    const nia = result.assignments.filter((row) => row.staffId === "nia")
+    const pagiCount = nia.filter((row) => row.templateId === "pagi").length
+    const soreCount = nia.filter((row) => row.templateId === "sore").length
+    expect(pagiCount).toBeGreaterThan(soreCount)
+  })
+
+  test("preferensi minggu menimpa preferensi tetap di profil", () => {
+    const staff = crew.map((member) =>
+      member.id === "nia" ? { ...member, preferredTemplateIds: ["pagi"] } : member
+    )
+    const result = run({
+      staff,
+      preferences: [
+        {
+          id: "p-nia",
+          staffId: "nia",
+          weekStart,
+          note: "",
+          status: "submitted",
+          slots: [{ templateId: "sore", rank: 1 }],
+        },
+      ],
+    })
+    const nia = result.assignments.filter((row) => row.staffId === "nia")
+    const pagiCount = nia.filter((row) => row.templateId === "pagi").length
+    const soreCount = nia.filter((row) => row.templateId === "sore").length
+    expect(soreCount).toBeGreaterThan(pagiCount)
+  })
+
   test("sore kemarin tidak dilanjutkan pagi hari ini", () => {
     const result = run()
     for (const member of crew) {

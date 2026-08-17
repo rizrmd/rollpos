@@ -161,6 +161,7 @@ export async function loadStaff(database: Database): Promise<StaffRecord[]> {
   await database.ready
   const people = listRows(database, TABLES.staffMembers)
   const roles = listRows(database, TABLES.staffMemberRoles)
+  const preferred = listRows(database, TABLES.staffPreferredSlots)
   return people.map((person) => ({
     id: person.id,
     name: cellStr(person, "name"),
@@ -172,6 +173,11 @@ export async function loadStaff(database: Database): Promise<StaffRecord[]> {
     roles: roles
       .filter((row) => cellStr(row, "staffId") === person.id && isStaffRole(cellStr(row, "role")))
       .map((row) => cellStr(row, "role") as StaffRole),
+    preferredTemplateIds: preferred
+      .filter((row) => cellStr(row, "staffId") === person.id)
+      .sort((a, b) => cellNum(a, "rank") - cellNum(b, "rank"))
+      .map((row) => cellStr(row, "templateId"))
+      .filter(Boolean),
   }))
 }
 

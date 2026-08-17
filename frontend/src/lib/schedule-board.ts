@@ -1,3 +1,4 @@
+import { effectivePreferenceSlots } from "@/lib/staff-prefs"
 import { addDays, consecutiveRunEnding, slotHours } from "@/lib/time"
 import type {
   AssignmentRecord,
@@ -177,10 +178,8 @@ export function staffWeekLoad({
   const mine = assignments.filter((row) => row.staffId === member.id)
   const workDates = [...new Set(mine.map((row) => row.workDate))].sort()
   const lastWork = workDates.at(-1)
-  const pref = preferences.find(
-    (row) => row.staffId === member.id && row.weekStart === weekStart
-  )
-  const topPref = [...(pref?.slots ?? [])].sort((a, b) => a.rank - b.rank)[0]
+  const prefSlots = effectivePreferenceSlots(member, preferences, weekStart)
+  const topPref = [...prefSlots].sort((a, b) => a.rank - b.rank)[0]
   return {
     workDays: workDates.length,
     hours: mine.reduce(

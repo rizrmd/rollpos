@@ -109,6 +109,49 @@ function settingsFrom(row: OutletSettingsRecord): OutletSettingsRecord {
 }
 
 describe("staffing persist + schedule", () => {
+  test("preferensi shift tersimpan dan tidak terhapus saat update tanpa field itu", async () => {
+    const { database, owner } = await bootstrap()
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    const id = await upsertStaff(database, owner, {
+      name: "Nia",
+      nickname: "Nia",
+      pin: "3333",
+      isActive: true,
+      roles: ["barista", "kitchen"],
+      preferredTemplateIds: [slotId],
+    })
+    const saved = (await loadStaff(database)).find((row) => row.id === id)
+    expect(saved?.preferredTemplateIds).toEqual([slotId])
+
+    await upsertStaff(database, owner, {
+      id,
+      name: "Nia",
+      nickname: "Nia",
+      isActive: true,
+      roles: ["barista", "kitchen"],
+    })
+    const kept = (await loadStaff(database)).find((row) => row.id === id)
+    expect(kept?.preferredTemplateIds).toEqual([slotId])
+
+    await upsertStaff(database, owner, {
+      id,
+      name: "Nia",
+      nickname: "Nia",
+      isActive: true,
+      roles: ["barista", "kitchen"],
+      preferredTemplateIds: [],
+    })
+    const cleared = (await loadStaff(database)).find((row) => row.id === id)
+    expect(cleared?.preferredTemplateIds).toEqual([])
+  })
+
   test("multi-role persist survives a write-and-reload snapshot", async () => {
     const { database, owner } = await bootstrap()
     const id = await upsertStaff(database, owner, {

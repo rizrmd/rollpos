@@ -5,6 +5,7 @@ import type {
   DayOffSource,
   OutletSettingsRecord,
   PreferenceRecord,
+  PreferenceSlotRecord,
   SlotRecord,
   StaffRecord,
   SuggestionRecord,
@@ -500,4 +501,33 @@ export function weekPreferenceOf(
   return preferences.find(
     (row) => row.staffId === staffId && row.weekStart === weekStart
   )
+}
+
+/** Slot yang dicentang di profil; minggu spesifik menimpa jika ada. */
+export function standingPreferredSlots(member: StaffRecord): PreferenceSlotRecord[] {
+  return (member.preferredTemplateIds ?? []).map((templateId, index) => ({
+    templateId,
+    rank: index + 1,
+  }))
+}
+
+export function effectivePreferenceSlots(
+  member: StaffRecord,
+  preferences: PreferenceRecord[],
+  weekStart: string
+): PreferenceSlotRecord[] {
+  const week = weekPreferenceOf(preferences, member.id, weekStart)
+  if (week && week.slots.length > 0) return week.slots
+  return standingPreferredSlots(member)
+}
+
+export function slotPreferenceRank(
+  member: StaffRecord,
+  slotId: string,
+  preferences: PreferenceRecord[],
+  weekStart: string
+): number {
+  const slots = effectivePreferenceSlots(member, preferences, weekStart)
+  if (slots.length === 0) return 99
+  return slots.find((row) => row.templateId === slotId)?.rank ?? 99
 }
