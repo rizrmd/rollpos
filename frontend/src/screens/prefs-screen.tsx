@@ -187,6 +187,7 @@ export function PrefsScreen({
     ? (days.find((day) => day.date === pickedDate) ?? null)
     : null
   const action = picked ? dayOffAction(picked, today) : "view"
+  const pickedDescription = picked ? dialogDescription(picked, today) : ""
   const roster = picked
     ? dayRoster({
         date: picked.date,
@@ -404,23 +405,21 @@ export function PrefsScreen({
           if (!open) setPickedDate(null)
         }}
       >
-        <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogContent className="sm:max-w-md" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>
               {picked ? formatIsoWeekday(picked.date) : "Tanggal"}
             </DialogTitle>
-            <DialogDescription>
-              {picked ? dialogDescription(picked, today) : ""}
-            </DialogDescription>
+            {pickedDescription ? (
+              <DialogDescription>{pickedDescription}</DialogDescription>
+            ) : null}
           </DialogHeader>
           {roster ? (
             <DayRosterList roster={roster} viewerId={who?.id} />
           ) : null}
           {picked && !who && action === "request" ? (
             <div className="flex flex-col gap-2">
-              <p className="text-sm text-muted-foreground">
-                Pilih nama, lalu masukkan PIN untuk minta libur tanggal ini.
-              </p>
+              <h3 className="font-medium">Minta libur</h3>
               <div className="flex flex-wrap gap-2">
                 {activeStaff.map((member) => (
                   <Button
@@ -530,22 +529,28 @@ function DayRosterList({
   return (
     <div className="flex flex-col gap-3 text-sm">
       <section aria-labelledby="siapa-kerja">
-        <h3 id="siapa-kerja" className="mb-1 font-medium">
+        <h3 id="siapa-kerja" className="mb-2 font-medium">
           Siapa kerja
         </h3>
         {hasWorkers ? (
-          <ul className="flex flex-col gap-2">
+          <ul className="grid grid-cols-2 gap-2">
             {roster.slots.map((slot) => (
-              <li key={slot.slotId}>
+              <li
+                key={slot.slotId}
+                className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3"
+              >
                 <p className="text-xs font-medium text-muted-foreground">
                   {slot.slotName}
                 </p>
                 {slot.people.length === 0 ? (
                   <p className="text-muted-foreground">kosong</p>
                 ) : (
-                  <ul>
+                  <ul className="flex flex-col gap-1.5">
                     {slot.people.map((person) => (
-                      <li key={person.staffId}>
+                      <li
+                        key={person.staffId}
+                        className="rounded-md border bg-background px-2.5 py-1.5 font-medium"
+                      >
                         {person.name}
                         {person.staffId === viewerId ? " · kamu" : ""}
                       </li>
@@ -556,7 +561,9 @@ function DayRosterList({
             ))}
           </ul>
         ) : (
-          <p className="text-muted-foreground">Belum ada yang dijadwalkan.</p>
+          <p className="rounded-lg border bg-muted/30 px-3 py-2 text-muted-foreground">
+            Belum ada yang dijadwalkan.
+          </p>
         )}
       </section>
       {roster.off.length > 0 ? (
@@ -621,33 +628,26 @@ function decisionDetail(day: PrefsDay): string {
 function dialogDescription(day: PrefsDay, today: string): string {
   const action = dayOffAction(day, today)
   if (action === "withdraw") {
-    return day.note
-      ? `Menunggu keputusan. Catatan: ${day.note}`
-      : "Permintaan masih menunggu keputusan manager."
+    return day.note ? `Menunggu · ${day.note}` : "Menunggu keputusan"
   }
   if (day.kind === "off") {
     return day.source
-      ? `Sudah libur resmi (${OFF_SOURCE_LABEL[day.source]}).`
-      : "Sudah libur resmi."
+      ? `Libur resmi · ${OFF_SOURCE_LABEL[day.source]}`
+      : "Libur resmi"
   }
   if (day.kind === "declined") {
     return day.alternativeDate
-      ? `Ditolak. Manager menawarkan ${formatIsoWeekdayShort(day.alternativeDate)}.`
-      : "Manager menolak permintaan ini."
+      ? `Ditolak · tawaran ${formatIsoWeekdayShort(day.alternativeDate)}`
+      : "Ditolak"
   }
   if (day.kind === "offered") {
-    return `Ini tawaran ganti dari ${formatIsoWeekdayShort(day.alternativeDate)}. Ketuk Minta libur kalau mau ambil hari ini.`
+    return `Tawaran ganti dari ${formatIsoWeekdayShort(day.alternativeDate)}`
   }
   if (day.kind === "fair_off") {
-    return "Giliran libur dari sistem (belum resmi). Ketuk Minta libur supaya manager meninjau."
-  }
-  if (day.kind === "work") {
-    return day.slotNames.length > 0
-      ? `Usulan sistem: ${day.slotNames.join(", ")}. Bisa minta libur; manager yang memutuskan.`
-      : "Kerja default dari usulan sistem yang adil. Bisa minta libur; manager yang memutuskan."
+    return "Giliran libur (belum resmi)"
   }
   if (action === "view") {
-    return "Tanggal ini sudah lewat."
+    return "Sudah lewat"
   }
-  return "Kerja default dari usulan sistem. Minta libur di tanggal ini."
+  return ""
 }
