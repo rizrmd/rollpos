@@ -5,6 +5,7 @@ const amount = { type: "number", default: 0 } as const
 
 export const TABLES = {
   products: "products",
+  menuCategories: "menuCategories",
   recipeLines: "recipeLines",
   outletSettings: "outletSettings",
   staffMembers: "staffMembers",
@@ -34,6 +35,13 @@ export const tablesSchema = {
     note: text,
     isActive: { type: "boolean", default: true },
     lowStock: amount,
+    createdAt: amount,
+    updatedAt: amount,
+  },
+  menuCategories: {
+    slug: text,
+    name: text,
+    sortOrder: amount,
     createdAt: amount,
     updatedAt: amount,
   },

@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  createMenuCategory,
   createProduct,
+  deleteMenuCategory,
   deleteProduct,
   seedCatalogIfEmpty,
   setRecipe,
   updateProduct,
 } from "@/db/catalog"
 import { createRollposDatabase } from "@/db/database"
-import { loadProducts, loadRecipeLines } from "@/db/snapshot"
+import { loadMenuCategories, loadProducts, loadRecipeLines } from "@/db/snapshot"
 import { canManageProducts } from "@/lib/permissions"
 import { DEFAULT_OUTLET_ID, type StaffRecord, type StaffRole } from "@/lib/types"
 
@@ -207,5 +209,60 @@ describe("catalog product writes", () => {
     expect(products.find((row) => row.sku === "RNB-ESP")?.category).toBe("minuman")
     const recipes = await loadRecipeLines(database)
     expect(recipes.length).toBeGreaterThan(0)
+  })
+
+  test("kategori menu bisa ditambah dan dipakai produk", async () => {
+    const database = await freshDb()
+    const actor = person(["owner"])
+    const snack = await createMenuCategory(database, actor, { name: "Snack" })
+    expect(snack.slug).toBe("snack")
+    expect(snack.name).toBe("Snack")
+
+    await expect(createMenuCategory(database, actor, { name: "snack" })).rejects.toThrow(
+      "Kategori sudah ada."
+    )
+    await expect(createMenuCategory(database, actor, { name: "  " })).rejects.toThrow(
+      "Nama kategori wajib diisi."
+    )
+
+    const chips = await createProduct(database, actor, {
+      name: "Keripik singkong",
+      sku: "RNB-KRP",
+      price: 12_000,
+      stock: 0,
+      category: "Snack",
+    })
+    expect(chips.category).toBe("snack")
+
+    await expect(deleteMenuCategory(database, actor, snack)).rejects.toThrow(
+      "Tidak bisa hapus: masih dipakai 1 menu."
+    )
+
+    await deleteProduct(database, actor, chips)
+    await deleteMenuCategory(database, actor, snack)
+    const leftover = await loadMenuCategories(database)
+    expect(leftover.some((row) => row.slug === "snack")).toBe(false)
+  })
+
+  test("menu dengan kategori baru otomatis mendaftarkan kategori", async () => {
+    const database = await freshDb()
+    const actor = person(["manager"])
+    const created = await createProduct(database, actor, {
+      name: "Paket pagi",
+      sku: "RNB-PKT",
+      price: 45_000,
+      stock: 0,
+      category: "Paket",
+    })
+    expect(created.category).toBe("paket")
+    const cats = await loadMenuCategories(database)
+    expect(cats.some((row) => row.slug === "paket" && row.name === "Paket")).toBe(true)
+  })
+
+  test("seed mengisi kategori default minuman dan makanan", async () => {
+    const database = await freshDb()
+    await seedCatalogIfEmpty(database)
+    const cats = await loadMenuCategories(database)
+    expect(cats.map((row) => row.slug).sort()).toEqual(["makanan", "minuman"])
   })
 })

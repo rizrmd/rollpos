@@ -20,6 +20,7 @@ import type {
   AssignmentStatus,
   DayOffRecord,
   DayOffSource,
+  MenuCategoryRecord,
   OutletSettingsRecord,
   PreferenceRecord,
   ProductRecord,
@@ -131,6 +132,17 @@ export function toProduct(row: ReturnType<typeof listRows>[number]): ProductReco
     note: cellStr(row, "note"),
     isActive: !("isActive" in row) ? true : cellFlag(row, "isActive"),
     lowStock: cellNum(row, "lowStock"),
+    createdAt: cellNum(row, "createdAt"),
+    updatedAt: cellNum(row, "updatedAt"),
+  }
+}
+
+export function toMenuCategory(row: ReturnType<typeof listRows>[number]): MenuCategoryRecord {
+  return {
+    id: row.id,
+    slug: cellStr(row, "slug"),
+    name: cellStr(row, "name"),
+    sortOrder: cellNum(row, "sortOrder"),
     createdAt: cellNum(row, "createdAt"),
     updatedAt: cellNum(row, "updatedAt"),
   }
@@ -271,6 +283,13 @@ export async function loadPreferences(
 export async function loadProducts(database: Database): Promise<ProductRecord[]> {
   await database.ready
   return listRows(database, TABLES.products).map(toProduct)
+}
+
+export async function loadMenuCategories(database: Database): Promise<MenuCategoryRecord[]> {
+  await database.ready
+  return listRows(database, TABLES.menuCategories)
+    .map(toMenuCategory)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "id"))
 }
 
 export async function loadRecipeLines(database: Database): Promise<RecipeLineRecord[]> {

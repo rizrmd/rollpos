@@ -9,11 +9,19 @@ import {
   type Database,
   TABLES,
 } from "@/db/database"
-import { loadProducts, loadRecipeLines } from "@/db/snapshot"
-import { inferMenuCategory, suggestSku } from "@/lib/catalog"
+import { loadMenuCategories, loadProducts, loadRecipeLines } from "@/db/snapshot"
+import {
+  inferMenuCategory,
+  isReservedCategorySlug,
+  prettyCategoryName,
+  slugifyCategory,
+  suggestSku,
+} from "@/lib/catalog"
 import { canManageProducts } from "@/lib/permissions"
 import {
+  DEFAULT_MENU_CATEGORY_DEFS,
   productKindOf,
+  type MenuCategoryRecord,
   type ProductKind,
   type ProductRecord,
   type RecipeLineRecord,
@@ -226,6 +234,152 @@ function toRecord(
   }
 }
 
+function categoryRows(database: Database) {
+  return listRows(database, TABLES.menuCategories)
+}
+
+function findCategory(
+  database: Database,
+  nameOrSlug: string
+): (ReturnType<typeof listRows>[number] & { slug: string; name: string }) | undefined {
+  const raw = nameOrSlug.trim()
+  if (!raw) return undefined
+  const slug = slugifyCategory(raw)
+  const lower = raw.toLowerCase()
+  return categoryRows(database).find((row) => {
+    const rowSlug = cellStr(row, "slug")
+    const rowName = cellStr(row, "name")
+    return (
+      rowSlug === slug ||
+      rowSlug === raw ||
+      rowName.toLowerCase() === lower
+    )
+  }) as (ReturnType<typeof listRows>[number] & { slug: string; name: string }) | undefined
+}
+
+function nextCategorySort(database: Database): number {
+  let max = 0
+  for (const row of categoryRows(database)) {
+    const order = typeof row.sortOrder === "number" ? row.sortOrder : 0
+    if (order > max) max = order
+  }
+  return max + 1
+}
+
+function toCategoryRecord(
+  id: string,
+  slug: string,
+  name: string,
+  sortOrder: number,
+  createdAt: number,
+  updatedAt: number
+): MenuCategoryRecord {
+  return { id, slug, name, sortOrder, createdAt, updatedAt }
+}
+
+function writeCategory(
+  database: Database,
+  name: string,
+  options?: { allowExisting?: boolean }
+): MenuCategoryRecord {
+  const trimmed = name.trim()
+  if (!trimmed) {
+    throw new Error("Nama kategori wajib diisi.")
+  }
+  const slug = slugifyCategory(trimmed)
+  if (!slug || isReservedCategorySlug(slug)) {
+    throw new Error("Nama kategori tidak valid.")
+  }
+  const existing = findCategory(database, trimmed) ?? findCategory(database, slug)
+  if (existing) {
+    if (options?.allowExisting) {
+      return toCategoryRecord(
+        existing.id,
+        cellStr(existing, "slug"),
+        cellStr(existing, "name"),
+        typeof existing.sortOrder === "number" ? existing.sortOrder : 0,
+        typeof existing.createdAt === "number" ? existing.createdAt : Date.now(),
+        typeof existing.updatedAt === "number" ? existing.updatedAt : Date.now()
+      )
+    }
+    throw new Error("Kategori sudah ada.")
+  }
+  const now = Date.now()
+  const sortOrder = nextCategorySort(database)
+  const id = addRow(database, TABLES.menuCategories, {
+    slug,
+    name: trimmed,
+    sortOrder,
+    createdAt: now,
+    updatedAt: now,
+  })
+  return toCategoryRecord(id, slug, trimmed, sortOrder, now, now)
+}
+
+function registerMenuCategory(database: Database, category: string): string {
+  return writeCategory(database, prettyCategoryName(category), {
+    allowExisting: true,
+  }).slug
+}
+
+function ensureDefaultCategories(database: Database): boolean {
+  let changed = false
+  for (const def of DEFAULT_MENU_CATEGORY_DEFS) {
+    if (findCategory(database, def.slug)) continue
+    writeCategory(database, def.name, { allowExisting: true })
+    changed = true
+  }
+  return changed
+}
+
+function ensureCategoriesFromProducts(database: Database): boolean {
+  let changed = false
+  for (const row of listRows(database, TABLES.products)) {
+    if (productKindOf(cellStr(row, "kind")) !== "menu") continue
+    const category = cellStr(row, "category").trim()
+    if (!category || isReservedCategorySlug(category)) continue
+    if (findCategory(database, category)) continue
+    writeCategory(database, prettyCategoryName(category), { allowExisting: true })
+    changed = true
+  }
+  return changed
+}
+
+export async function createMenuCategory(
+  database: Database,
+  actor: StaffRecord,
+  input: { name: string }
+): Promise<MenuCategoryRecord> {
+  assertCanManageProducts(actor)
+  await database.ready
+  return writeCategory(database, input.name)
+}
+
+export async function deleteMenuCategory(
+  database: Database,
+  actor: StaffRecord,
+  category: { id: string }
+): Promise<void> {
+  assertCanManageProducts(actor)
+  await database.ready
+  const existing = categoryRows(database).find((row) => row.id === category.id)
+  if (!existing) {
+    throw new Error("Kategori tidak ditemukan.")
+  }
+  const slug = cellStr(existing, "slug")
+  const used = listRows(database, TABLES.products).filter(
+    (row) =>
+      productKindOf(cellStr(row, "kind")) === "menu" &&
+      cellStr(row, "category") === slug
+  )
+  if (used.length > 0) {
+    throw new Error(
+      `Tidak bisa hapus: masih dipakai ${used.length} menu.`
+    )
+  }
+  deleteRow(database, TABLES.menuCategories, existing.id)
+}
+
 function skuTaken(
   database: Database,
   sku: string,
@@ -259,6 +413,9 @@ export async function createProduct(
   if (!normalized.name) {
     throw new Error("Nama wajib diisi.")
   }
+  if (normalized.kind === "menu") {
+    normalized.category = registerMenuCategory(database, normalized.category ?? "")
+  }
   normalized.sku = uniqueSku(database, normalized.sku)
   const now = Date.now()
   const id = addRow(database, TABLES.products, cellsOf(normalized, now))
@@ -280,6 +437,9 @@ export async function updateProduct(
   const normalized = normalizeInput(input)
   if (!normalized.name) {
     throw new Error("Nama wajib diisi.")
+  }
+  if (normalized.kind === "menu") {
+    normalized.category = registerMenuCategory(database, normalized.category ?? "")
   }
   normalized.sku = uniqueSku(database, normalized.sku, id)
   const now = Date.now()
@@ -402,6 +562,7 @@ async function ensureCatalog(database: Database): Promise<boolean> {
 function seedFreshCatalog(database: Database): void {
   const now = Date.now()
   transact(database, () => {
+    ensureDefaultCategories(database)
     const bySku = new Map<string, string>()
     for (const item of [...DEMO_PRODUCTS, ...DEMO_INGREDIENTS]) {
       const normalized = normalizeInput(item)
@@ -416,6 +577,8 @@ function backfillCatalog(database: Database): boolean {
   const now = Date.now()
   let changed = false
   transact(database, () => {
+    if (ensureDefaultCategories(database)) changed = true
+    if (ensureCategoriesFromProducts(database)) changed = true
     for (const row of listRows(database, TABLES.products)) {
       const kind = productKindOf(cellStr(row, "kind"))
       const name = cellStr(row, "name")
@@ -492,4 +655,4 @@ function uniq(values: string[]): string[] {
   return [...new Set(values)]
 }
 
-export { loadProducts, loadRecipeLines }
+export { loadMenuCategories, loadProducts, loadRecipeLines }

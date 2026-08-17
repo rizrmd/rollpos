@@ -19,6 +19,20 @@ export type ProductKind = (typeof PRODUCT_KINDS)[number]
 export const MENU_CATEGORIES = ["minuman", "makanan"] as const
 export type MenuCategory = (typeof MENU_CATEGORIES)[number]
 
+export const DEFAULT_MENU_CATEGORY_DEFS = [
+  { slug: "minuman", name: "Minuman" },
+  { slug: "makanan", name: "Makanan" },
+] as const
+
+export type MenuCategoryRecord = {
+  id: string
+  slug: string
+  name: string
+  sortOrder: number
+  createdAt: number
+  updatedAt: number
+}
+
 export const INGREDIENT_UNITS = ["g", "ml", "pcs", "kg", "l"] as const
 export type IngredientUnit = (typeof INGREDIENT_UNITS)[number]
 

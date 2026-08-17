@@ -15,7 +15,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  createMenuCategory,
   createProduct,
+  deleteMenuCategory,
   deleteProduct,
   setRecipe,
   updateProduct,
@@ -31,6 +33,7 @@ import {
   menusOf,
   recipeCountFor,
   sortCatalog,
+  sortMenuCategories,
   suggestSku,
   usedInMenus,
 } from "@/lib/catalog"
@@ -38,8 +41,7 @@ import { formatQty, formatRupiah } from "@/lib/format"
 import { canManageProducts } from "@/lib/permissions"
 import {
   INGREDIENT_UNITS,
-  MENU_CATEGORIES,
-  type MenuCategory,
+  type MenuCategoryRecord,
   type ProductKind,
   type ProductRecord,
   type RecipeLineRecord,
@@ -48,22 +50,27 @@ import {
 import { cn } from "@/lib/utils"
 
 type CatalogTab = ProductKind
-type MenuFilter = "all" | MenuCategory
+type MenuFilter = "all" | string
 type IngredientFilter = "all" | "low"
 
 export function CatalogScreen({ actor }: { actor: StaffRecord }) {
-  const { database, products, recipes, ready, error } = useProducts()
+  const { database, products, recipes, categories, ready, error } = useProducts()
   const canWrite = canManageProducts(actor.roles)
   const [tab, setTab] = useState<CatalogTab>("menu")
   const [query, setQuery] = useState("")
   const [menuFilter, setMenuFilter] = useState<MenuFilter>("all")
   const [ingredientFilter, setIngredientFilter] = useState<IngredientFilter>("all")
   const [editing, setEditing] = useState<ProductRecord | "new" | null>(null)
+  const [managingCategories, setManagingCategories] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   const menus = useMemo(() => menusOf(products), [products])
   const ingredients = useMemo(() => ingredientsOf(products), [products])
   const lowCount = ingredients.filter(isLowStock).length
+  const menuCategories = useMemo(
+    () => mergeMenuCategories(categories, menus),
+    [categories, menus]
+  )
 
   const visible = useMemo(() => {
     const source = tab === "menu" ? menus : ingredients
@@ -130,15 +137,23 @@ export function CatalogScreen({ actor }: { actor: StaffRecord }) {
           >
             Semua
           </FilterChip>
-          {MENU_CATEGORIES.map((category) => (
+          {menuCategories.map((category) => (
             <FilterChip
-              key={category}
-              active={menuFilter === category}
-              onClick={() => setMenuFilter(category)}
+              key={category.slug}
+              active={menuFilter === category.slug}
+              onClick={() => setMenuFilter(category.slug)}
             >
-              {categoryLabel(category)}
+              {category.name}
             </FilterChip>
           ))}
+          {canWrite ? (
+            <FilterChip
+              active={false}
+              onClick={() => setManagingCategories(true)}
+            >
+              + Kategori
+            </FilterChip>
+          ) : null}
         </ChipRow>
       ) : (
         <ChipRow>
@@ -180,6 +195,7 @@ export function CatalogScreen({ actor }: { actor: StaffRecord }) {
                 item={item}
                 recipes={recipes}
                 products={products}
+                categories={menuCategories}
                 canWrite={canWrite}
                 onOpen={() => setEditing(item)}
               />
@@ -201,6 +217,7 @@ export function CatalogScreen({ actor }: { actor: StaffRecord }) {
         item={editing === "new" ? undefined : (editing ?? undefined)}
         products={products}
         recipes={recipes}
+        categories={menuCategories}
         canWrite={canWrite}
         onOpenChange={(open) => {
           if (!open) setEditing(null)
@@ -223,6 +240,24 @@ export function CatalogScreen({ actor }: { actor: StaffRecord }) {
           await deleteProduct(database, actor, item)
           setNotice(`${item.name} dihapus.`)
           setEditing(null)
+        }}
+      />
+
+      <CategoryDialog
+        open={managingCategories}
+        categories={menuCategories}
+        products={menus}
+        canWrite={canWrite}
+        onOpenChange={setManagingCategories}
+        onCreate={async (name) => {
+          const created = await createMenuCategory(database, actor, { name })
+          setMenuFilter(created.slug)
+          setNotice(`Kategori ${created.name} ditambahkan.`)
+        }}
+        onDelete={async (category) => {
+          await deleteMenuCategory(database, actor, category)
+          if (menuFilter === category.slug) setMenuFilter("all")
+          setNotice(`Kategori ${category.name} dihapus.`)
         }}
       />
     </div>
@@ -295,12 +330,14 @@ function CatalogRow({
   item,
   recipes,
   products,
+  categories,
   canWrite,
   onOpen,
 }: {
   item: ProductRecord
   recipes: RecipeLineRecord[]
   products: ProductRecord[]
+  categories: MenuCategoryRecord[]
   canWrite: boolean
   onOpen: () => void
 }) {
@@ -322,7 +359,7 @@ function CatalogRow({
         </span>
         <span className="mt-0.5 block text-sm text-muted-foreground">
           {item.kind === "menu"
-            ? `${categoryLabel(item.category)}${
+            ? `${categoryLabel(item.category, categories)}${
                 recipeCount ? ` · ${recipeCount} bahan` : " · tanpa resep"
               }`
             : usedBy.length
@@ -391,6 +428,7 @@ function CatalogDialog({
   item,
   products,
   recipes,
+  categories,
   canWrite,
   onOpenChange,
   onSave,
@@ -401,6 +439,7 @@ function CatalogDialog({
   item?: ProductRecord
   products: ProductRecord[]
   recipes: RecipeLineRecord[]
+  categories: MenuCategoryRecord[]
   canWrite: boolean
   onOpenChange: (open: boolean) => void
   onSave: (input: ProductInput, lines: RecipeLineInput[]) => Promise<void>
@@ -417,9 +456,13 @@ function CatalogDialog({
   const [name, setName] = useState(item?.name ?? "")
   const [sku, setSku] = useState(item?.sku ?? "")
   const [skuTouched, setSkuTouched] = useState(Boolean(item?.sku))
-  const [category, setCategory] = useState<MenuCategory>(
-    item?.category === "makanan" ? "makanan" : "minuman"
+  const [category, setCategory] = useState(
+    item?.kind === "menu" && item.category
+      ? item.category
+      : (categories[0]?.slug ?? "minuman")
   )
+  const [newCategory, setNewCategory] = useState("")
+  const [addingCategory, setAddingCategory] = useState(false)
   const [price, setPrice] = useState(item && item.price ? String(item.price) : "")
   const [stock, setStock] = useState(item ? String(item.stock || "") : "")
   const [unit, setUnit] = useState(item?.unit || (isMenu ? "porsi" : "g"))
@@ -441,6 +484,10 @@ function CatalogDialog({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!canWrite) return
+    if (isMenu && addingCategory && !newCategory.trim()) {
+      setError("Nama kategori baru wajib diisi.")
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -451,7 +498,11 @@ function CatalogDialog({
           price: isMenu ? Number(price) || 0 : 0,
           stock: isMenu ? 0 : Number(stock) || 0,
           kind,
-          category: isMenu ? category : "bahan",
+          category: isMenu
+            ? addingCategory
+              ? newCategory
+              : category
+            : "bahan",
           unit,
           note,
           isActive: active,
@@ -505,24 +556,52 @@ function CatalogDialog({
           {isMenu ? (
             <fieldset>
               <legend className="mb-2 text-sm font-medium">Kategori</legend>
-              <div className="grid grid-cols-2 gap-2">
-                {MENU_CATEGORIES.map((option) => (
+              <div className="flex flex-wrap gap-2">
+                {categories.map((option) => (
                   <button
-                    key={option}
+                    key={option.slug}
                     type="button"
-                    aria-pressed={category === option}
+                    aria-pressed={!addingCategory && category === option.slug}
                     className={cn(
-                      "min-h-12 border text-sm font-medium",
-                      category === option
+                      "min-h-12 min-w-24 flex-1 border px-3 text-sm font-medium",
+                      !addingCategory && category === option.slug
                         ? "border-foreground bg-foreground text-background"
                         : "border-border hover:bg-muted"
                     )}
-                    onClick={() => setCategory(option)}
+                    onClick={() => {
+                      setAddingCategory(false)
+                      setCategory(option.slug)
+                    }}
                   >
-                    {categoryLabel(option)}
+                    {option.name}
                   </button>
                 ))}
+                {canWrite ? (
+                  <button
+                    type="button"
+                    aria-pressed={addingCategory}
+                    className={cn(
+                      "min-h-12 min-w-24 flex-1 border px-3 text-sm font-medium",
+                      addingCategory
+                        ? "border-foreground bg-foreground text-background"
+                        : "border-border hover:bg-muted"
+                    )}
+                    onClick={() => setAddingCategory(true)}
+                  >
+                    + Baru
+                  </button>
+                ) : null}
               </div>
+              {addingCategory ? (
+                <Input
+                  className="mt-2 min-h-12"
+                  value={newCategory}
+                  onChange={(event) => setNewCategory(event.target.value)}
+                  placeholder="Nama kategori, misalnya Snack"
+                  required
+                  autoFocus
+                />
+              ) : null}
             </fieldset>
           ) : null}
 
@@ -784,4 +863,144 @@ function Field({
       />
     </div>
   )
+}
+
+function CategoryDialog({
+  open,
+  categories,
+  products,
+  canWrite,
+  onOpenChange,
+  onCreate,
+  onDelete,
+}: {
+  open: boolean
+  categories: MenuCategoryRecord[]
+  products: ProductRecord[]
+  canWrite: boolean
+  onOpenChange: (open: boolean) => void
+  onCreate: (name: string) => Promise<void>
+  onDelete: (category: MenuCategoryRecord) => Promise<void>
+}) {
+  const [name, setName] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!canWrite) return
+    setBusy(true)
+    setError(null)
+    try {
+      await onCreate(name)
+      setName("")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setName("")
+          setError(null)
+        }
+        onOpenChange(next)
+      }}
+    >
+      <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Kategori menu</DialogTitle>
+          <DialogDescription>
+            Tambah kategori baru untuk filter dan form menu. Kategori yang masih dipakai tidak bisa dihapus.
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="flex flex-col gap-2">
+          {categories.map((category) => {
+            const used = products.filter((item) => item.category === category.slug).length
+            return (
+              <li
+                key={category.id}
+                className="flex min-h-12 items-center justify-between gap-3 border px-3"
+              >
+                <span>
+                  <span className="block font-medium">{category.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {used ? `${used} menu` : "Belum dipakai"}
+                  </span>
+                </span>
+                {canWrite && used === 0 ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      void (async () => {
+                        setBusy(true)
+                        setError(null)
+                        try {
+                          await onDelete(category)
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : String(err))
+                        } finally {
+                          setBusy(false)
+                        }
+                      })()
+                    }}
+                  >
+                    Hapus
+                  </Button>
+                ) : null}
+              </li>
+            )
+          })}
+        </ul>
+        {canWrite ? (
+          <form className="flex flex-col gap-3" onSubmit={(event) => void handleCreate(event)}>
+            <Field
+              id="new-category-name"
+              label="Kategori baru"
+              value={name}
+              onChange={setName}
+              placeholder="Snack, Paket, Es krim…"
+              required
+            />
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            <DialogFooter>
+              <Button type="submit" size="touch" disabled={busy}>
+                {busy ? "Menyimpan…" : "Tambah kategori"}
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : (
+          <DialogFooter showCloseButton />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function mergeMenuCategories(
+  stored: readonly MenuCategoryRecord[],
+  menus: readonly ProductRecord[]
+): MenuCategoryRecord[] {
+  const bySlug = new Map(stored.map((item) => [item.slug, item]))
+  for (const menu of menus) {
+    const slug = menu.category.trim()
+    if (!slug || slug === "bahan" || bySlug.has(slug)) continue
+    bySlug.set(slug, {
+      id: slug,
+      slug,
+      name: categoryLabel(slug),
+      sortOrder: 999,
+      createdAt: 0,
+      updatedAt: 0,
+    })
+  }
+  return sortMenuCategories([...bySlug.values()])
 }

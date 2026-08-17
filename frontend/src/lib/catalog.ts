@@ -1,5 +1,6 @@
 import type {
   MenuCategory,
+  MenuCategoryRecord,
   ProductKind,
   ProductRecord,
   RecipeLineRecord,
@@ -9,8 +10,36 @@ import { productKindOf } from "@/lib/types"
 const FOOD_NAME =
   /croissant|roti|pastry|sandwich|toast|kue|nasi|mie|pasta|salad|donat|bread/i
 
+const RESERVED_CATEGORY_SLUGS = new Set(["all", "bahan"])
+
 export function inferMenuCategory(name: string): MenuCategory {
   return FOOD_NAME.test(name) ? "makanan" : "minuman"
+}
+
+export function slugifyCategory(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+export function isReservedCategorySlug(slug: string): boolean {
+  return RESERVED_CATEGORY_SLUGS.has(slug)
+}
+
+export function prettyCategoryName(slugOrName: string): string {
+  if (slugOrName === "minuman") return "Minuman"
+  if (slugOrName === "makanan") return "Makanan"
+  if (slugOrName === "bahan") return "Bahan"
+  if (/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slugOrName)) {
+    return slugOrName
+      .split("-")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ")
+  }
+  return slugOrName
 }
 
 export function suggestSku(name: string, kind: ProductKind = "menu"): string {
@@ -31,11 +60,22 @@ export function isLowStock(product: Pick<ProductRecord, "stock" | "lowStock">): 
   return product.lowStock > 0 && product.stock <= product.lowStock
 }
 
-export function categoryLabel(category: string): string {
-  if (category === "minuman") return "Minuman"
-  if (category === "makanan") return "Makanan"
-  if (category === "bahan") return "Bahan"
-  return category || "Tanpa kategori"
+export function categoryLabel(
+  category: string,
+  known?: readonly Pick<MenuCategoryRecord, "slug" | "name">[]
+): string {
+  const hit = known?.find((item) => item.slug === category)
+  if (hit?.name.trim()) return hit.name.trim()
+  return prettyCategoryName(category) || "Tanpa kategori"
+}
+
+export function sortMenuCategories(
+  categories: readonly MenuCategoryRecord[]
+): MenuCategoryRecord[] {
+  return [...categories].sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder
+    return a.name.localeCompare(b.name, "id")
+  })
 }
 
 export function menusOf(products: readonly ProductRecord[]): ProductRecord[] {

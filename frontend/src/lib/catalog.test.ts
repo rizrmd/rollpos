@@ -6,7 +6,9 @@ import {
   isLowStock,
   matchesQuery,
   menusOf,
+  prettyCategoryName,
   recipeCountFor,
+  slugifyCategory,
   sortCatalog,
   suggestSku,
   usedInMenus,
@@ -71,6 +73,14 @@ describe("catalog helpers", () => {
     expect(matchesQuery(latte, "RNB")).toBe(true)
     expect(matchesQuery(latte, "teh")).toBe(false)
     expect(categoryLabel("minuman")).toBe("Minuman")
+    expect(categoryLabel("snack", [{ slug: "snack", name: "Snack" }])).toBe("Snack")
+  })
+
+  test("slug kategori dari nama bebas", () => {
+    expect(slugifyCategory("Snack")).toBe("snack")
+    expect(slugifyCategory("Es Krim")).toBe("es-krim")
+    expect(slugifyCategory("  Paket Hemat  ")).toBe("paket-hemat")
+    expect(prettyCategoryName("es-krim")).toBe("Es Krim")
   })
 
   test("urut aktif dulu lalu nama", () => {

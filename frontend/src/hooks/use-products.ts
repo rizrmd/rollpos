@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react"
 
-import { loadProducts, loadRecipeLines } from "@/db/catalog"
+import { loadMenuCategories, loadProducts, loadRecipeLines } from "@/db/catalog"
 import { useDatabase } from "@/db/database-provider"
-import type { ProductRecord, RecipeLineRecord } from "@/lib/types"
+import type { MenuCategoryRecord, ProductRecord, RecipeLineRecord } from "@/lib/types"
 
 export function useProducts() {
   const database = useDatabase()
   const [products, setProducts] = useState<ProductRecord[]>([])
   const [recipes, setRecipes] = useState<RecipeLineRecord[]>([])
+  const [categories, setCategories] = useState<MenuCategoryRecord[]>([])
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -19,11 +20,16 @@ export function useProducts() {
       if (cancelled) return
 
       const refresh = () => {
-        void Promise.all([loadProducts(database), loadRecipeLines(database)])
-          .then(([rows, lines]) => {
+        void Promise.all([
+          loadProducts(database),
+          loadRecipeLines(database),
+          loadMenuCategories(database),
+        ])
+          .then(([rows, lines, cats]) => {
             if (cancelled) return
             setProducts(rows)
             setRecipes(lines)
+            setCategories(cats)
             setReady(true)
             setError(null)
           })
@@ -44,5 +50,5 @@ export function useProducts() {
     }
   }, [database])
 
-  return { database, products, recipes, ready, error }
+  return { database, products, recipes, categories, ready, error }
 }
