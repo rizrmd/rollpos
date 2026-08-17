@@ -984,22 +984,31 @@ export async function writeFairDefaultDraft(
     startMinutes: number
     endMinutes: number
     dutyRole: string
-  }[]
+  }[],
+  lockedDates: string[] = []
 ): Promise<boolean> {
   await database.ready
   const weekEnd = weekDates(weekStart)[6] ?? weekStart
+  const locked = new Set(lockedDates)
   const already = listRows(database, TABLES.shiftAssignments).filter(
     (row) =>
       cellStr(row, "status") !== "cancelled" &&
       cellStr(row, "workDate") >= weekStart &&
-      cellStr(row, "workDate") <= weekEnd
+      cellStr(row, "workDate") <= weekEnd &&
+      !locked.has(cellStr(row, "workDate"))
   )
   if (already.length > 0) return false
-  if (assignments.length === 0) return false
+  const incoming = assignments.filter(
+    (row) =>
+      row.workDate >= weekStart &&
+      row.workDate <= weekEnd &&
+      !locked.has(row.workDate)
+  )
+  if (incoming.length === 0) return false
 
   const now = Date.now()
   transact(database, () => {
-    for (const item of assignments) {
+    for (const item of incoming) {
       addRow(database, TABLES.shiftAssignments, {
         staffId: item.staffId,
         templateId: item.templateId,
@@ -1329,6 +1338,11 @@ export async function ensureFairDefaultWeeks(
         row.workDate >= weekStart &&
         row.workDate <= weekEnd
     )
+    const lockedDates = lockedWorkDates(weekRows, SYSTEM_DRAFT_NOTE, offs)
+    const weekDays = weekDates(weekStart)
+    if (weekDays.every((date) => lockedDates.includes(date))) {
+      continue
+    }
     const systemOnly =
       weekRows.length > 0 &&
       weekRows.every((row) => row.note === SYSTEM_DRAFT_NOTE)
@@ -1383,8 +1397,17 @@ export async function ensureFairDefaultWeeks(
       preferences,
       weekStart,
       historyWorkDates: history,
+      lockedDates,
     })
-    const ok = await writeFairDefaultDraft(database, weekStart, result.assignments)
+    const ok =
+      lockedDates.length === 0
+        ? await writeFairDefaultDraft(database, weekStart, result.assignments)
+        : await writeFairRemaining(
+            database,
+            weekStart,
+            result.assignments,
+            lockedDates
+          )
     if (ok || changed) {
       wrote += 1
       assignments = await loadAssignments(database)

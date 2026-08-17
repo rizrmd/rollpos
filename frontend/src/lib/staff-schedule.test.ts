@@ -1455,4 +1455,58 @@ describe("staffing persist + schedule", () => {
     expect(after.every((row) => row.workDate !== emptyDay)).toBe(true)
     expect(after.some((row) => row.workDate !== emptyDay)).toBe(true)
   })
+
+  test("refresh otomatis tidak mengisi ulang hari yang dikosongkan", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    await upsertStaff(database, owner, {
+      id: nia.id,
+      name: nia.name,
+      nickname: nia.nickname,
+      isActive: true,
+      roles: nia.roles,
+      preferredTemplateIds: [slotId],
+    })
+    const week = [
+      "2026-08-17",
+      "2026-08-18",
+      "2026-08-19",
+      "2026-08-20",
+      "2026-08-21",
+      "2026-08-22",
+      "2026-08-23",
+    ]
+    await assignStaffToDates(database, owner, {
+      dates: week,
+      workingStaffIds: [nia.id],
+      templateIdsByStaff: { [nia.id]: [slotId] },
+      weekStartsOn: 1,
+    })
+    await assignStaffToDates(database, owner, {
+      dates: week,
+      workingStaffIds: [],
+      templateIdsByStaff: {},
+      weekStartsOn: 1,
+    })
+    await ensureFairDefaultWeeks(database, ["2026-08-17"])
+    const after = (await loadAssignments(database)).filter(
+      (row) =>
+        row.status !== "cancelled" &&
+        row.workDate >= week[0]! &&
+        row.workDate <= week[6]!
+    )
+    expect(after).toEqual([])
+  })
 })
