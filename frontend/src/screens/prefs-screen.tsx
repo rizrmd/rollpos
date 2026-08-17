@@ -259,17 +259,17 @@ export function PrefsScreen({
             <h2 id="kalender-bulan" className="text-base font-medium">
               {formatMonthYear(monthCursor)}
             </h2>
-            <p className="text-sm text-muted-foreground">
-              {who
-                ? `${who.nickname} · ${summary.approved} disetujui${
-                    summary.pending > 0 ? ` · ${summary.pending} menunggu` : ""
-                  }${
-                    summary.declined > 0 ? ` · ${summary.declined} ditolak` : ""
-                  }${
-                    summary.workDays > 0 ? ` · ${summary.workDays} hari kerja` : ""
-                  }`
-                : "Inisial = siapa yang masuk"}
-            </p>
+            {who ? (
+              <p className="text-sm text-muted-foreground">
+                {`${who.nickname} · ${summary.approved} disetujui${
+                  summary.pending > 0 ? ` · ${summary.pending} menunggu` : ""
+                }${
+                  summary.declined > 0 ? ` · ${summary.declined} ditolak` : ""
+                }${
+                  summary.workDays > 0 ? ` · ${summary.workDays} hari kerja` : ""
+                }`}
+              </p>
+            ) : null}
           </div>
           <Button
             type="button"
