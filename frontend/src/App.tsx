@@ -179,7 +179,11 @@ export function App() {
       today={staffing.today}
     />
   ) : page === "pin" ? (
-    <PinScreen database={staffing.database} staff={staffing.staff} />
+    <PinScreen
+      database={staffing.database}
+      staff={staffing.staff}
+      actor={actor}
+    />
   ) : page === "staff" && actor ? (
     <StaffScreen
       database={staffing.database}

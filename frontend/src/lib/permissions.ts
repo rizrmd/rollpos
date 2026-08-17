@@ -36,6 +36,15 @@ export function canManageProducts(roles: readonly StaffRole[]): boolean {
   return canManage(roles)
 }
 
+/** Owner/manager boleh set PIN karyawan lain tanpa PIN lama. PIN sendiri tetap wajib diverifikasi. */
+export function canResetStaffPin(
+  actor: Pick<StaffRecord, "id" | "roles"> | null | undefined,
+  targetId: string
+): boolean {
+  if (!actor) return false
+  return canManage(actor.roles) && actor.id !== targetId
+}
+
 export function canSubmitOwnPrefs(_roles: readonly StaffRole[]): boolean {
   return true
 }

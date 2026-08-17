@@ -435,6 +435,46 @@ describe("staffing persist + schedule", () => {
     })
   })
 
+  test("owner/manager dapat mengubah PIN karyawan lain tanpa PIN saat ini", async () => {
+    const { database, owner } = await bootstrap()
+    const manager = await createPerson(database, {
+      name: "Sari",
+      roles: ["manager"],
+      pin: "1111",
+    })
+    const staff = await createPerson(database, {
+      name: "Nia",
+      roles: ["kasir"],
+      pin: "2468",
+    })
+
+    await expect(
+      changeStaffPin(database, staff.id, "", "1357")
+    ).rejects.toThrow(/PIN salah/)
+    await expect(
+      changeStaffPin(database, staff.id, "", "1357", staff)
+    ).rejects.toThrow(/PIN salah/)
+    await expect(
+      changeStaffPin(database, owner.id, "", "9999", owner)
+    ).rejects.toThrow(/PIN salah/)
+    await expect(
+      changeStaffPin(database, staff.id, "", "2468", owner)
+    ).rejects.toThrow(/berbeda/)
+
+    await changeStaffPin(database, staff.id, "", "1357", owner)
+    await expect(authenticateStaff(database, staff.id, "2468")).rejects.toThrow(
+      /PIN salah/
+    )
+    await expect(
+      authenticateStaff(database, staff.id, "1357")
+    ).resolves.toMatchObject({ id: staff.id })
+
+    await changeStaffPin(database, staff.id, "", "8888", manager)
+    await expect(
+      authenticateStaff(database, staff.id, "8888")
+    ).resolves.toMatchObject({ id: staff.id })
+  })
+
   test("owner implies manager powers; floor cannot mutate slots", async () => {
     const { database, owner } = await bootstrap()
     expect(canManage(owner.roles)).toBe(true)

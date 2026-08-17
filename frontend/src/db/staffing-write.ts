@@ -35,6 +35,7 @@ import {
   canCorrectAttendance,
   canEditSlots,
   canManage,
+  canResetStaffPin,
 } from "@/lib/permissions"
 import type {
   AssignmentStatus,
@@ -365,12 +366,26 @@ export async function changeStaffPin(
   database: Database,
   staffId: string,
   currentPin: string,
-  newPin: string
+  newPin: string,
+  actor?: StaffRecord | null
 ): Promise<void> {
-  await authenticateStaff(database, staffId, currentPin)
+  const staff = await loadStaff(database)
+  const member = staff.find((row) => row.id === staffId && row.isActive)
+  if (!member) {
+    throw new Error("Staff tidak ditemukan.")
+  }
+
+  const managerReset = canResetStaffPin(actor, staffId)
+  if (!managerReset) {
+    await authenticateStaff(database, staffId, currentPin)
+  }
+
   const validationError = validatePin(newPin)
   if (validationError) throw new Error(validationError)
-  if (currentPin === newPin) {
+  const sameAsCurrent = managerReset
+    ? await verifyPin(newPin, member.pinSalt, member.pinHash)
+    : currentPin === newPin
+  if (sameAsCurrent) {
     throw new Error("PIN baru harus berbeda dari PIN saat ini.")
   }
 

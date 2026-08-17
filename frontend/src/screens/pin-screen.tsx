@@ -13,15 +13,18 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { changeStaffPin } from "@/db/staffing-write"
+import { canManage, canResetStaffPin } from "@/lib/permissions"
 import { validatePin } from "@/lib/pin"
 import type { StaffRecord } from "@/lib/types"
 
 export function PinScreen({
   database,
   staff,
+  actor = null,
 }: {
   database: Database
   staff: StaffRecord[]
+  actor?: StaffRecord | null
 }) {
   const [who, setWho] = useState<StaffRecord | null>(null)
   const [currentPin, setCurrentPin] = useState("")
@@ -31,6 +34,8 @@ export function PinScreen({
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const activeStaff = staff.filter((member) => member.isActive)
+  const skipCurrentPin = canResetStaffPin(actor, who?.id ?? "")
+  const managerCanResetOthers = Boolean(actor && canManage(actor.roles))
 
   function resetForm() {
     setCurrentPin("")
@@ -45,7 +50,9 @@ export function PinScreen({
         <CardHeader>
           <CardTitle>Ubah PIN</CardTitle>
           <CardDescription>
-            Pilih nama, masukkan PIN saat ini, lalu buat PIN baru 4–6 digit.
+            {managerCanResetOthers
+              ? "PIN sendiri tetap butuh PIN lama. PIN karyawan lain bisa diganti langsung."
+              : "Pilih nama, masukkan PIN saat ini, lalu buat PIN baru 4–6 digit."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -84,7 +91,13 @@ export function PinScreen({
                 setBusy(true)
                 setError(null)
                 try {
-                  await changeStaffPin(database, who.id, currentPin, newPin)
+                  await changeStaffPin(
+                    database,
+                    who.id,
+                    skipCurrentPin ? "" : currentPin,
+                    newPin,
+                    actor
+                  )
                   setNotice(`PIN ${who.nickname || who.name} berhasil diubah.`)
                   resetForm()
                 } catch (err) {
@@ -94,18 +107,21 @@ export function PinScreen({
                 }
               }}
             >
-              <PinField
-                id="pin-current"
-                label="PIN saat ini"
-                value={currentPin}
-                onChange={setCurrentPin}
-                autoFocus
-              />
+              {skipCurrentPin ? null : (
+                <PinField
+                  id="pin-current"
+                  label="PIN saat ini"
+                  value={currentPin}
+                  onChange={setCurrentPin}
+                  autoFocus
+                />
+              )}
               <PinField
                 id="pin-new"
                 label="PIN baru"
                 value={newPin}
                 onChange={setNewPin}
+                autoFocus={skipCurrentPin}
               />
               <PinField
                 id="pin-confirm"
@@ -119,14 +135,21 @@ export function PinScreen({
               <Button
                 type="submit"
                 size="touch"
-                disabled={busy || !currentPin || !newPin || !confirmation}
+                disabled={
+                  busy ||
+                  (!skipCurrentPin && !currentPin) ||
+                  !newPin ||
+                  !confirmation
+                }
               >
                 {busy ? "Menyimpan…" : "Simpan PIN baru"}
               </Button>
             </form>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Pilih nama dulu. PIN lama wajib benar sebelum PIN baru tersimpan.
+              {managerCanResetOthers
+                ? "Pilih nama. PIN karyawan lain tidak perlu PIN lama."
+                : "Pilih nama dulu. PIN lama wajib benar sebelum PIN baru tersimpan."}
             </p>
           )}
         </CardContent>

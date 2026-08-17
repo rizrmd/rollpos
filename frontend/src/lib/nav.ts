@@ -156,7 +156,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "pin",
         label: "Ubah PIN",
-        hint: "Ganti PIN dengan verifikasi PIN lama",
+        hint: "Ganti PIN sendiri, atau reset PIN karyawan (owner/manager)",
         icon: KeyRound,
         ready: true,
         access: "public",
