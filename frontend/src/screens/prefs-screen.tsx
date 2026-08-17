@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
+import { LiveNotice } from "@/components/page-header"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -10,23 +12,39 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import type { Database } from "@/db/database"
+import { replaceAssignment } from "@/db/staffing-write"
 import {
   formatIsoWeekday,
   formatMonthYear,
   weekdayHeaders,
 } from "@/lib/format"
+import { canManage, floorRolesOf } from "@/lib/permissions"
 import {
   historyWorkDatesFrom,
   recommendSchedule,
   weekHasActiveAssignments,
 } from "@/lib/recommend"
 import {
+  replacementOptions,
+  WORKLOAD_BAND_LABEL,
+  type ReplacementOption,
+} from "@/lib/schedule-board"
+import {
   dayRoster,
   workingInitials,
   type DayRoster,
   type PrefsDay,
+  type RosterPerson,
 } from "@/lib/staff-prefs"
-import { addMonths, monthGrid, monthStartOf, todayJakarta, weekStartOn } from "@/lib/time"
+import {
+  addMonths,
+  monthGrid,
+  monthStartOf,
+  todayJakarta,
+  weekDates,
+  weekStartOn,
+} from "@/lib/time"
 import { cn } from "@/lib/utils"
 import {
   isStaffDeleted,
@@ -45,7 +63,32 @@ const KIND_CLASS = {
   empty: "border-border bg-card",
 }
 
+type ReplaceTarget = {
+  person: RosterPerson
+  slotId: string
+  slotName: string
+}
+
+type PendingReplace = {
+  workDate: string
+  fromStaffId: string
+  toStaffId: string
+  templateId: string
+  keep: {
+    staffId: string
+    templateId: string
+    startMinutes: number
+    endMinutes: number
+    dutyRole: string
+  }[]
+  fromName: string
+  toName: string
+}
+
 export function PrefsScreen({
+  database,
+  actor,
+  onNeedManager,
   staff,
   slots,
   suggestions,
@@ -56,6 +99,9 @@ export function PrefsScreen({
   requirements = [],
   today = todayJakarta(),
 }: {
+  database: Database
+  actor: StaffRecord | null
+  onNeedManager: () => void
   staff: StaffRecord[]
   slots: SlotRecord[]
   suggestions: SuggestionRecord[]
@@ -72,6 +118,10 @@ export function PrefsScreen({
   const weekStartsOn = settings?.weekStartsOn ?? 1
   const [monthCursor, setMonthCursor] = useState(() => monthStartOf(today))
   const [pickedDate, setPickedDate] = useState<string | null>(null)
+  const [replacing, setReplacing] = useState<ReplaceTarget | null>(null)
+  const [pending, setPending] = useState<PendingReplace | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const activeStaff = staff.filter(
     (member) => member.isActive && !isStaffDeleted(member)
   )
@@ -147,6 +197,112 @@ export function PrefsScreen({
         suggestions,
       })
     : null
+  const pickedWeekStart = picked
+    ? weekStartOn(picked.date, weekStartsOn)
+    : ""
+  const options =
+    replacing && picked
+      ? replacementOptions({
+          staff: activeStaff,
+          slots: activeSlots,
+          date: picked.date,
+          slotId: replacing.slotId,
+          fromStaffId: replacing.person.staffId,
+          assignments,
+          offs,
+          proposedAssignments: proposed.assignments,
+          dates: weekDates(pickedWeekStart),
+          skewPercent: settings?.hoursSkewPercent ?? 25,
+        })
+      : []
+
+  function keepForDate(date: string): PendingReplace["keep"] {
+    const day = dayRoster({
+      date,
+      staff: activeStaff,
+      slots: activeSlots,
+      assignments,
+      offs,
+      proposedAssignments: proposed.assignments,
+      suggestions,
+    })
+    return day.slots.flatMap((slot) => {
+      const template = activeSlots.find((item) => item.id === slot.slotId)
+      return slot.people.map((person) => {
+        const stored = assignments.find(
+          (row) =>
+            row.staffId === person.staffId &&
+            row.templateId === slot.slotId &&
+            row.workDate === date &&
+            row.status !== "cancelled"
+        )
+        const member = activeStaff.find((item) => item.id === person.staffId)
+        return {
+          staffId: person.staffId,
+          templateId: slot.slotId,
+          startMinutes: stored?.startMinutes ?? template?.startMinutes ?? 0,
+          endMinutes: stored?.endMinutes ?? template?.endMinutes ?? 0,
+          dutyRole:
+            stored?.dutyRole ||
+            (member ? (floorRolesOf(member.roles)[0] ?? "") : ""),
+        }
+      })
+    })
+  }
+
+  async function applyReplace(payload: PendingReplace, manager: StaffRecord) {
+    try {
+      setError(null)
+      await replaceAssignment(database, manager, payload)
+      setNotice(`${payload.toName} menggantikan ${payload.fromName}.`)
+      setPending(null)
+      setReplacing(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  function chooseReplacement(option: ReplacementOption) {
+    if (!picked || !replacing) return
+    const payload: PendingReplace = {
+      workDate: picked.date,
+      fromStaffId: replacing.person.staffId,
+      toStaffId: option.staffId,
+      templateId: replacing.slotId,
+      keep: keepForDate(picked.date),
+      fromName: replacing.person.name,
+      toName: option.name,
+    }
+    if (!actor || !canManage(actor.roles)) {
+      setPending(payload)
+      onNeedManager()
+      return
+    }
+    void applyReplace(payload, actor)
+  }
+
+  useEffect(() => {
+    if (!pending || !actor || !canManage(actor.roles)) return
+    let cancelled = false
+    void (async () => {
+      try {
+        setError(null)
+        await replaceAssignment(database, actor, pending)
+        if (cancelled) return
+        setNotice(`${pending.toName} menggantikan ${pending.fromName}.`)
+        setPending(null)
+        setReplacing(null)
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : String(err))
+        setPending(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [actor, pending, database])
+
   const initialsByDate = useMemo(() => {
     const map = new Map<string, string[]>()
     for (const day of days) {
@@ -179,6 +335,8 @@ export function PrefsScreen({
 
   return (
     <div className="flex flex-col gap-4">
+      <LiveNotice message={notice} />
+      <LiveNotice message={error} tone="error" />
       <section className="flex flex-col gap-3" aria-labelledby="kalender-bulan">
         <div className="flex items-center gap-2">
           <Button
@@ -268,7 +426,16 @@ export function PrefsScreen({
               <DialogDescription>Sudah lewat</DialogDescription>
             ) : null}
           </DialogHeader>
-          {roster ? <DayRosterList roster={roster} /> : null}
+          {roster ? (
+            <DayRosterList
+              roster={roster}
+              onPickPerson={(person, slotId, slotName) => {
+                setNotice(null)
+                setError(null)
+                setReplacing({ person, slotId, slotName })
+              }}
+            />
+          ) : null}
           <DialogFooter>
             <Button
               type="button"
@@ -281,18 +448,86 @@ export function PrefsScreen({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={Boolean(replacing)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReplacing(null)
+            setPending(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>
+              {replacing
+                ? `Pengganti ${replacing.person.name}`
+                : "Pengganti"}
+            </DialogTitle>
+            <DialogDescription>
+              {replacing
+                ? `${replacing.slotName}${picked ? ` · ${formatIsoWeekday(picked.date)}` : ""}. Pilih yang available — longgar lebih adil.`
+                : "Pilih orang yang available."}
+            </DialogDescription>
+          </DialogHeader>
+          {options.length > 0 ? (
+            <ul className="flex flex-col gap-2">
+              {options.map((option) => (
+                <li key={option.staffId}>
+                  <button
+                    type="button"
+                    onClick={() => chooseReplacement(option)}
+                    className="flex w-full items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2.5 text-left hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  >
+                    <span>
+                      <span className="block font-medium">{option.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {option.workDays} hari · {option.hours.toFixed(1)} jam
+                      </span>
+                    </span>
+                    <Badge
+                      variant={
+                        option.band === "padat"
+                          ? "destructive"
+                          : option.band === "longgar"
+                            ? "secondary"
+                            : "outline"
+                      }
+                      className={
+                        option.band === "longgar"
+                          ? "border-emerald-700/20 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+                          : undefined
+                      }
+                    >
+                      {WORKLOAD_BAND_LABEL[option.band]}
+                    </Badge>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Tidak ada yang available.
+            </p>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-function DayRosterList({ roster }: { roster: DayRoster }) {
+function DayRosterList({
+  roster,
+  onPickPerson,
+}: {
+  roster: DayRoster
+  onPickPerson: (person: RosterPerson, slotId: string, slotName: string) => void
+}) {
   const hasWorkers = roster.slots.some((slot) => slot.people.length > 0)
   return (
     <div className="flex flex-col gap-3 text-sm">
-      <section aria-labelledby="siapa-kerja">
-        <h3 id="siapa-kerja" className="mb-2 font-medium">
-          Siapa kerja
-        </h3>
+      <section aria-label="Roster shift">
         {hasWorkers ? (
           <ul className="grid grid-cols-2 gap-2">
             {roster.slots.map((slot) => (
@@ -308,11 +543,16 @@ function DayRosterList({ roster }: { roster: DayRoster }) {
                 ) : (
                   <ul className="flex flex-col gap-1.5">
                     {slot.people.map((person) => (
-                      <li
-                        key={person.staffId}
-                        className="rounded-md border bg-background px-2.5 py-1.5 font-medium"
-                      >
-                        {person.name}
+                      <li key={person.staffId}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onPickPerson(person, slot.slotId, slot.slotName)
+                          }
+                          className="w-full rounded-md border bg-background px-2.5 py-1.5 text-left font-medium hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                        >
+                          {person.name}
+                        </button>
                       </li>
                     ))}
                   </ul>

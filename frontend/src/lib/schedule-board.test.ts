@@ -7,10 +7,12 @@ import {
   dayHeat,
   groupWarnings,
   pickBoardWeekStart,
+  replacementOptions,
   staffWeekLoad,
   summarizeRecommendation,
   unscheduledOnDate,
   weekRelation,
+  workloadBand,
 } from "@/lib/schedule-board"
 import type {
   AssignmentRecord,
@@ -251,6 +253,80 @@ describe("schedule board helpers", () => {
     expect(summary.grantedCount).toBe(1)
     expect(summary.alternativeCount).toBe(1)
     expect(summary.replaces).toBe(2)
+  })
+
+  test("workloadBand memakai median dan persen timpang", () => {
+    expect(workloadBand(8, [], 25)).toBe("pas")
+    expect(workloadBand(0, [0, 0, 0], 25)).toBe("longgar")
+    expect(workloadBand(16, [0, 0, 0], 25)).toBe("padat")
+    expect(workloadBand(16, [16, 16, 16], 25)).toBe("pas")
+    expect(workloadBand(8, [16, 16, 16], 25)).toBe("longgar")
+    expect(workloadBand(24, [16, 16, 16], 25)).toBe("padat")
+  })
+
+  test("replacementOptions hanya orang available, longgar di atas, padat di bawah", () => {
+    const pagi = slot
+    const sore: SlotRecord = {
+      ...slot,
+      id: "sore",
+      name: "Sore",
+      startMinutes: 900,
+      endMinutes: 1320,
+      sortOrder: 2,
+    }
+    const week = [
+      "2026-08-17",
+      "2026-08-18",
+      "2026-08-19",
+      "2026-08-20",
+      "2026-08-21",
+      "2026-08-22",
+      "2026-08-23",
+    ]
+    const options = replacementOptions({
+      staff: [
+        person("nia", "Nia"),
+        person("ayu", "Ayu"),
+        person("dimas", "Dimas"),
+        person("raka", "Raka"),
+        person("sinta", "Sinta"),
+      ],
+      slots: [pagi, sore],
+      date: "2026-08-17",
+      slotId: "pagi",
+      fromStaffId: "nia",
+      assignments: [
+        assignment("nia"),
+        assignment("raka", { id: "raka-a" }),
+        assignment("sinta", {
+          id: "sinta-sore",
+          templateId: "sore",
+          startMinutes: 900,
+          endMinutes: 1320,
+        }),
+        assignment("dimas", { id: "dimas-a", workDate: "2026-08-18" }),
+        assignment("dimas", { id: "dimas-b", workDate: "2026-08-19" }),
+        assignment("dimas", { id: "dimas-c", workDate: "2026-08-20" }),
+      ],
+      offs: [
+        {
+          id: "off-raka",
+          staffId: "raka",
+          workDate: "2026-08-17",
+          weekStart: "2026-08-17",
+          source: "manager",
+          note: "",
+        },
+      ],
+      dates: week,
+      skewPercent: 25,
+    })
+    expect(options.map((row) => row.staffId)).toEqual(["ayu", "dimas"])
+    expect(options[0]?.band).toBe("longgar")
+    expect(options[1]?.band).toBe("padat")
+    expect(options.find((row) => row.staffId === "raka")).toBeUndefined()
+    expect(options.find((row) => row.staffId === "sinta")).toBeUndefined()
+    expect(options.find((row) => row.staffId === "nia")).toBeUndefined()
   })
 
   test("unscheduled people are neither working nor off", () => {

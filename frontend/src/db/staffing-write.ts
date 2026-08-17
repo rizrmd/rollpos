@@ -36,6 +36,7 @@ import {
   canEditSlots,
   canManage,
   canResetStaffPin,
+  floorRolesOf,
 } from "@/lib/permissions"
 import type {
   AssignmentStatus,
@@ -564,6 +565,128 @@ export async function cancelAssignment(
   updateRow(database, TABLES.shiftAssignments, assignmentId, {
     status: "cancelled",
     updatedAt: Date.now(),
+  })
+}
+
+export type RosterKeepRow = {
+  staffId: string
+  templateId: string
+  startMinutes: number
+  endMinutes: number
+  dutyRole: string
+}
+
+/** Ganti satu orang di satu slot; persist roster tanggal itu supaya usulan tidak hilang. */
+export async function replaceAssignment(
+  database: Database,
+  actor: StaffRecord,
+  input: {
+    workDate: string
+    fromStaffId: string
+    toStaffId: string
+    templateId: string
+    keep: RosterKeepRow[]
+  }
+): Promise<void> {
+  if (!canManage(actor.roles)) {
+    throw new Error("Lantai tidak boleh mengubah roster.")
+  }
+  if (input.fromStaffId === input.toStaffId) {
+    throw new Error("Pengganti harus orang lain.")
+  }
+  await database.ready
+  const people = await loadStaff(database)
+  const incoming = people.find((row) => row.id === input.toStaffId)
+  if (!incoming || !incoming.isActive || isStaffDeleted(incoming)) {
+    throw new Error("Pengganti tidak aktif.")
+  }
+  const offs = listRows(database, TABLES.scheduledDaysOff).filter(
+    (row) =>
+      cellStr(row, "staffId") === input.toStaffId &&
+      cellStr(row, "workDate") === input.workDate
+  )
+  if (offs.length > 0) {
+    throw new Error("Tidak bisa menugaskan kerja di hari libur resmi.")
+  }
+  const dutyRole =
+    floorRolesOf(incoming.roles)[0] ??
+    input.keep.find(
+      (row) =>
+        row.staffId === input.fromStaffId && row.templateId === input.templateId
+    )?.dutyRole ??
+    ""
+  const desired = input.keep.map((row) =>
+    row.staffId === input.fromStaffId && row.templateId === input.templateId
+      ? { ...row, staffId: input.toStaffId, dutyRole }
+      : row
+  )
+  if (
+    !desired.some(
+      (row) =>
+        row.staffId === input.toStaffId && row.templateId === input.templateId
+    )
+  ) {
+    const from = input.keep.find(
+      (row) =>
+        row.staffId === input.fromStaffId && row.templateId === input.templateId
+    )
+    desired.push({
+      staffId: input.toStaffId,
+      templateId: input.templateId,
+      startMinutes: from?.startMinutes ?? 0,
+      endMinutes: from?.endMinutes ?? 0,
+      dutyRole,
+    })
+  }
+  const now = Date.now()
+  transact(database, () => {
+    const stored = listRows(database, TABLES.shiftAssignments).filter(
+      (row) =>
+        cellStr(row, "workDate") === input.workDate &&
+        cellStr(row, "status") !== "cancelled"
+    )
+    const desiredKeys = new Set(
+      desired.map((row) => `${row.staffId}:${row.templateId}`)
+    )
+    for (const row of stored) {
+      const key = `${cellStr(row, "staffId")}:${cellStr(row, "templateId")}`
+      if (!desiredKeys.has(key)) {
+        updateRow(database, TABLES.shiftAssignments, row.id, {
+          status: "cancelled",
+          updatedAt: now,
+        })
+      }
+    }
+    for (const item of desired) {
+      const existing = stored.find(
+        (row) =>
+          cellStr(row, "staffId") === item.staffId &&
+          cellStr(row, "templateId") === item.templateId
+      )
+      if (existing) {
+        updateRow(database, TABLES.shiftAssignments, existing.id, {
+          startMinutes: item.startMinutes,
+          endMinutes: item.endMinutes,
+          dutyRole: item.dutyRole,
+          note: "",
+          updatedAt: now,
+        })
+        continue
+      }
+      addRow(database, TABLES.shiftAssignments, {
+        staffId: item.staffId,
+        templateId: item.templateId,
+        workDate: input.workDate,
+        startMinutes: item.startMinutes,
+        endMinutes: item.endMinutes,
+        dutyRole: item.dutyRole,
+        status: "published",
+        outletId: DEFAULT_OUTLET_ID,
+        note: "",
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
   })
 }
 

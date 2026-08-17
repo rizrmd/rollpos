@@ -1,16 +1,17 @@
+import { isConsecutiveShift } from "@/lib/recommend"
 import { effectivePreferenceSlots } from "@/lib/staff-prefs"
 import { addDays, consecutiveRunEnding, slotHours } from "@/lib/time"
-import type {
-  AssignmentRecord,
-  DayOffRecord,
-  PreferenceRecord,
-  ProposedAssignment,
-  ProposedOff,
-  RoleRequirementRecord,
-  ScheduleWarning,
-  SlotRecord,
-  StaffRecord,
-  SuggestionRecord,
+import {
+  isStaffDeleted,
+  type AssignmentRecord,
+  type DayOffRecord,
+  type PreferenceRecord,
+  type ProposedAssignment,
+  type ProposedOff,
+  type RoleRequirementRecord,
+  type SlotRecord,
+  type StaffRecord,
+  type SuggestionRecord,
 } from "@/lib/types"
 
 export type CoverageTone = "ok" | "tight" | "short"
@@ -286,5 +287,196 @@ export function unscheduledOnDate(
     )
     return !working && !off
   })
+}
+
+export type WorkloadBand = "longgar" | "pas" | "padat"
+
+export const WORKLOAD_BAND_LABEL: Record<WorkloadBand, string> = {
+  longgar: "longgar",
+  pas: "pas",
+  padat: "padat",
+}
+
+export type ReplacementOption = {
+  staffId: string
+  name: string
+  nickname: string
+  workDays: number
+  hours: number
+  band: WorkloadBand
+}
+
+type WorkRow = {
+  staffId: string
+  templateId: string
+  workDate: string
+  startMinutes: number
+  endMinutes: number
+}
+
+/** Jam di atas/bawah median ± skew = padat/longgar. */
+export function workloadBand(
+  hours: number,
+  peerHours: number[],
+  skewPercent: number
+): WorkloadBand {
+  if (peerHours.length === 0) return "pas"
+  const sorted = [...peerHours].sort((a, b) => a - b)
+  const median = sorted[Math.floor(sorted.length / 2)] ?? 0
+  if (median <= 0) return hours > 0 ? "padat" : "longgar"
+  const skew = Math.max(0, skewPercent) / 100
+  if (hours > median * (1 + skew)) return "padat"
+  if (hours < median * (1 - skew)) return "longgar"
+  return "pas"
+}
+
+function slotMinutes(
+  slots: SlotRecord[],
+  templateId: string
+): { startMinutes: number; endMinutes: number } {
+  const slot = slots.find((item) => item.id === templateId)
+  return {
+    startMinutes: slot?.startMinutes ?? 0,
+    endMinutes: slot?.endMinutes ?? 0,
+  }
+}
+
+/** Assignment tersimpan per tanggal; kalau tanggal kosong, pakai usulan. */
+export function displayedWorkRows({
+  dates,
+  slots,
+  assignments,
+  proposedAssignments = [],
+}: {
+  dates: string[]
+  slots: SlotRecord[]
+  assignments: AssignmentRecord[]
+  proposedAssignments?: { staffId: string; workDate: string; templateId: string }[]
+}): WorkRow[] {
+  const rows: WorkRow[] = []
+  for (const date of dates) {
+    const stored = assignments.filter(
+      (row) => row.workDate === date && row.status !== "cancelled"
+    )
+    if (stored.length > 0) {
+      rows.push(
+        ...stored.map((row) => ({
+          staffId: row.staffId,
+          templateId: row.templateId,
+          workDate: row.workDate,
+          startMinutes: row.startMinutes,
+          endMinutes: row.endMinutes,
+        }))
+      )
+      continue
+    }
+    for (const row of proposedAssignments.filter((item) => item.workDate === date)) {
+      const minutes = slotMinutes(slots, row.templateId)
+      rows.push({
+        staffId: row.staffId,
+        templateId: row.templateId,
+        workDate: row.workDate,
+        ...minutes,
+      })
+    }
+  }
+  return rows
+}
+
+function loadOf(rows: WorkRow[], staffId: string): { workDays: number; hours: number } {
+  const mine = rows.filter((row) => row.staffId === staffId)
+  return {
+    workDays: new Set(mine.map((row) => row.workDate)).size,
+    hours: mine.reduce(
+      (sum, row) => sum + slotHours(row.startMinutes, row.endMinutes),
+      0
+    ),
+  }
+}
+
+const BAND_RANK: Record<WorkloadBand, number> = {
+  longgar: 0,
+  pas: 1,
+  padat: 2,
+}
+
+/** Orang yang bisa menggantikan satu orang di satu slot, diurutkan dari yang paling longgar. */
+export function replacementOptions({
+  staff,
+  slots,
+  date,
+  slotId,
+  fromStaffId,
+  assignments,
+  offs,
+  proposedAssignments = [],
+  dates,
+  skewPercent,
+}: {
+  staff: StaffRecord[]
+  slots: SlotRecord[]
+  date: string
+  slotId: string
+  fromStaffId: string
+  assignments: AssignmentRecord[]
+  offs: DayOffRecord[]
+  proposedAssignments?: { staffId: string; workDate: string; templateId: string }[]
+  dates: string[]
+  skewPercent: number
+}): ReplacementOption[] {
+  const slot = slots.find((item) => item.id === slotId)
+  if (!slot) return []
+  const rows = displayedWorkRows({
+    dates,
+    slots,
+    assignments,
+    proposedAssignments,
+  })
+  const dayRows = rows.filter((row) => row.workDate === date)
+  const offIds = new Set(
+    offs
+      .filter((row) => row.workDate === date)
+      .map((row) => row.staffId)
+  )
+  const peerHours = staff
+    .filter((member) => member.isActive && !isStaffDeleted(member))
+    .map((member) => loadOf(rows, member.id).hours)
+  const options: ReplacementOption[] = []
+  for (const member of staff) {
+    if (!member.isActive || isStaffDeleted(member)) continue
+    if (member.id === fromStaffId) continue
+    if (offIds.has(member.id)) continue
+    if (
+      dayRows.some(
+        (row) => row.staffId === member.id && row.templateId === slotId
+      )
+    ) {
+      continue
+    }
+    if (
+      dayRows.some(
+        (row) =>
+          row.staffId === member.id &&
+          isConsecutiveShift(row, slot, date, slots)
+      )
+    ) {
+      continue
+    }
+    const load = loadOf(rows, member.id)
+    options.push({
+      staffId: member.id,
+      name: member.name,
+      nickname: member.nickname,
+      workDays: load.workDays,
+      hours: load.hours,
+      band: workloadBand(load.hours, peerHours, skewPercent),
+    })
+  }
+  return options.sort(
+    (a, b) =>
+      BAND_RANK[a.band] - BAND_RANK[b.band] ||
+      a.hours - b.hours ||
+      a.name.localeCompare(b.name, "id")
+  )
 }
 

@@ -310,7 +310,7 @@ export function WeekScreen({
                     {formatIsoWeekdayShort(date)}
                   </span>
                   <span className="block text-xs text-muted-foreground">
-                    ketuk: siapa kerja
+                    ketuk: lihat roster
                   </span>
                 </span>
                 {heat === "hot" ? (
@@ -813,12 +813,12 @@ function DaySheet({
         <DialogHeader>
           <DialogTitle>{date ? formatIsoWeekday(date) : "Hari"}</DialogTitle>
           <DialogDescription>
-            Siapa kerja hari ini, libur resmi, dan permintaan.
+            Roster hari ini, libur resmi, dan permintaan.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3 text-sm">
           <section>
-            <h4 className="mb-1 font-medium">Siapa kerja</h4>
+            <h4 className="mb-1 font-medium">Roster</h4>
             {roster && roster.slots.some((slot) => slot.people.length > 0) ? (
               <ul className="flex flex-col gap-2">
                 {roster.slots.map((slot) => (

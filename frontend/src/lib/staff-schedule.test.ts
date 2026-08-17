@@ -22,6 +22,7 @@ import {
   ensureFairDefaultWeeks,
   hasOpenSession,
   removeOfficialOff,
+  replaceAssignment,
   requestDayOff,
   saveOutletSettings,
   saveSlot,
@@ -516,6 +517,56 @@ describe("staffing persist + schedule", () => {
         roles: [...owner.roles, "kasir"],
       })
     ).rejects.toThrow(/Hanya owner/)
+  })
+
+  test("replaceAssignment menukar orang di slot dan persist roster hari itu", async () => {
+    const { database, owner } = await bootstrap()
+    const pagiId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "1111",
+    })
+    const ayu = await createPerson(database, {
+      name: "Ayu Ganti",
+      roles: ["barista"],
+      pin: "2222",
+    })
+    await upsertAssignment(database, owner, {
+      staffId: nia.id,
+      templateId: pagiId,
+      workDate: "2026-08-17",
+      startMinutes: 420,
+      endMinutes: 900,
+      dutyRole: "barista",
+    })
+    await replaceAssignment(database, owner, {
+      workDate: "2026-08-17",
+      fromStaffId: nia.id,
+      toStaffId: ayu.id,
+      templateId: pagiId,
+      keep: [
+        {
+          staffId: nia.id,
+          templateId: pagiId,
+          startMinutes: 420,
+          endMinutes: 900,
+          dutyRole: "barista",
+        },
+      ],
+    })
+    const rows = (await loadAssignments(database)).filter(
+      (row) => row.workDate === "2026-08-17" && row.status !== "cancelled"
+    )
+    expect(rows.map((row) => row.staffId).sort()).toEqual([ayu.id])
+    expect(rows[0]?.templateId).toBe(pagiId)
   })
 
   test("seed backfills Dimas as manager when staff already exist", async () => {
