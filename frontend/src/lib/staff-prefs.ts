@@ -511,6 +511,34 @@ export function standingPreferredSlots(member: StaffRecord): PreferenceSlotRecor
   }))
 }
 
+/** Slot yang boleh diisi. Kosong = tidak di-assign sama sekali. */
+export function allocatedSlotIds(
+  member: StaffRecord,
+  preferences: PreferenceRecord[],
+  weekStart: string
+): string[] {
+  return effectivePreferenceSlots(member, preferences, weekStart).map(
+    (row) => row.templateId
+  )
+}
+
+export function canBeAssignedToSlot(
+  member: StaffRecord,
+  slotId: string,
+  preferences: PreferenceRecord[],
+  weekStart: string
+): boolean {
+  return allocatedSlotIds(member, preferences, weekStart).includes(slotId)
+}
+
+export function hasShiftAllocation(
+  member: StaffRecord,
+  preferences: PreferenceRecord[],
+  weekStart: string
+): boolean {
+  return allocatedSlotIds(member, preferences, weekStart).length > 0
+}
+
 /** Centang yang tampil di form = persis yang tersimpan. Kosong tetap kosong. */
 export function preferredSlotIdsFromMember(
   member: StaffRecord | undefined,

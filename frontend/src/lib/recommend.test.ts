@@ -67,6 +67,7 @@ function person(id: string, roles: StaffRecord["roles"] = ["barista"]): StaffRec
     isActive: true,
     outletId: "main",
     roles,
+    preferredTemplateIds: ["pagi", "sore"],
   }
 }
 
@@ -206,18 +207,17 @@ describe("recommendSchedule fair default", () => {
     }
   })
 
-  test("preferensi tetap mengutamakan shift yang dicentang", () => {
+  test("pembagian shift hanya mengisi shift yang dicentang", () => {
     const staff = crew.map((member) =>
       member.id === "nia" ? { ...member, preferredTemplateIds: ["pagi"] } : member
     )
     const result = run({ staff })
     const nia = result.assignments.filter((row) => row.staffId === "nia")
-    const pagiCount = nia.filter((row) => row.templateId === "pagi").length
-    const soreCount = nia.filter((row) => row.templateId === "sore").length
-    expect(pagiCount).toBeGreaterThan(soreCount)
+    expect(nia.length).toBeGreaterThan(0)
+    expect(nia.every((row) => row.templateId === "pagi")).toBe(true)
   })
 
-  test("preferensi minggu menimpa preferensi tetap di profil", () => {
+  test("pembagian minggu menimpa pembagian tetap di profil", () => {
     const staff = crew.map((member) =>
       member.id === "nia" ? { ...member, preferredTemplateIds: ["pagi"] } : member
     )
@@ -235,9 +235,17 @@ describe("recommendSchedule fair default", () => {
       ],
     })
     const nia = result.assignments.filter((row) => row.staffId === "nia")
-    const pagiCount = nia.filter((row) => row.templateId === "pagi").length
-    const soreCount = nia.filter((row) => row.templateId === "sore").length
-    expect(soreCount).toBeGreaterThan(pagiCount)
+    expect(nia.length).toBeGreaterThan(0)
+    expect(nia.every((row) => row.templateId === "sore")).toBe(true)
+  })
+
+  test("pembagian kosong tidak di-assign sama sekali", () => {
+    const staff = crew.map((member) =>
+      member.id === "nia" ? { ...member, preferredTemplateIds: [] } : member
+    )
+    const result = run({ staff })
+    expect(result.assignments.some((row) => row.staffId === "nia")).toBe(false)
+    expect(result.offs.some((row) => row.staffId === "nia")).toBe(false)
   })
 
   test("sore kemarin tidak dilanjutkan pagi hari ini", () => {

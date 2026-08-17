@@ -39,7 +39,7 @@ import {
   type CoverageTone,
   type DayHeat,
 } from "@/lib/schedule-board"
-import { dayRoster } from "@/lib/staff-prefs"
+import { dayRoster, effectivePreferenceSlots } from "@/lib/staff-prefs"
 import { addDays, formatMinutes, monthStartOf, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import {
@@ -425,9 +425,13 @@ export function WeekScreen({
               warnings,
               weekStart,
             })
-            const preferred = activeSlots.find(
-              (slot) => slot.id === load.preferredSlotId
+            const allocated = effectivePreferenceSlots(
+              member,
+              preferences,
+              weekStart
             )
+              .map((row) => activeSlots.find((slot) => slot.id === row.templateId)?.name)
+              .filter((name): name is string => Boolean(name))
             return (
               <li key={member.id} className="border bg-card px-3 py-2 text-sm">
                 <p className="font-medium">{member.name}</p>
@@ -437,7 +441,9 @@ export function WeekScreen({
                   {load.consecutive > 1 ? ` · ${load.consecutive} beruntun` : ""}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {preferred ? `mau ${preferred.name}` : "pref belum diisi"}
+                  {allocated.length > 0
+                    ? allocated.join("/")
+                    : "belum dibagi"}
                   {load.suggestDates.length > 0
                     ? ` · minta ${load.suggestDates
                         .map((date) => formatIsoWeekdayShort(date))

@@ -272,7 +272,7 @@ function StaffDialog({
             </div>
           </fieldset>
           <fieldset>
-            <legend className="mb-2 text-sm font-medium">Preferensi shift</legend>
+            <legend className="mb-2 text-sm font-medium">Pembagian shift</legend>
             {activeSlots.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Belum ada slot shift. Tambah di pengaturan outlet.
@@ -296,7 +296,7 @@ function StaffDialog({
                   ))}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Centang shift yang diutamakan. Kosong = fleksibel.
+                  Centang shift yang diisi. Kosong = tidak di-assign sama sekali.
                 </p>
               </>
             )}

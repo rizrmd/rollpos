@@ -1,5 +1,9 @@
 import { floorRolesOf } from "@/lib/permissions"
-import { slotPreferenceRank } from "@/lib/staff-prefs"
+import {
+  canBeAssignedToSlot,
+  hasShiftAllocation,
+  slotPreferenceRank,
+} from "@/lib/staff-prefs"
 import { addDays, consecutiveRunEnding, isWeekend, slotHours, weekDates } from "@/lib/time"
 import {
   isStaffDeleted,
@@ -175,7 +179,9 @@ function canCoverDay(
   history: Record<string, string[]>,
   proposedWork: Map<string, string[]>,
   maxConsecutive: number,
-  prior: { staffId: string; templateId: string; workDate: string }[] = []
+  prior: { staffId: string; templateId: string; workDate: string }[] = [],
+  preferences: PreferenceRecord[] = [],
+  weekStart = ""
 ): boolean {
   const remaining = availableStaff(
     staff,
@@ -191,6 +197,7 @@ function canCoverDay(
   for (const slot of slots) {
     const eligible = remaining.filter(
       (member) =>
+        canBeAssignedToSlot(member, slot.id, preferences, weekStart) &&
         !used.some(
           (row) =>
             row.staffId === member.id &&
@@ -251,6 +258,8 @@ function grantStaffSuggestions({
   grantedOff,
   history,
   maxConsecutive,
+  preferences,
+  weekStart,
 }: {
   staff: StaffRecord[]
   slots: SlotRecord[]
@@ -260,6 +269,8 @@ function grantStaffSuggestions({
   grantedOff: Set<string>
   history: Record<string, string[]>
   maxConsecutive: number
+  preferences: PreferenceRecord[]
+  weekStart: string
 }): {
   grantedSuggestionIds: string[]
   recommendedDayOff: { staffId: string; workDate: string }[]
@@ -283,7 +294,10 @@ function grantStaffSuggestions({
         trial,
         history,
         emptyWork,
-        maxConsecutive
+        maxConsecutive,
+        [],
+        preferences,
+        weekStart
       )
     )
     if (ok) {
@@ -306,7 +320,10 @@ function grantStaffSuggestions({
           new Set([...grantedOff, offKey(suggestion.staffId, date)]),
           history,
           emptyWork,
-          maxConsecutive
+          maxConsecutive,
+          [],
+          preferences,
+          weekStart
         )
     )
     if (alternative) {
@@ -328,6 +345,8 @@ function allocateFairOffs({
   grantedOff,
   history,
   settings,
+  preferences,
+  weekStart,
 }: {
   staff: StaffRecord[]
   slots: SlotRecord[]
@@ -336,6 +355,8 @@ function allocateFairOffs({
   grantedOff: Set<string>
   history: Record<string, string[]>
   settings: OutletSettingsRecord
+  preferences: PreferenceRecord[]
+  weekStart: string
 }): { staffId: string; workDate: string }[] {
   const target = settings.targetDaysOffPerWeek
   if (target <= 0) return []
@@ -351,7 +372,11 @@ function allocateFairOffs({
   while (progressed) {
     progressed = false
     const needy = staff
-      .filter((member) => offCount(member.id) < target)
+      .filter(
+        (member) =>
+          hasShiftAllocation(member, preferences, weekStart) &&
+          offCount(member.id) < target
+      )
       .sort((a, b) => {
         const offDelta = offCount(a.id) - offCount(b.id)
         if (offDelta !== 0) return offDelta
@@ -375,7 +400,10 @@ function allocateFairOffs({
             new Set([...grantedOff, offKey(member.id, date)]),
             history,
             emptyWork,
-            settings.maxConsecutiveWorkDays
+            settings.maxConsecutiveWorkDays,
+            [],
+            preferences,
+            weekStart
           )
         )
         .map((date) => {
@@ -516,6 +544,7 @@ function assignFairWork({
       settings.maxConsecutiveWorkDays
     ).filter(
       (member) =>
+        canBeAssignedToSlot(member, slot.id, preferences, weekStart) &&
         !assignments.some(
           (row) =>
             row.staffId === member.id &&
@@ -561,12 +590,17 @@ function assignFairWork({
       history,
       proposedWork,
       settings.maxConsecutiveWorkDays
-    ).filter((member) => !workingIds.has(member.id))
+    ).filter(
+      (member) =>
+        !workingIds.has(member.id) &&
+        hasShiftAllocation(member, preferences, weekStart)
+    )
 
     for (const member of leftovers) {
       const slot = [...slots]
         .filter(
           (item) =>
+            canBeAssignedToSlot(member, item.id, preferences, weekStart) &&
             !assignments.some(
               (row) =>
                 row.staffId === member.id &&
@@ -629,6 +663,8 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
     grantedOff,
     history,
     maxConsecutive,
+    preferences: input.preferences,
+    weekStart: input.weekStart,
   })
 
   const fairOffs = allocateFairOffs({
@@ -639,6 +675,8 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
     grantedOff,
     history,
     settings: input.settings,
+    preferences: input.preferences,
+    weekStart: input.weekStart,
   })
   for (const row of fairOffs) {
     if (

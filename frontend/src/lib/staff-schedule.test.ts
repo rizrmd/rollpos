@@ -116,7 +116,7 @@ function settingsFrom(row: OutletSettingsRecord): OutletSettingsRecord {
 }
 
 describe("staffing persist + schedule", () => {
-  test("preferensi shift dari form (semua, sebagian, atau kosong) tetap ada setelah simpan dan buka ulang", async () => {
+  test("pembagian shift dari form (semua, sebagian, atau kosong) tetap ada setelah simpan dan buka ulang", async () => {
     const { database, owner } = await bootstrap()
     const pagiId = await saveSlot(database, owner, {
       name: "Pagi",
@@ -175,7 +175,7 @@ describe("staffing persist + schedule", () => {
     expect(preferredSlotIdsFromMember(afterNone, slots)).toEqual([])
   })
 
-  test("preferensi shift tersimpan dan tidak terhapus saat update tanpa field itu", async () => {
+  test("pembagian shift tersimpan dan tidak terhapus saat update tanpa field itu", async () => {
     const { database, owner } = await bootstrap()
     const slotId = await saveSlot(database, owner, {
       name: "Pagi",
@@ -218,7 +218,7 @@ describe("staffing persist + schedule", () => {
     expect(cleared?.preferredTemplateIds).toEqual([])
   })
 
-  test("ubah preferensi shift menghitung ulang usulan sistem", async () => {
+  test("ubah pembagian shift menghitung ulang usulan sistem", async () => {
     const { database, owner } = await bootstrap()
     const nia = await createPerson(database, {
       name: "Nia",
@@ -273,11 +273,25 @@ describe("staffing persist + schedule", () => {
     )
     const pagiCount = after.filter((row) => row.templateId === pagiId).length
     const soreCount = after.filter((row) => row.templateId === soreId).length
-    expect(pagiCount).toBeGreaterThan(soreCount)
+    expect(pagiCount).toBeGreaterThan(0)
+    expect(soreCount).toBe(0)
     expect(after.every((row) => row.note === "usulan sistem")).toBe(true)
+
+    await upsertStaff(database, owner, {
+      id: nia.id,
+      name: "Nia",
+      nickname: "Nia",
+      isActive: true,
+      roles: ["barista", "kitchen"],
+      preferredTemplateIds: [],
+    })
+    const cleared = (await loadAssignments(database)).filter(
+      (row) => row.staffId === nia.id && row.status !== "cancelled"
+    )
+    expect(cleared).toHaveLength(0)
   })
 
-  test("ubah preferensi tidak menimpa assignment yang diisi manual", async () => {
+  test("ubah pembagian tidak menimpa assignment yang diisi manual", async () => {
     const { database, owner } = await bootstrap()
     const nia = await createPerson(database, {
       name: "Nia",
@@ -329,7 +343,7 @@ describe("staffing persist + schedule", () => {
     ).toHaveLength(1)
   })
 
-  test("simpan staff tanpa ubah preferensi tidak menghitung ulang", async () => {
+  test("simpan staff tanpa ubah pembagian tidak menghitung ulang", async () => {
     const { database, owner } = await bootstrap()
     const nia = await createPerson(database, {
       name: "Nia",
@@ -434,7 +448,7 @@ describe("staffing persist + schedule", () => {
     expect(people.filter((row) => row.name === "Ayu")).toHaveLength(1)
   })
 
-  test("seed tidak menimpa role, aktif, dan preferensi Dimas yang sudah disimpan", async () => {
+  test("seed tidak menimpa role, aktif, dan pembagian Dimas yang sudah disimpan", async () => {
     const database = await freshDb()
     await seedStaffingIfEmpty(database)
     const people = await loadStaff(database)
@@ -828,7 +842,10 @@ describe("staffing persist + schedule", () => {
       minStaffCount: 2,
       isActive: true,
     })
-    const staff = await loadStaff(database)
+    const staff = (await loadStaff(database)).map((member) => ({
+      ...member,
+      preferredTemplateIds: [slotId],
+    }))
     const result = recommendSchedule({
       settings: settingsFrom(stored),
       staff,

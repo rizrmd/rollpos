@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  canBeAssignedToSlot,
   dayOffAction,
   dayRoster,
   decidedPrefsDays,
   effectivePreferenceSlots,
+  hasShiftAllocation,
   prefsDayCaption,
   isPreferenceDeadlinePassed,
   prefsDaysForMonth,
@@ -413,7 +415,7 @@ describe("teamMonthDays", () => {
   })
 })
 
-describe("preferensi shift profil", () => {
+describe("pembagian shift profil", () => {
   const nia = {
     id: "nia",
     name: "Nia",
@@ -447,6 +449,14 @@ describe("preferensi shift profil", () => {
     ]
     expect(slotPreferenceRank(nia, "sore", week, "2026-08-17")).toBe(1)
     expect(slotPreferenceRank(nia, "pagi", week, "2026-08-17")).toBe(99)
+  })
+
+  test("kosong berarti tidak di-assign; hanya shift yang dicentang yang boleh diisi", () => {
+    const none = { ...nia, preferredTemplateIds: [] }
+    expect(hasShiftAllocation(none, [], "2026-08-17")).toBe(false)
+    expect(canBeAssignedToSlot(none, "pagi", [], "2026-08-17")).toBe(false)
+    expect(canBeAssignedToSlot(nia, "pagi", [], "2026-08-17")).toBe(true)
+    expect(canBeAssignedToSlot(nia, "sore", [], "2026-08-17")).toBe(false)
   })
 
   test("form menampilkan persis yang tersimpan, termasuk uncentang semua", () => {
