@@ -2,6 +2,7 @@ import { isConsecutiveShift } from "@/lib/recommend"
 import { effectivePreferenceSlots } from "@/lib/staff-prefs"
 import { addDays, consecutiveRunEnding, slotHours } from "@/lib/time"
 import {
+  isIncludedInAttendance,
   isStaffDeleted,
   type AssignmentRecord,
   type DayOffRecord,
@@ -279,7 +280,7 @@ export function unscheduledOnDate(
   offs: DayOffRecord[]
 ): StaffRecord[] {
   return staff.filter((member) => {
-    if (!member.isActive) return false
+    if (!member.isActive || !isIncludedInAttendance(member)) return false
     const working = assignments.some(
       (row) => row.staffId === member.id && row.workDate === date
     )
@@ -440,11 +441,15 @@ export function replacementOptions({
       .map((row) => row.staffId)
   )
   const peerHours = staff
-    .filter((member) => member.isActive && !isStaffDeleted(member))
+    .filter(
+      (member) =>
+        member.isActive && !isStaffDeleted(member) && isIncludedInAttendance(member)
+    )
     .map((member) => loadOf(rows, member.id).hours)
   const options: ReplacementOption[] = []
   for (const member of staff) {
     if (!member.isActive || isStaffDeleted(member)) continue
+    if (!isIncludedInAttendance(member)) continue
     if (member.id === fromStaffId) continue
     if (offIds.has(member.id)) continue
     if (

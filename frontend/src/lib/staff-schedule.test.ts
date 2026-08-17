@@ -222,6 +222,53 @@ describe("staffing persist + schedule", () => {
     expect(cleared?.preferredTemplateIds).toEqual([])
   })
 
+  test("owner/manager: checkbox absensi, bukan pembagian shift", async () => {
+    const { database, owner } = await bootstrap()
+    await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    await upsertStaff(database, owner, {
+      id: owner.id,
+      name: owner.name,
+      nickname: owner.nickname,
+      isActive: true,
+      roles: owner.roles,
+      includeInAttendance: true,
+    })
+    const weeks = defaultScheduleWeeks(1)
+    await ensureFairDefaultWeeks(database, weeks)
+    expect(
+      (await loadAssignments(database)).some(
+        (row) => row.staffId === owner.id && row.status !== "cancelled"
+      )
+    ).toBe(true)
+
+    await upsertStaff(database, owner, {
+      id: owner.id,
+      name: owner.name,
+      nickname: owner.nickname,
+      isActive: true,
+      roles: owner.roles,
+      includeInAttendance: false,
+    })
+    const excluded = (await loadStaff(database)).find((row) => row.id === owner.id)
+    expect(excluded?.includeInAttendance).toBe(false)
+    expect(
+      (await loadAssignments(database)).filter(
+        (row) => row.staffId === owner.id && row.status !== "cancelled"
+      )
+    ).toHaveLength(0)
+
+    await expect(
+      clockPunch(database, owner.id, "1234", "clock_in", "tablet")
+    ).rejects.toThrow("tidak diikutkan ke absensi")
+  })
+
   test("ubah pembagian shift menghitung ulang usulan sistem", async () => {
     const { database, owner } = await bootstrap()
     const nia = await createPerson(database, {

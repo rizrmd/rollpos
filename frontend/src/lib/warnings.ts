@@ -1,14 +1,15 @@
 import { floorRolesOf } from "@/lib/permissions"
 import { consecutiveRunEnding, isWeekend, slotHours, weekDates } from "@/lib/time"
-import type {
-  AssignmentRecord,
-  DayOffRecord,
-  OutletSettingsRecord,
-  RoleRequirementRecord,
-  ScheduleWarning,
-  SlotRecord,
-  StaffRecord,
-  SuggestionRecord,
+import {
+  isIncludedInAttendance,
+  type AssignmentRecord,
+  type DayOffRecord,
+  type OutletSettingsRecord,
+  type RoleRequirementRecord,
+  type ScheduleWarning,
+  type SlotRecord,
+  type StaffRecord,
+  type SuggestionRecord,
 } from "@/lib/types"
 
 export type WarningInput = {
@@ -36,7 +37,9 @@ export function detectWarnings(input: WarningInput): ScheduleWarning[] {
   const warnings: ScheduleWarning[] = []
   const dates = weekDates(input.weekStart)
   const slots = input.slots.filter((slot) => slot.isActive)
-  const staff = input.staff.filter((member) => member.isActive)
+  const staff = input.staff.filter(
+    (member) => member.isActive && isIncludedInAttendance(member)
+  )
   const assignments = activeAssignments(input.assignments)
   const offSet = new Set(input.offs.map((row) => offKey(row.staffId, row.workDate)))
   const hours = new Map<string, number>()

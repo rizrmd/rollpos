@@ -110,6 +110,7 @@ function insertSeedPerson(
     pinSalt: person.salt,
     pinHash: person.pinHash,
     isActive: true,
+    includeInAttendance: true,
     deletedAt: 0,
     outletId: SEED_DEFAULTS.outletId,
     createdAt: now,

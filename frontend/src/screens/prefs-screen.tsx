@@ -47,6 +47,7 @@ import {
 } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import {
+  isIncludedInAttendance,
   isStaffDeleted,
   type AssignmentRecord,
   type DayOffRecord,
@@ -123,7 +124,8 @@ export function PrefsScreen({
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const activeStaff = staff.filter(
-    (member) => member.isActive && !isStaffDeleted(member)
+    (member) =>
+      member.isActive && !isStaffDeleted(member) && isIncludedInAttendance(member)
   )
 
   const cells = useMemo(

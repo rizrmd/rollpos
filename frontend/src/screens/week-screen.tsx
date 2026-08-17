@@ -29,6 +29,7 @@ import { MonthApprovals } from "@/screens/month-approvals"
 import { monthGrid, monthStartOf, todayJakarta, weekStartOn } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import {
+  isIncludedInAttendance,
   isStaffDeleted,
   type AssignmentRecord,
   type DayOffRecord,
@@ -81,7 +82,8 @@ export function WeekScreen({
     .filter((slot) => slot.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder)
   const activeStaff = staff.filter(
-    (member) => member.isActive && !isStaffDeleted(member)
+    (member) =>
+      member.isActive && !isStaffDeleted(member) && isIncludedInAttendance(member)
   )
   const monthDates = monthGrid(monthCursor, weekStartsOn)
     .filter((cell) => cell.inMonth)

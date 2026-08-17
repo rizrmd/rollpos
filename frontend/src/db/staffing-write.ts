@@ -30,7 +30,6 @@ import {
 } from "@/lib/recommend"
 import { lockedWorkDates } from "@/lib/calendar-select"
 import {
-  allocatedSlotIds,
   canBeAssignedToSlot,
   isStaleSystemAssignment,
 } from "@/lib/staff-prefs"
@@ -55,7 +54,7 @@ import type {
   StaffRole,
   SuggestionStatus,
 } from "@/lib/types"
-import { DEFAULT_OUTLET_ID, isStaffDeleted } from "@/lib/types"
+import { DEFAULT_OUTLET_ID, isIncludedInAttendance, isStaffDeleted } from "@/lib/types"
 import { nextWeekStart, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 
 export function hasOpenSession(events: { type: AttendanceType }[]): boolean {
@@ -222,6 +221,7 @@ export async function upsertStaff(
     isActive: boolean
     roles: StaffRole[]
     preferredTemplateIds?: string[]
+    includeInAttendance?: boolean
     outletId?: string
   }
 ): Promise<string> {
@@ -275,6 +275,9 @@ export async function upsertStaff(
         name: input.name,
         nickname: input.nickname,
         isActive: input.isActive,
+        ...(input.includeInAttendance !== undefined
+          ? { includeInAttendance: input.includeInAttendance }
+          : {}),
         updatedAt: now,
         ...pinCells,
       })
@@ -294,10 +297,15 @@ export async function upsertStaff(
         writePreferredSlots(database, target.id, input.preferredTemplateIds)
       }
     })
-    if (
+    const prefsChanged =
       input.preferredTemplateIds !== undefined &&
       !sameTemplateIds(target.preferredTemplateIds, input.preferredTemplateIds)
-    ) {
+    const attendanceChanged =
+      input.includeInAttendance !== undefined &&
+      isIncludedInAttendance(target) !== input.includeInAttendance
+    const leadershipChanged =
+      canManage(target.roles) !== canManage(input.roles)
+    if (prefsChanged || attendanceChanged || leadershipChanged) {
       await rebuildOpenSystemWeeks(database)
     }
     return target.id
@@ -313,6 +321,7 @@ export async function upsertStaff(
       pinSalt: salt,
       pinHash,
       isActive: input.isActive,
+      includeInAttendance: input.includeInAttendance ?? true,
       deletedAt: 0,
       outletId: input.outletId ?? DEFAULT_OUTLET_ID,
       createdAt: now,
@@ -443,7 +452,10 @@ export async function clockPunch(
   deviceId: string,
   at = Date.now()
 ): Promise<void> {
-  await authenticateStaff(database, staffId, pin)
+  const member = await authenticateStaff(database, staffId, pin)
+  if (type === "clock_in" && !isIncludedInAttendance(member)) {
+    throw new Error("Staff ini tidak diikutkan ke absensi.")
+  }
   const events = await loadAttendance(database, staffId)
   const open = hasOpenSession(events)
   if (type === "clock_in" && open) {
@@ -1064,11 +1076,12 @@ export async function assignStaffToDates(
       for (const staffId of working) {
         const member = people.find((item) => item.id === staffId)
         if (!member || !member.isActive || isStaffDeleted(member)) continue
-        const allocated = allocatedSlotIds(member, preferences, weekStart)
+        if (!isIncludedInAttendance(member)) continue
+        const allocated = activeSlots.filter((slot) =>
+          canBeAssignedToSlot(member, slot.id, preferences, weekStart)
+        )
         const targets =
-          allocated.length > 0
-            ? activeSlots.filter((slot) => allocated.includes(slot.id))
-            : activeSlots.slice(0, 1)
+          allocated.length > 0 ? allocated : activeSlots.slice(0, 1)
         const dutyRole = floorRolesOf(member.roles)[0] ?? ""
         for (const slot of targets) {
           const existing = listRows(database, TABLES.shiftAssignments).find(

@@ -18,6 +18,7 @@ import {
 import { deviceId } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import {
+  isIncludedInAttendance,
   isStaffDeleted,
   type AssignmentRecord,
   type AttendanceEventRecord,
@@ -48,7 +49,10 @@ export function ClockScreen({
   const [selected, setSelected] = useState<StaffRecord | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const active = staff.filter(
-    (member) => member.isActive && !isStaffDeleted(member)
+    (member) =>
+      member.isActive &&
+      !isStaffDeleted(member) &&
+      (isIncludedInAttendance(member) || Boolean(openByStaff.get(member.id)))
   )
 
   const cards = useMemo(

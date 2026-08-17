@@ -87,10 +87,23 @@ export type StaffRecord = {
   outletId: string
   roles: StaffRole[]
   preferredTemplateIds?: string[]
+  /** Default true. Owner/manager yang false tidak masuk absensi maupun jadwal. */
+  includeInAttendance?: boolean
 }
 
 export function isStaffDeleted(member: Pick<StaffRecord, "deletedAt">): boolean {
   return (member.deletedAt ?? 0) > 0
+}
+
+export function isIncludedInAttendance(
+  member: Pick<StaffRecord, "includeInAttendance">
+): boolean {
+  return member.includeInAttendance !== false
+}
+
+/** Owner/manager tidak memilih slot; cukup checkbox absensi. */
+export function usesAttendanceToggle(roles: readonly StaffRole[]): boolean {
+  return roles.includes("owner") || roles.includes("manager")
 }
 
 export type SlotRecord = {

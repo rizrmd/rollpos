@@ -26,7 +26,9 @@ import { formatMinutes } from "@/lib/time"
 import {
   FLOOR_ROLES,
   STAFF_ROLES,
+  isIncludedInAttendance,
   isStaffDeleted,
+  usesAttendanceToggle,
   type SlotRecord,
   type StaffRecord,
   type StaffRole,
@@ -96,7 +98,7 @@ export function StaffScreen({
                 <span className="block font-medium">{member.name}</span>
                 <span className="block text-sm text-muted-foreground">
                   {member.roles.join(" · ") || "tanpa role"}
-                  {preferredShiftLabel(member, slots)}
+                  {staffListHint(member, slots)}
                   {member.isActive ? "" : " · nonaktif"}
                 </span>
               </span>
@@ -152,6 +154,7 @@ function StaffDialog({
     isActive: boolean
     roles: StaffRole[]
     preferredTemplateIds: string[]
+    includeInAttendance: boolean
   }) => Promise<void>
   onDelete: (member: StaffRecord) => Promise<void>
 }) {
@@ -164,6 +167,9 @@ function StaffDialog({
   const [roles, setRoles] = useState<StaffRole[]>(member?.roles ?? ["kasir"])
   const [preferred, setPreferred] = useState<string[]>(() =>
     preferredSlotIdsFromMember(member, activeSlots)
+  )
+  const [includeAttendance, setIncludeAttendance] = useState(
+    isIncludedInAttendance(member ?? { includeInAttendance: true })
   )
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -197,6 +203,9 @@ function StaffDialog({
           setActive(member?.isActive ?? true)
           setRoles(member?.roles ?? ["kasir"])
           setPreferred(preferredSlotIdsFromMember(member, activeSlots))
+          setIncludeAttendance(
+            isIncludedInAttendance(member ?? { includeInAttendance: true })
+          )
           setError(null)
           setConfirmDelete(false)
           setBusy(false)
@@ -223,7 +232,12 @@ function StaffDialog({
                 pin: member ? undefined : pin,
                 isActive: active,
                 roles,
-                preferredTemplateIds: preferredSlotIdsToStore(preferred, activeSlots),
+                preferredTemplateIds: usesAttendanceToggle(roles)
+                  ? []
+                  : preferredSlotIdsToStore(preferred, activeSlots),
+                includeInAttendance: usesAttendanceToggle(roles)
+                  ? includeAttendance
+                  : true,
               })
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err))
@@ -271,36 +285,58 @@ function StaffDialog({
               ))}
             </div>
           </fieldset>
-          <fieldset>
-            <legend className="mb-2 text-sm font-medium">Pembagian shift</legend>
-            {activeSlots.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Belum ada slot shift. Tambah di pengaturan outlet.
+          {usesAttendanceToggle(roles) ? (
+            <fieldset>
+              <legend className="mb-2 text-sm font-medium">Absensi</legend>
+              <label className="flex min-h-12 items-center gap-2 text-sm">
+                <Checkbox
+                  checked={includeAttendance}
+                  onCheckedChange={(checked) =>
+                    setIncludeAttendance(checked === true)
+                  }
+                />
+                Sertakan di absensi
+              </label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Kalau tidak dicentang, tidak muncul di clock-in dan tidak masuk
+                penjadwalan.
               </p>
-            ) : (
-              <>
-                <div className="flex flex-wrap gap-3">
-                  {activeSlots.map((slot) => (
-                    <label key={slot.id} className="flex min-h-12 items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={preferred.includes(slot.id)}
-                        onCheckedChange={(checked) =>
-                          setShiftChecked(slot.id, checked === true)
-                        }
-                      />
-                      {slot.name}
-                      <span className="text-muted-foreground">
-                        {formatMinutes(slot.startMinutes)}–{formatMinutes(slot.endMinutes)}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Centang shift yang diisi. Kosong = tidak di-assign sama sekali.
+            </fieldset>
+          ) : (
+            <fieldset>
+              <legend className="mb-2 text-sm font-medium">Pembagian shift</legend>
+              {activeSlots.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Belum ada slot shift. Tambah di pengaturan outlet.
                 </p>
-              </>
-            )}
-          </fieldset>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-3">
+                    {activeSlots.map((slot) => (
+                      <label
+                        key={slot.id}
+                        className="flex min-h-12 items-center gap-2 text-sm"
+                      >
+                        <Checkbox
+                          checked={preferred.includes(slot.id)}
+                          onCheckedChange={(checked) =>
+                            setShiftChecked(slot.id, checked === true)
+                          }
+                        />
+                        {slot.name}
+                        <span className="text-muted-foreground">
+                          {formatMinutes(slot.startMinutes)}–{formatMinutes(slot.endMinutes)}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Centang shift yang diisi. Kosong = tidak di-assign sama sekali.
+                  </p>
+                </>
+              )}
+            </fieldset>
+          )}
           <fieldset>
             <legend className="mb-2 text-sm font-medium">Pimpinan</legend>
             <div className="flex flex-wrap gap-3">
@@ -362,7 +398,10 @@ function StaffDialog({
   )
 }
 
-function preferredShiftLabel(member: StaffRecord, slots: SlotRecord[]): string {
+function staffListHint(member: StaffRecord, slots: SlotRecord[]): string {
+  if (usesAttendanceToggle(member.roles)) {
+    return isIncludedInAttendance(member) ? " · absensi" : " · tanpa absensi"
+  }
   const names = (member.preferredTemplateIds ?? [])
     .map((id) => slots.find((slot) => slot.id === id)?.name)
     .filter((name): name is string => Boolean(name))

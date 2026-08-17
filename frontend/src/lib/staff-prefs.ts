@@ -1,14 +1,16 @@
+import { canManage } from "@/lib/permissions"
 import { addDays, jakartaDateParts, todayJakarta, weekStartOn } from "@/lib/time"
-import type {
-  AssignmentRecord,
-  DayOffRecord,
-  DayOffSource,
-  OutletSettingsRecord,
-  PreferenceRecord,
-  PreferenceSlotRecord,
-  SlotRecord,
-  StaffRecord,
-  SuggestionRecord,
+import {
+  isIncludedInAttendance,
+  type AssignmentRecord,
+  type DayOffRecord,
+  type DayOffSource,
+  type OutletSettingsRecord,
+  type PreferenceRecord,
+  type PreferenceSlotRecord,
+  type SlotRecord,
+  type StaffRecord,
+  type SuggestionRecord,
 } from "@/lib/types"
 
 export type PrefsDayKind =
@@ -517,6 +519,7 @@ export function allocatedSlotIds(
   preferences: PreferenceRecord[],
   weekStart: string
 ): string[] {
+  if (!isIncludedInAttendance(member)) return []
   return effectivePreferenceSlots(member, preferences, weekStart).map(
     (row) => row.templateId
   )
@@ -528,6 +531,8 @@ export function canBeAssignedToSlot(
   preferences: PreferenceRecord[],
   weekStart: string
 ): boolean {
+  if (!isIncludedInAttendance(member)) return false
+  if (canManage(member.roles)) return true
   return allocatedSlotIds(member, preferences, weekStart).includes(slotId)
 }
 
@@ -536,6 +541,8 @@ export function hasShiftAllocation(
   preferences: PreferenceRecord[],
   weekStart: string
 ): boolean {
+  if (!isIncludedInAttendance(member)) return false
+  if (canManage(member.roles)) return true
   return allocatedSlotIds(member, preferences, weekStart).length > 0
 }
 

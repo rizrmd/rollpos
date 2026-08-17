@@ -452,6 +452,22 @@ describe("pembagian shift profil", () => {
     expect(slotPreferenceRank(nia, "pagi", week, "2026-08-17")).toBe(99)
   })
 
+  test("owner/manager tidak perlu slot: checkbox absensi yang menentukan jadwal", () => {
+    const owner = {
+      ...nia,
+      roles: ["owner"] as const,
+      preferredTemplateIds: [],
+      includeInAttendance: true,
+    }
+    expect(hasShiftAllocation(owner, [], "2026-08-17")).toBe(true)
+    expect(canBeAssignedToSlot(owner, "pagi", [], "2026-08-17")).toBe(true)
+    expect(canBeAssignedToSlot(owner, "sore", [], "2026-08-17")).toBe(true)
+
+    const excluded = { ...owner, includeInAttendance: false }
+    expect(hasShiftAllocation(excluded, [], "2026-08-17")).toBe(false)
+    expect(canBeAssignedToSlot(excluded, "pagi", [], "2026-08-17")).toBe(false)
+  })
+
   test("kosong berarti tidak di-assign; hanya shift yang dicentang yang boleh diisi", () => {
     const none = { ...nia, preferredTemplateIds: [] }
     expect(hasShiftAllocation(none, [], "2026-08-17")).toBe(false)

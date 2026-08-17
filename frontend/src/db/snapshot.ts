@@ -180,6 +180,9 @@ export function staffFromStore(database: Database): StaffRecord[] {
     pinHash: cellStr(person, "pinHash"),
     pinSalt: cellStr(person, "pinSalt"),
     isActive: cellFlag(person, "isActive"),
+    includeInAttendance: !("includeInAttendance" in person)
+      ? true
+      : cellFlag(person, "includeInAttendance"),
     deletedAt: cellNum(person, "deletedAt") || undefined,
     outletId: cellStr(person, "outletId"),
     roles: roles

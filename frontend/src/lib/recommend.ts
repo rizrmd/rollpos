@@ -6,6 +6,7 @@ import {
 } from "@/lib/staff-prefs"
 import { addDays, consecutiveRunEnding, isWeekend, slotHours, weekDates } from "@/lib/time"
 import {
+  isIncludedInAttendance,
   isStaffDeleted,
   type AssignmentRecord,
   type DayOffRecord,
@@ -163,6 +164,7 @@ function availableStaff(
 ): StaffRecord[] {
   return staff.filter((member) => {
     if (!member.isActive || isStaffDeleted(member)) return false
+    if (!isIncludedInAttendance(member)) return false
     if (offs.has(offKey(member.id, date))) return false
     const dates = [
       ...(history[member.id] ?? []),
@@ -672,7 +674,8 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
     .filter((slot) => slot.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder)
   const staff = input.staff.filter(
-    (member) => member.isActive && !isStaffDeleted(member)
+    (member) =>
+      member.isActive && !isStaffDeleted(member) && isIncludedInAttendance(member)
   )
   const history = input.historyWorkDates ?? {}
   const maxConsecutive = input.settings.maxConsecutiveWorkDays
