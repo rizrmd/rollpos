@@ -7,13 +7,6 @@ import { PinDialog } from "@/components/pin-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -247,14 +240,6 @@ export function PrefsScreen({
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-lg font-medium">Shift & libur</h1>
-        <p className="text-sm text-muted-foreground">
-          Kalender langsung tampil. Inisial = siapa yang masuk. Ketuk tanggal
-          untuk detail atau minta libur.
-        </p>
-      </header>
-
       <LiveNotice message={notice} />
       <LiveNotice message={error} tone="error" />
 
@@ -368,35 +353,6 @@ export function PrefsScreen({
           </ol>
         </div>
       </section>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Minta libur sebagai</CardTitle>
-          <CardDescription>
-            Kalender sudah tampil. PIN hanya untuk minta atau cabut libur.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {activeStaff.map((member) => (
-              <Button
-                key={member.id}
-                type="button"
-                size="touch"
-                variant={who?.id === member.id ? "default" : "outline"}
-                aria-pressed={who?.id === member.id}
-                onClick={() => {
-                  setNotice(null)
-                  setError(null)
-                  setPendingWho(member)
-                }}
-              >
-                {member.nickname}
-              </Button>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
 
       {who && decided.length === 0 ? (
         <p className="text-sm text-muted-foreground">
