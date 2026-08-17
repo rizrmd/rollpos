@@ -2,7 +2,6 @@ import type { LucideIcon } from "lucide-react"
 import {
   BarChart3,
   Boxes,
-  CalendarDays,
   CalendarRange,
   Clock3,
   KeyRound,
@@ -21,7 +20,6 @@ export type AppPage =
   | "menu"
   | "kasir"
   | "clock"
-  | "today"
   | "orders"
   | "products"
   | "stock"
@@ -90,24 +88,6 @@ export const NAV_GROUPS: NavGroup[] = [
           "Sesi laci terikat ke staff yang clock-in",
         ],
       },
-      {
-        id: "clock",
-        label: "Masuk",
-        hint: "Clock-in, pulang, dan siapa yang sudah masuk",
-        icon: Clock3,
-        ready: true,
-        access: "public",
-        plan: [],
-      },
-      {
-        id: "today",
-        label: "Hari ini",
-        hint: "Siapa sedang masuk dan siapa belum datang",
-        icon: CalendarDays,
-        ready: true,
-        access: "public",
-        plan: [],
-      },
     ],
   },
   {
@@ -155,6 +135,15 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "tim",
     title: "Karyawan",
     items: [
+      {
+        id: "clock",
+        label: "Absensi",
+        hint: "Clock-in, pulang, dan siapa yang sudah masuk",
+        icon: Clock3,
+        ready: true,
+        access: "public",
+        plan: [],
+      },
       {
         id: "prefs",
         label: "Shift & libur",

@@ -2,7 +2,6 @@ import type { ReactNode } from "react"
 import { ChevronRight, Coffee, Lock, LockOpen, PanelLeftClose } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { OnDutyStrip } from "@/components/on-duty-board"
 import { formatIsoLong } from "@/lib/format"
 import {
   NAV_BY_ID,
@@ -13,7 +12,6 @@ import {
   type NavEntry,
   type NavItem,
 } from "@/lib/nav"
-import type { OnDutyEntry } from "@/lib/on-duty"
 import { cn } from "@/lib/utils"
 import type { StaffRecord } from "@/lib/types"
 
@@ -31,7 +29,6 @@ export function AppSidebar({
   nowLabel,
   page,
   actor,
-  onDuty,
   onOpen,
   onUnlock,
   onLock,
@@ -41,7 +38,6 @@ export function AppSidebar({
   nowLabel: string
   page: AppPage
   actor: StaffRecord | null
-  onDuty: readonly OnDutyEntry[]
   onOpen: (page: Exclude<AppPage, "menu">) => void
   onUnlock: () => void
   onLock: () => void
@@ -85,17 +81,6 @@ export function AppSidebar({
       </div>
 
       <div className="px-3 pt-3">
-        <button
-          type="button"
-          onClick={() => onOpen("today")}
-          className={cn(
-            "mb-3 w-full rounded-xl border border-sidebar-border bg-sidebar-accent/60 p-3 text-left",
-            "hover:bg-sidebar-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-          )}
-          aria-label="Lihat siapa yang sedang masuk"
-        >
-          <OnDutyStrip entries={onDuty} />
-        </button>
         <button
           type="button"
           onClick={() => onOpen(kasir.id)}

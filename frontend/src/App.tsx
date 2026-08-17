@@ -27,7 +27,6 @@ import { PinScreen } from "@/screens/pin-screen"
 import { PrefsScreen } from "@/screens/prefs-screen"
 import { SettingsScreen } from "@/screens/settings-screen"
 import { StaffScreen } from "@/screens/staff-screen"
-import { TodayScreen } from "@/screens/today-screen"
 import { WeekScreen } from "@/screens/week-screen"
 import {
   DEFAULT_PAGE,
@@ -134,18 +133,6 @@ export function App() {
       offs={staffing.offs}
       openByStaff={staffing.openByStaff}
       today={staffing.today}
-    />
-  ) : page === "today" ? (
-    <TodayScreen
-      today={staffing.today}
-      settings={staffing.settings}
-      staff={staffing.staff}
-      slots={staffing.slots}
-      assignments={staffing.assignments}
-      attendance={staffing.attendance}
-      offs={staffing.offs}
-      openByStaff={staffing.openByStaff}
-      onDutyPeople={staffing.onDuty}
     />
   ) : page === "week" && actor ? (
     <WeekScreen
@@ -269,7 +256,6 @@ export function App() {
         nowLabel={nowLabel}
         page={page}
         actor={actor}
-        onDuty={staffing.onDuty}
         onOpen={openPage}
         onUnlock={startUnlock}
         onLock={lock}
@@ -347,7 +333,6 @@ export function App() {
         {page === "menu" ? (
           <MenuScreen
             actor={actor}
-            onDuty={staffing.onDuty}
             onOpen={openPage}
             onUnlock={startUnlock}
             onLock={lock}

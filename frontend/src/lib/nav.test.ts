@@ -10,7 +10,7 @@ import {
 } from "@/lib/nav"
 
 const manageIds = ["stock", "products", "week", "staff", "reports", "settings"] as const
-const publicIds = ["kasir", "clock", "today", "orders", "prefs", "pin"] as const
+const publicIds = ["kasir", "orders", "clock", "prefs", "pin"] as const
 
 describe("visibleNavGroups", () => {
   test("label grup memakai bahasa kasir, bukan Inti/Operasi/Tim", () => {
@@ -52,7 +52,7 @@ describe("visibleNavGroups", () => {
     }
   })
 
-  test("Karyawan menampilkan Shift & libur dan Ubah PIN langsung, tanpa heading Preferensi", () => {
+  test("Karyawan menampilkan Absensi, Shift & libur, dan Ubah PIN langsung", () => {
     const karyawan = visibleNavGroups(null).find((group) => group.id === "tim")
     expect(karyawan).toBeDefined()
     expect(karyawan!.title).toBe("Karyawan")
@@ -62,9 +62,22 @@ describe("visibleNavGroups", () => {
     expect(karyawan!.items.some((entry) => isNavBranch(entry))).toBe(false)
     const ids = flattenNavEntries(karyawan!.items).map((item) => item.id)
     const labels = flattenNavEntries(karyawan!.items).map((item) => item.label)
-    expect(ids).toEqual(["prefs", "pin"])
-    expect(labels).toEqual(["Shift & libur", "Ubah PIN"])
+    expect(ids).toEqual(["clock", "prefs", "pin"])
+    expect(labels).toEqual(["Absensi", "Shift & libur", "Ubah PIN"])
+    expect(labels).not.toContain("Masuk")
+    expect(labels).not.toContain("Hari ini")
     expect(labels).not.toContain("Preferensi")
+  })
+
+  test("Harian tidak lagi berisi Masuk atau Hari ini", () => {
+    const harian = visibleNavGroups(null).find((group) => group.id === "inti")
+    expect(harian).toBeDefined()
+    const ids = flattenNavEntries(harian!.items).map((item) => item.id)
+    const labels = flattenNavEntries(harian!.items).map((item) => item.label)
+    expect(ids).toEqual(["kasir"])
+    expect(labels).not.toContain("Masuk")
+    expect(labels).not.toContain("Hari ini")
+    expect(labels).not.toContain("Absensi")
   })
 
   test("canSeeNavItem mengikuti access item", () => {
@@ -90,7 +103,6 @@ describe("isSidebarDefaultOpen", () => {
     expect(isSidebarDefaultOpen("kasir")).toBe(false)
     expect(isSidebarDefaultOpen("menu")).toBe(false)
     expect(isSidebarDefaultOpen("clock")).toBe(true)
-    expect(isSidebarDefaultOpen("today")).toBe(true)
     expect(isSidebarDefaultOpen("products")).toBe(true)
     expect(isSidebarDefaultOpen("pin")).toBe(true)
     expect(isSidebarDefaultOpen("prefs")).toBe(true)

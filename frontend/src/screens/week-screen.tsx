@@ -848,8 +848,8 @@ export function WeekScreen({
             <DialogTitle>Publish {formatWeekRange(weekStart)}?</DialogTitle>
             <DialogDescription>
               {counts.understaffed > 0
-                ? `${counts.understaffed} sel masih kurang orang. Staff akan melihat jadwal ini di Hari ini.`
-                : "Staff akan melihat jadwal ini di halaman Hari ini."}
+                ? `${counts.understaffed} sel masih kurang orang. Staff akan melihat jadwal ini di Absensi.`
+                : "Staff akan melihat jadwal ini di halaman Absensi."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
