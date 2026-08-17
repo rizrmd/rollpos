@@ -449,15 +449,15 @@ describe("preferensi shift profil", () => {
     expect(slotPreferenceRank(nia, "pagi", week, "2026-08-17")).toBe(99)
   })
 
-  test("form menyimpan semua slot yang dicentang, bukan mengosongkannya", () => {
+  test("form menampilkan persis yang tersimpan, termasuk uncentang semua", () => {
     const slots = [{ id: "pagi" }, { id: "sore" }]
-    const unset = preferredSlotIdsFromMember(undefined, slots)
-    expect(unset).toEqual(["pagi", "sore"])
-    expect(preferredSlotIdsToStore(unset, slots)).toEqual(["pagi", "sore"])
-
-    expect(preferredSlotIdsToStore(["pagi"], slots)).toEqual(["pagi"])
+    expect(preferredSlotIdsFromMember(undefined, slots)).toEqual([])
+    expect(
+      preferredSlotIdsFromMember({ ...nia, preferredTemplateIds: [] }, slots)
+    ).toEqual([])
     expect(preferredSlotIdsToStore([], slots)).toEqual([])
 
+    expect(preferredSlotIdsToStore(["pagi"], slots)).toEqual(["pagi"])
     const saved = preferredSlotIdsFromMember(
       { ...nia, preferredTemplateIds: ["pagi"] },
       slots
@@ -471,6 +471,7 @@ describe("preferensi shift profil", () => {
     )
     expect(both).toEqual(["pagi", "sore"])
     expect(preferredSlotIdsToStore(both, slots)).toEqual(["pagi", "sore"])
+    expect(preferredSlotIdsToStore(["pagi", "sore"], slots)).toEqual(["pagi", "sore"])
   })
 })
 

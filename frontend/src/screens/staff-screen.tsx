@@ -296,7 +296,7 @@ function StaffDialog({
                   ))}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Centang shift yang diutamakan. Pilihan ini tersimpan di profil.
+                  Centang shift yang diutamakan. Kosong = fleksibel.
                 </p>
               </>
             )}

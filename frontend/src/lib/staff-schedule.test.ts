@@ -116,7 +116,7 @@ function settingsFrom(row: OutletSettingsRecord): OutletSettingsRecord {
 }
 
 describe("staffing persist + schedule", () => {
-  test("preferensi shift dari form (semua atau sebagian) tetap ada setelah simpan dan buka ulang", async () => {
+  test("preferensi shift dari form (semua, sebagian, atau kosong) tetap ada setelah simpan dan buka ulang", async () => {
     const { database, owner } = await bootstrap()
     const pagiId = await saveSlot(database, owner, {
       name: "Pagi",
@@ -144,10 +144,7 @@ describe("staffing persist + schedule", () => {
       pin: "3333",
       isActive: true,
       roles: ["barista"],
-      preferredTemplateIds: preferredSlotIdsToStore(
-        preferredSlotIdsFromMember(undefined, slots),
-        slots
-      ),
+      preferredTemplateIds: preferredSlotIdsToStore([pagiId, soreId], slots),
     })
     const afterAll = (await loadStaff(database)).find((row) => row.id === id)
     expect(afterAll?.preferredTemplateIds).toEqual([pagiId, soreId])
@@ -164,6 +161,18 @@ describe("staffing persist + schedule", () => {
     const afterOne = (await loadStaff(database)).find((row) => row.id === id)
     expect(afterOne?.preferredTemplateIds).toEqual([pagiId])
     expect(preferredSlotIdsFromMember(afterOne, slots)).toEqual([pagiId])
+
+    await upsertStaff(database, owner, {
+      id,
+      name: "Nia",
+      nickname: "Nia",
+      isActive: true,
+      roles: ["barista"],
+      preferredTemplateIds: preferredSlotIdsToStore([], slots),
+    })
+    const afterNone = (await loadStaff(database)).find((row) => row.id === id)
+    expect(afterNone?.preferredTemplateIds).toEqual([])
+    expect(preferredSlotIdsFromMember(afterNone, slots)).toEqual([])
   })
 
   test("preferensi shift tersimpan dan tidak terhapus saat update tanpa field itu", async () => {
