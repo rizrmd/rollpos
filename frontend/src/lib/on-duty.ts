@@ -197,7 +197,9 @@ export function describeClockCard({
       member,
       kind: "scheduled",
       clockInAt: null,
-      line: finishedToday ?? scheduled,
+      line:
+        finishedToday ??
+        `${slot.name} ${formatMinutes(assignment.startMinutes)}–${formatMinutes(assignment.endMinutes)}`,
       action: "Ketuk untuk masuk",
     }
   }
