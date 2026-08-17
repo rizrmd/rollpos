@@ -1,10 +1,11 @@
 import { formatOccurredClock } from "@/lib/format"
 import { formatMinutes, todayJakarta } from "@/lib/time"
-import type {
-  AssignmentRecord,
-  AttendanceEventRecord,
-  SlotRecord,
-  StaffRecord,
+import {
+  isStaffDeleted,
+  type AssignmentRecord,
+  type AttendanceEventRecord,
+  type SlotRecord,
+  type StaffRecord,
 } from "@/lib/types"
 
 export type OnDutyEntry = {
@@ -50,7 +51,7 @@ export function listOnDuty({
 }): OnDutyEntry[] {
   const entries: OnDutyEntry[] = []
   for (const member of staff) {
-    if (!member.isActive) continue
+    if (!member.isActive || isStaffDeleted(member)) continue
     const present = openByStaff
       ? Boolean(openByStaff.get(member.id))
       : openClockInAt(attendance, member.id) != null

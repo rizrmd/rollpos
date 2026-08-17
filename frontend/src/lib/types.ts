@@ -83,9 +83,14 @@ export type StaffRecord = {
   pinHash: string
   pinSalt: string
   isActive: boolean
+  deletedAt?: number
   outletId: string
   roles: StaffRole[]
   preferredTemplateIds?: string[]
+}
+
+export function isStaffDeleted(member: Pick<StaffRecord, "deletedAt">): boolean {
+  return (member.deletedAt ?? 0) > 0
 }
 
 export type SlotRecord = {

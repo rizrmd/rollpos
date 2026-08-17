@@ -42,15 +42,16 @@ import {
 import { dayRoster } from "@/lib/staff-prefs"
 import { addDays, formatMinutes, monthStartOf, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 import { cn } from "@/lib/utils"
-import type {
-  AssignmentRecord,
-  DayOffRecord,
-  OutletSettingsRecord,
-  PreferenceRecord,
-  RoleRequirementRecord,
-  SlotRecord,
-  StaffRecord,
-  SuggestionRecord,
+import {
+  isStaffDeleted,
+  type AssignmentRecord,
+  type DayOffRecord,
+  type OutletSettingsRecord,
+  type PreferenceRecord,
+  type RoleRequirementRecord,
+  type SlotRecord,
+  type StaffRecord,
+  type SuggestionRecord,
 } from "@/lib/types"
 import { detectWarnings } from "@/lib/warnings"
 
@@ -121,7 +122,9 @@ export function WeekScreen({
   const activeSlots = slots
     .filter((slot) => slot.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder)
-  const activeStaff = staff.filter((member) => member.isActive)
+  const activeStaff = staff.filter(
+    (member) => member.isActive && !isStaffDeleted(member)
+  )
   const weekAssignments = assignments.filter(
     (row) =>
       row.workDate >= weekStart &&

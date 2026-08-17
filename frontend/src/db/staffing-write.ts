@@ -47,7 +47,7 @@ import type {
   StaffRole,
   SuggestionStatus,
 } from "@/lib/types"
-import { DEFAULT_OUTLET_ID } from "@/lib/types"
+import { DEFAULT_OUTLET_ID, isStaffDeleted } from "@/lib/types"
 import { nextWeekStart, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 
 export function hasOpenSession(events: { type: AttendanceType }[]): boolean {
@@ -219,6 +219,9 @@ export async function upsertStaff(
 ): Promise<string> {
   const staff = await loadStaff(database)
   const target = input.id ? staff.find((row) => row.id === input.id) : undefined
+  if (target && isStaffDeleted(target)) {
+    throw new Error("Staff tidak ditemukan.")
+  }
   if (target) {
     assertCanChangeRoles(
       actor.roles,
@@ -240,6 +243,7 @@ export async function upsertStaff(
           pinHash: "",
           pinSalt: "",
           isActive: input.isActive,
+          deletedAt: 0,
           outletId: input.outletId ?? DEFAULT_OUTLET_ID,
           roles: input.roles,
         },
@@ -301,6 +305,7 @@ export async function upsertStaff(
       pinSalt: salt,
       pinHash,
       isActive: input.isActive,
+      deletedAt: 0,
       outletId: input.outletId ?? DEFAULT_OUTLET_ID,
       createdAt: now,
       updatedAt: now,
@@ -318,6 +323,27 @@ export async function upsertStaff(
     await rebuildOpenSystemWeeks(database)
   }
   return staffId
+}
+
+export async function softDeleteStaff(
+  database: Database,
+  actor: StaffRecord,
+  staffId: string
+): Promise<void> {
+  const staff = await loadStaff(database)
+  const target = staff.find((row) => row.id === staffId)
+  if (!target || isStaffDeleted(target)) {
+    throw new Error("Staff tidak ditemukan.")
+  }
+  assertCanChangeRoles(actor.roles, target, target.roles, staff, false)
+
+  const now = Date.now()
+  updateRow(database, TABLES.staffMembers, target.id, {
+    isActive: false,
+    deletedAt: now,
+    updatedAt: now,
+  })
+  await rebuildOpenSystemWeeks(database)
 }
 
 function sameTemplateIds(left: string[] = [], right: string[] = []): boolean {
@@ -351,7 +377,9 @@ export async function authenticateStaff(
   pin: string
 ): Promise<StaffRecord> {
   const staff = await loadStaff(database)
-  const member = staff.find((row) => row.id === staffId && row.isActive)
+  const member = staff.find(
+    (row) => row.id === staffId && row.isActive && !isStaffDeleted(row)
+  )
   if (!member) {
     throw new Error("Staff tidak ditemukan.")
   }
@@ -370,7 +398,9 @@ export async function changeStaffPin(
   actor?: StaffRecord | null
 ): Promise<void> {
   const staff = await loadStaff(database)
-  const member = staff.find((row) => row.id === staffId && row.isActive)
+  const member = staff.find(
+    (row) => row.id === staffId && row.isActive && !isStaffDeleted(row)
+  )
   if (!member) {
     throw new Error("Staff tidak ditemukan.")
   }

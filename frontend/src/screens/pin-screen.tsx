@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label"
 import { changeStaffPin } from "@/db/staffing-write"
 import { canManage, canResetStaffPin } from "@/lib/permissions"
 import { validatePin } from "@/lib/pin"
-import type { StaffRecord } from "@/lib/types"
+import { isStaffDeleted, type StaffRecord } from "@/lib/types"
 
 export function PinScreen({
   database,
@@ -33,7 +33,9 @@ export function PinScreen({
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const activeStaff = staff.filter((member) => member.isActive)
+  const activeStaff = staff.filter(
+    (member) => member.isActive && !isStaffDeleted(member)
+  )
   const skipCurrentPin = canResetStaffPin(actor, who?.id ?? "")
   const managerCanResetOthers = Boolean(actor && canManage(actor.roles))
 

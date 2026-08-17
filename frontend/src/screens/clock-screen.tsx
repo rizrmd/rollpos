@@ -17,12 +17,13 @@ import {
 } from "@/lib/on-duty"
 import { deviceId } from "@/lib/time"
 import { cn } from "@/lib/utils"
-import type {
-  AssignmentRecord,
-  AttendanceEventRecord,
-  DayOffRecord,
-  SlotRecord,
-  StaffRecord,
+import {
+  isStaffDeleted,
+  type AssignmentRecord,
+  type AttendanceEventRecord,
+  type DayOffRecord,
+  type SlotRecord,
+  type StaffRecord,
 } from "@/lib/types"
 
 export function ClockScreen({
@@ -46,7 +47,9 @@ export function ClockScreen({
 }) {
   const [selected, setSelected] = useState<StaffRecord | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const active = staff.filter((member) => member.isActive)
+  const active = staff.filter(
+    (member) => member.isActive && !isStaffDeleted(member)
+  )
 
   const cards = useMemo(
     () =>

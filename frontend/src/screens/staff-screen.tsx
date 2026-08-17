@@ -14,13 +14,14 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { upsertStaff } from "@/db/staffing-write"
+import { softDeleteStaff, upsertStaff } from "@/db/staffing-write"
 import { capitalizePersonName } from "@/lib/format"
 import { canGrantLeadership } from "@/lib/permissions"
 import { formatMinutes } from "@/lib/time"
 import {
   FLOOR_ROLES,
   STAFF_ROLES,
+  isStaffDeleted,
   type SlotRecord,
   type StaffRecord,
   type StaffRole,
@@ -44,6 +45,7 @@ export function StaffScreen({
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
     return staff.filter((member) => {
+      if (isStaffDeleted(member)) return false
       if (!needle) return true
       return (
         member.name.toLowerCase().includes(needle) ||
@@ -107,6 +109,11 @@ export function StaffScreen({
           setNotice(`${input.name} tersimpan.`)
           setEditing(null)
         }}
+        onDelete={async (member) => {
+          await softDeleteStaff(database, actor, member.id)
+          setNotice(`${member.name} dihapus.`)
+          setEditing(null)
+        }}
       />
     </div>
   )
@@ -119,6 +126,7 @@ function StaffDialog({
   slots,
   onOpenChange,
   onSave,
+  onDelete,
 }: {
   open: boolean
   member?: StaffRecord
@@ -134,6 +142,7 @@ function StaffDialog({
     roles: StaffRole[]
     preferredTemplateIds: string[]
   }) => Promise<void>
+  onDelete: (member: StaffRecord) => Promise<void>
 }) {
   const activeSlots = slots
     .filter((slot) => slot.isActive)
@@ -146,6 +155,8 @@ function StaffDialog({
     initialPreferred(member, activeSlots)
   )
   const [error, setError] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [busy, setBusy] = useState(false)
   const canLead = canGrantLeadership(actor.roles)
 
   function toggle(role: StaffRole) {
@@ -175,6 +186,8 @@ function StaffDialog({
           setRoles(member?.roles ?? ["kasir"])
           setPreferred(initialPreferred(member, activeSlots))
           setError(null)
+          setConfirmDelete(false)
+          setBusy(false)
         }
         onOpenChange(next)
       }}
@@ -189,18 +202,21 @@ function StaffDialog({
           onSubmit={async (event) => {
             event.preventDefault()
             try {
+              setBusy(true)
               const personName = capitalizePersonName(name.trim())
               await onSave({
                 id: member?.id,
                 name: personName,
                 nickname: personName,
-                pin: pin || undefined,
+                pin: member ? undefined : pin,
                 isActive: active,
                 roles,
                 preferredTemplateIds: storedPreferred(preferred, activeSlots),
               })
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err))
+            } finally {
+              setBusy(false)
             }
           }}
         >
@@ -215,20 +231,20 @@ function StaffDialog({
               required
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="staff-pin">
-              {member ? "PIN baru (opsional)" : "PIN"}
-            </Label>
-            <Input
-              id="staff-pin"
-              className="min-h-12"
-              inputMode="numeric"
-              autoComplete="off"
-              value={pin}
-              onChange={(event) => setPin(event.target.value)}
-              required={!member}
-            />
-          </div>
+          {member ? null : (
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="staff-pin">PIN</Label>
+              <Input
+                id="staff-pin"
+                className="min-h-12"
+                inputMode="numeric"
+                autoComplete="off"
+                value={pin}
+                onChange={(event) => setPin(event.target.value)}
+                required
+              />
+            </div>
+          )}
           <fieldset>
             <legend className="mb-2 text-sm font-medium">Stasiun</legend>
             <div className="flex flex-wrap gap-3">
@@ -291,8 +307,33 @@ function StaffDialog({
             Aktif
           </label>
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
-            <Button type="submit" size="touch">
+          <DialogFooter className={member ? "sm:justify-between" : undefined}>
+            {member ? (
+              <Button
+                type="button"
+                variant="destructive"
+                size="touch"
+                disabled={busy}
+                onClick={async () => {
+                  if (!confirmDelete) {
+                    setConfirmDelete(true)
+                    return
+                  }
+                  try {
+                    setBusy(true)
+                    await onDelete(member)
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : String(err))
+                    setConfirmDelete(false)
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+              >
+                {confirmDelete ? "Yakin hapus?" : "Hapus"}
+              </Button>
+            ) : null}
+            <Button type="submit" size="touch" disabled={busy}>
               Simpan
             </Button>
           </DialogFooter>

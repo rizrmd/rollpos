@@ -73,6 +73,7 @@ export const tablesSchema = {
     pinHash: text,
     pinSalt: text,
     isActive: { type: "boolean", default: true },
+    deletedAt: amount,
     outletId: text,
     createdAt: amount,
     updatedAt: amount,

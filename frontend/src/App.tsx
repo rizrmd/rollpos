@@ -19,7 +19,7 @@ import { useLandscape } from "@/hooks/use-landscape"
 import { useStaffing } from "@/hooks/use-staffing"
 import { canManage } from "@/lib/permissions"
 import { formatJakartaClock } from "@/lib/format"
-import type { StaffRecord } from "@/lib/types"
+import { isStaffDeleted, type StaffRecord } from "@/lib/types"
 import { CatalogScreen } from "@/screens/catalog-screen"
 import { ClockScreen } from "@/screens/clock-screen"
 import { ComingSoonScreen } from "@/screens/coming-soon-screen"
@@ -88,7 +88,8 @@ export function App() {
   }, [landscape, sidebarOpen, page])
 
   const managers = staffing.staff.filter(
-    (member) => member.isActive && canManage(member.roles)
+    (member) =>
+      member.isActive && !isStaffDeleted(member) && canManage(member.roles)
   )
 
   function goMenu() {

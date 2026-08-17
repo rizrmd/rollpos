@@ -1,5 +1,6 @@
 import {
   FLOOR_ROLES,
+  isStaffDeleted,
   type StaffRecord,
   type StaffRole,
 } from "@/lib/types"
@@ -56,7 +57,10 @@ export function floorRolesOf(roles: readonly StaffRole[]): StaffRole[] {
 }
 
 export function activeOwners(staff: readonly StaffRecord[]): StaffRecord[] {
-  return staff.filter((member) => member.isActive && isOwner(member.roles))
+  return staff.filter(
+    (member) =>
+      member.isActive && !isStaffDeleted(member) && isOwner(member.roles)
+  )
 }
 
 export function assertLastOwnerSafe(
@@ -69,7 +73,7 @@ export function assertLastOwnerSafe(
     if (member.id === targetId) {
       return nextActive && isOwner(nextRoles)
     }
-    return member.isActive && isOwner(member.roles)
+    return member.isActive && !isStaffDeleted(member) && isOwner(member.roles)
   })
   if (remaining.length === 0) {
     throw new Error("Owner terakhir tidak boleh dicabut atau dinonaktifkan.")

@@ -26,13 +26,14 @@ import {
   saveOutletSettings,
   saveSlot,
   submitPreferences,
+  softDeleteStaff,
   upsertAssignment,
   upsertStaff,
   withdrawDayOffRequest,
 } from "@/db/staffing-write"
 import { canEditSlots, canManage, isOwner } from "@/lib/permissions"
 import { recommendSchedule, wouldViolateConsecutive } from "@/lib/recommend"
-import type { OutletSettingsRecord, StaffRecord } from "@/lib/types"
+import { isStaffDeleted, type OutletSettingsRecord, type StaffRecord } from "@/lib/types"
 import { DEFAULT_OUTLET_ID } from "@/lib/types"
 
 let dbSeq = 0
@@ -520,6 +521,60 @@ describe("staffing persist + schedule", () => {
         roles: ["barista"],
       })
     ).rejects.toThrow(/Owner terakhir/)
+  })
+
+  test("soft-delete menyimpan baris tapi tidak tampil untuk login", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    await softDeleteStaff(database, owner, nia.id)
+    const people = await loadStaff(database)
+    const deleted = people.find((row) => row.id === nia.id)
+    expect(deleted).toBeDefined()
+    expect(isStaffDeleted(deleted!)).toBe(true)
+    expect(deleted?.isActive).toBe(false)
+    await expect(authenticateStaff(database, nia.id, "3333")).rejects.toThrow(
+      /tidak ditemukan/
+    )
+    await expect(
+      upsertStaff(database, owner, {
+        id: nia.id,
+        name: "Nia",
+        nickname: "Nia",
+        isActive: true,
+        roles: ["barista"],
+      })
+    ).rejects.toThrow(/tidak ditemukan/)
+  })
+
+  test("owner terakhir tidak boleh dihapus", async () => {
+    const { database, owner } = await bootstrap()
+    await expect(softDeleteStaff(database, owner, owner.id)).rejects.toThrow(
+      /Owner terakhir/
+    )
+    const still = (await loadStaff(database)).find((row) => row.id === owner.id)
+    expect(isStaffDeleted(still!)).toBe(false)
+    expect(still?.isActive).toBe(true)
+  })
+
+  test("lantai tidak boleh menghapus staff", async () => {
+    const { database } = await bootstrap()
+    const kasir = await createPerson(database, {
+      name: "Dimas",
+      roles: ["kasir"],
+      pin: "2222",
+    })
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    await expect(softDeleteStaff(database, kasir, nia.id)).rejects.toThrow(/Lantai/)
+    const still = (await loadStaff(database)).find((row) => row.id === nia.id)
+    expect(isStaffDeleted(still!)).toBe(false)
   })
 
   test("suggestion stays suggested until accept creates official off", async () => {

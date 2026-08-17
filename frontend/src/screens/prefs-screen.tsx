@@ -46,15 +46,16 @@ import {
 } from "@/lib/staff-prefs"
 import { addMonths, monthGrid, monthStartOf, todayJakarta, weekStartOn } from "@/lib/time"
 import { cn } from "@/lib/utils"
-import type {
-  AssignmentRecord,
-  DayOffRecord,
-  OutletSettingsRecord,
-  PreferenceRecord,
-  RoleRequirementRecord,
-  SlotRecord,
-  StaffRecord,
-  SuggestionRecord,
+import {
+  isStaffDeleted,
+  type AssignmentRecord,
+  type DayOffRecord,
+  type OutletSettingsRecord,
+  type PreferenceRecord,
+  type RoleRequirementRecord,
+  type SlotRecord,
+  type StaffRecord,
+  type SuggestionRecord,
 } from "@/lib/types"
 
 const KIND_CLASS: Record<PrefsDayKind, string> = {
@@ -105,7 +106,9 @@ export function PrefsScreen({
   const [note, setNote] = useState("")
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const activeStaff = staff.filter((member) => member.isActive)
+  const activeStaff = staff.filter(
+    (member) => member.isActive && !isStaffDeleted(member)
+  )
 
   const cells = useMemo(
     () => monthGrid(monthCursor, weekStartsOn),

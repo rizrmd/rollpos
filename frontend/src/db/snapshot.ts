@@ -181,6 +181,7 @@ export async function loadStaff(database: Database): Promise<StaffRecord[]> {
     pinHash: cellStr(person, "pinHash"),
     pinSalt: cellStr(person, "pinSalt"),
     isActive: cellFlag(person, "isActive"),
+    deletedAt: cellNum(person, "deletedAt") || undefined,
     outletId: cellStr(person, "outletId"),
     roles: roles
       .filter((row) => cellStr(row, "staffId") === person.id && isStaffRole(cellStr(row, "role")))

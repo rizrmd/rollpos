@@ -1,18 +1,19 @@
 import { floorRolesOf } from "@/lib/permissions"
 import { slotPreferenceRank } from "@/lib/staff-prefs"
 import { addDays, consecutiveRunEnding, isWeekend, slotHours, weekDates } from "@/lib/time"
-import type {
-  AssignmentRecord,
-  DayOffRecord,
-  FloorRole,
-  OutletSettingsRecord,
-  PreferenceRecord,
-  ProposedAssignment,
-  ProposedOff,
-  RoleRequirementRecord,
-  SlotRecord,
-  StaffRecord,
-  SuggestionRecord,
+import {
+  isStaffDeleted,
+  type AssignmentRecord,
+  type DayOffRecord,
+  type FloorRole,
+  type OutletSettingsRecord,
+  type PreferenceRecord,
+  type ProposedAssignment,
+  type ProposedOff,
+  type RoleRequirementRecord,
+  type SlotRecord,
+  type StaffRecord,
+  type SuggestionRecord,
 } from "@/lib/types"
 
 export const SYSTEM_DRAFT_NOTE = "usulan sistem"
@@ -154,7 +155,7 @@ function availableStaff(
   maxConsecutive: number
 ): StaffRecord[] {
   return staff.filter((member) => {
-    if (!member.isActive) return false
+    if (!member.isActive || isStaffDeleted(member)) return false
     if (offs.has(offKey(member.id, date))) return false
     const dates = [
       ...(history[member.id] ?? []),
@@ -609,7 +610,9 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
   const slots = input.slots
     .filter((slot) => slot.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder)
-  const staff = input.staff.filter((member) => member.isActive)
+  const staff = input.staff.filter(
+    (member) => member.isActive && !isStaffDeleted(member)
+  )
   const history = input.historyWorkDates ?? {}
   const maxConsecutive = input.settings.maxConsecutiveWorkDays
 
