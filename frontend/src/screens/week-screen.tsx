@@ -447,7 +447,7 @@ function DateAssignDialog({
                   </span>
                 </button>
                 {slots.length > 0 ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
+                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
                     {slots.map((slot) => {
                       const selected = templateIds.includes(slot.id)
                       return (
@@ -456,7 +456,7 @@ function DateAssignDialog({
                           type="button"
                           onClick={() => onToggleShift(load.member.id, slot.id)}
                           className={cn(
-                            "border px-2.5 py-1 text-xs font-medium",
+                            "min-h-10 border px-2.5 py-2 text-center text-xs font-medium",
                             "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                             selected
                               ? "border-primary bg-primary text-primary-foreground"
