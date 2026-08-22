@@ -17,7 +17,11 @@ import {
   generateFairRemainingWeeks,
 } from "@/db/staffing-write"
 import { lockedWorkDates, monthWeekStarts } from "@/lib/calendar-select"
-import { formatSelectedDates } from "@/lib/format"
+import {
+  formatIsoWeekday,
+  formatMonthYear,
+  formatSelectedDates,
+} from "@/lib/format"
 import { floorRolesOf } from "@/lib/permissions"
 import {
   staffWeekLoad,
@@ -82,13 +86,16 @@ export function WeekScreen({
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [lockedDetailOpen, setLockedDetailOpen] = useState(false)
 
   const activeSlots = slots
     .filter((slot) => slot.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder)
   const activeStaff = staff.filter(
     (member) =>
-      member.isActive && !isStaffDeleted(member) && isIncludedInAttendance(member)
+      member.isActive &&
+      !isStaffDeleted(member) &&
+      isIncludedInAttendance(member)
   )
   const monthDates = monthGrid(monthCursor, weekStartsOn)
     .filter((cell) => cell.inMonth)
@@ -146,7 +153,11 @@ export function WeekScreen({
       return {
         member,
         ...load,
-        band: workloadBand(load.hours, peerHours, settings?.hoursSkewPercent ?? 25),
+        band: workloadBand(
+          load.hours,
+          peerHours,
+          settings?.hoursSkewPercent ?? 25
+        ),
       }
     })
   }, [
@@ -260,9 +271,14 @@ export function WeekScreen({
           Generate sisa secara adil
         </Button>
         {locked.length > 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-auto px-2 py-1 text-sm text-muted-foreground underline underline-offset-4"
+            onClick={() => setLockedDetailOpen(true)}
+          >
             {locked.length} tanggal sudah ditetapkan manager
-          </p>
+          </Button>
         ) : (
           <p className="text-sm text-muted-foreground">
             Tanggal yang tidak dipilih akan diisi sistem.
@@ -276,14 +292,17 @@ export function WeekScreen({
         </h3>
         <ul className="grid gap-2 sm:grid-cols-2">
           {loads.map((load) => (
-            <li key={load.member.id} className="border bg-card px-3 py-2 text-sm">
+            <li
+              key={load.member.id}
+              className="border bg-card px-3 py-2 text-sm"
+            >
               <p className="flex items-center justify-between gap-2 font-medium">
                 <span>{load.member.name}</span>
                 <BandBadge band={load.band} />
               </p>
               <p className="text-muted-foreground">
-                {load.workDays} hari · {load.hours.toFixed(1)} jam · {load.offDays}{" "}
-                libur
+                {load.workDays} hari · {load.hours.toFixed(1)} jam ·{" "}
+                {load.offDays} libur
               </p>
             </li>
           ))}
@@ -329,6 +348,38 @@ export function WeekScreen({
         }}
         onSave={() => void saveSelection()}
       />
+
+      <Dialog open={lockedDetailOpen} onOpenChange={setLockedDetailOpen}>
+        <DialogContent className="sm:max-w-md" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Tanggal ditetapkan manager</DialogTitle>
+            <DialogDescription>
+              {locked.length} tanggal di {formatMonthYear(monthCursor)} tidak
+              diisi ulang oleh sistem.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
+            {locked.map((date) => (
+              <li
+                key={date}
+                className="rounded-lg border bg-muted/30 px-3 py-2 text-sm"
+              >
+                {formatIsoWeekday(date)}
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="touch"
+              onClick={() => setLockedDetailOpen(false)}
+            >
+              Tutup
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -339,7 +390,11 @@ function BandBadge({ band }: { band: WorkloadBand }) {
   return (
     <Badge
       variant={
-        band === "padat" ? "destructive" : band === "longgar" ? "secondary" : "outline"
+        band === "padat"
+          ? "destructive"
+          : band === "longgar"
+            ? "secondary"
+            : "outline"
       }
       className={
         band === "longgar"
@@ -433,7 +488,9 @@ function DateAssignDialog({
                   )}
                 >
                   <span>
-                    <span className="block font-medium">{load.member.name}</span>
+                    <span className="block font-medium">
+                      {load.member.name}
+                    </span>
                     <span className="block text-xs text-muted-foreground">
                       {floorRolesOf(load.member.roles).join(" · ") || "—"}
                       {` · ${load.workDays} hari · ${load.hours.toFixed(1)} jam`}
@@ -482,12 +539,7 @@ function DateAssignDialog({
           >
             Batal
           </Button>
-          <Button
-            type="button"
-            size="touch"
-            disabled={busy}
-            onClick={onSave}
-          >
+          <Button type="button" size="touch" disabled={busy} onClick={onSave}>
             Simpan
           </Button>
         </DialogFooter>
