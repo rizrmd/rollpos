@@ -125,7 +125,15 @@
     }
   body {
     @apply bg-background text-foreground;
-    }
+    @apply select-none;
+  }
+
+  input,
+  textarea,
+  [contenteditable="true"],
+  [role="textbox"] {
+    @apply select-text;
+  }
   html {
     @apply font-sans;
     }
