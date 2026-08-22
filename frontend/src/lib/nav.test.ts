@@ -49,12 +49,14 @@ describe("visibleNavGroups", () => {
     }
   })
 
-  test("owner dan manager melihat semua menu", () => {
+  test("owner dan manager melihat semua menu kecuali Shift Kerja", () => {
     for (const role of ["owner", "manager"] as const) {
       const ids = visibleNavGroups([role]).flatMap((group) =>
         flattenNavEntries(group.items).map((item) => item.id)
       )
-      expect(ids).toEqual(NAV_ITEMS.map((item) => item.id))
+      expect(ids).toEqual(
+        NAV_ITEMS.filter((item) => item.id !== "prefs").map((item) => item.id)
+      )
     }
   })
 

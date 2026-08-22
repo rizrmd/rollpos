@@ -327,23 +327,17 @@ export function visibleNavEntry(
   entry: NavEntry,
   roles: readonly StaffRole[] | null | undefined
 ): NavEntry | null {
-  // Sembunyikan menu shift kerja (prefs) untuk manage/owner
-  const isManagerOrOwner = canManage(roles ?? [])
-  
+  const canShowItem = (item: NavItem) =>
+    canSeeNavItem(item, roles) &&
+    !(item.id === "prefs" && canManage(roles ?? []))
+
   if (isNavBranch(entry)) {
-    const children = entry.children.filter((item) => {
-      // Filter out 'prefs' for managers/owners
-      if (item.id === "prefs" && isManagerOrOwner) return false
-      return canSeeNavItem(item, roles)
-    })
+    const children = entry.children.filter(canShowItem)
     if (children.length === 0) return null
     return { ...entry, children }
   }
-  
-  // Filter out 'prefs' for managers/owners in leaf items
-  if (entry.id === "prefs" && isManagerOrOwner) return null
-  
-  return canSeeNavItem(entry, roles) ? entry : null
+
+  return canShowItem(entry) ? entry : null
 }
 
 export function visibleNavGroups(
