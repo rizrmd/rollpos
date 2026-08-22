@@ -28,7 +28,7 @@ import { PinScreen } from "@/screens/pin-screen"
 import { PrefsScreen } from "@/screens/prefs-screen"
 import { SettingsScreen } from "@/screens/settings-screen"
 import { StaffScreen } from "@/screens/staff-screen"
-import { WeekScreen } from "@/screens/week-screen"
+import { ScheduleScreen } from "@/screens/schedule-screen"
 import {
   DEFAULT_PAGE,
   MANAGE_PAGES,
@@ -152,7 +152,7 @@ export function App() {
       today={staffing.today}
     />
   ) : page === "week" && actor ? (
-    <WeekScreen
+    <ScheduleScreen
       database={staffing.database}
       actor={actor}
       settings={staffing.settings}

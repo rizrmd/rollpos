@@ -1,5 +1,5 @@
 import type { Database } from "@/db/database"
-import { useMemo, useState } from "react"
+import { useState } from "react"
 
 import { LiveNotice } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import {
   assignStaffToDates,
+  clearManagerAssignedDates,
   generateFairRemainingWeeks,
 } from "@/db/staffing-write"
 import { lockedWorkDates, monthWeekStarts } from "@/lib/calendar-select"
@@ -31,6 +32,7 @@ import {
 } from "@/lib/schedule-board"
 import {
   defaultTemplateIdsForStaff,
+  dayRoster,
   templateIdsByStaffOnDates,
   toggleStaffTemplateIds,
 } from "@/lib/staff-prefs"
@@ -51,7 +53,7 @@ import {
 } from "@/lib/types"
 import { detectWarnings } from "@/lib/warnings"
 
-export function WeekScreen({
+export function ScheduleScreen({
   database,
   actor,
   settings,
@@ -87,6 +89,7 @@ export function WeekScreen({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [lockedDetailOpen, setLockedDetailOpen] = useState(false)
+  const [clearingDate, setClearingDate] = useState<string | null>(null)
 
   const activeSlots = slots
     .filter((slot) => slot.isActive)
@@ -110,6 +113,22 @@ export function WeekScreen({
       row.workDate <= (monthDates[monthDates.length - 1] ?? "")
   )
   const locked = lockedWorkDates(monthAssignments, undefined, offs)
+  const lockedDetails = locked.map((date) => ({
+    date,
+    workers: dayRoster({
+      date,
+      staff: activeStaff,
+      slots: activeSlots,
+      assignments: monthAssignments,
+      offs,
+      suggestions,
+    }).slots.flatMap((slot) =>
+      slot.people.map((person) => ({
+        slotName: slot.slotName,
+        person,
+      }))
+    ),
+  }))
   const published = monthAssignments.some((row) => row.status === "published")
   const warnings = settings
     ? detectWarnings({
@@ -125,53 +144,40 @@ export function WeekScreen({
       })
     : []
 
-  const loads = useMemo(() => {
-    const peerHours = activeStaff.map((member) => {
-      const load = staffWeekLoad({
-        member,
-        dates: monthDates,
-        assignments: monthAssignments,
-        offs,
-        suggestions,
-        preferences,
-        warnings,
-        weekStart: weekStartOn(monthCursor, weekStartsOn),
-      })
-      return load.hours
+  const peerHours = activeStaff.map((member) => {
+    const load = staffWeekLoad({
+      member,
+      dates: monthDates,
+      assignments: monthAssignments,
+      offs,
+      suggestions,
+      preferences,
+      warnings,
+      weekStart: weekStartOn(monthCursor, weekStartsOn),
     })
-    return activeStaff.map((member) => {
-      const load = staffWeekLoad({
-        member,
-        dates: monthDates,
-        assignments: monthAssignments,
-        offs,
-        suggestions,
-        preferences,
-        warnings,
-        weekStart: weekStartOn(monthCursor, weekStartsOn),
-      })
-      return {
-        member,
-        ...load,
-        band: workloadBand(
-          load.hours,
-          peerHours,
-          settings?.hoursSkewPercent ?? 25
-        ),
-      }
+    return load.hours
+  })
+  const loads = activeStaff.map((member) => {
+    const load = staffWeekLoad({
+      member,
+      dates: monthDates,
+      assignments: monthAssignments,
+      offs,
+      suggestions,
+      preferences,
+      warnings,
+      weekStart: weekStartOn(monthCursor, weekStartsOn),
     })
-  }, [
-    activeStaff,
-    monthAssignments,
-    monthCursor,
-    monthDates,
-    offs,
-    preferences,
-    settings?.hoursSkewPercent,
-    suggestions,
-    warnings,
-    weekStartsOn,
-  ])
+    return {
+      member,
+      ...load,
+      band: workloadBand(
+        load.hours,
+        peerHours,
+        settings?.hoursSkewPercent ?? 25
+      ),
+    }
+  })
 
   async function guarded(action: () => Promise<void>, ok?: string) {
     try {
@@ -235,6 +241,22 @@ export function WeekScreen({
         generated > 0
           ? "Sisa tanggal diisi otomatis menurut beban yang paling adil."
           : "Tidak ada tanggal sisa yang perlu diisi."
+      )
+    })
+  }
+
+  async function clearLockedDate(date: string) {
+    if (!actor || clearingDate !== date) return
+    await guarded(async () => {
+      const cleared = await clearManagerAssignedDates(database, actor, {
+        dates: [date],
+        weekStartsOn,
+      })
+      setClearingDate(null)
+      setNotice(
+        cleared > 0
+          ? `${formatIsoWeekday(date)} dikembalikan ke jadwal otomatis.`
+          : `${formatIsoWeekday(date)} sudah tidak dikunci manager.`
       )
     })
   }
@@ -319,7 +341,8 @@ export function WeekScreen({
         onToggle={(staffId) => {
           setShiftByStaff((current) => {
             if ((current[staffId]?.length ?? 0) > 0) {
-              const { [staffId]: _removed, ...rest } = current
+              const rest = { ...current }
+              delete rest[staffId]
               return rest
             }
             const next = defaultShiftsFor(staffId)
@@ -358,13 +381,50 @@ export function WeekScreen({
               diisi ulang oleh sistem.
             </DialogDescription>
           </DialogHeader>
-          <ul className="grid max-h-80 gap-2 overflow-y-auto sm:grid-cols-2">
-            {locked.map((date) => (
+          <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto">
+            {lockedDetails.map(({ date, workers }) => (
               <li
                 key={date}
                 className="rounded-lg border bg-muted/30 px-3 py-2 text-sm"
               >
-                {formatIsoWeekday(date)}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium">{formatIsoWeekday(date)}</p>
+                    {workers.length > 0 ? (
+                      <ul className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
+                        {workers.map(({ slotName, person }) => (
+                          <li key={`${date}-${slotName}-${person.staffId}`}>
+                            {person.name} · {slotName}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-muted-foreground">
+                        Tidak ada yang masuk
+                      </p>
+                    )}
+                  </div>
+                  {clearingDate === date ? (
+                    <span className="text-xs font-medium text-destructive">
+                      Hapus jadwal tanggal ini?
+                    </span>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      if (clearingDate === date) {
+                        void clearLockedDate(date)
+                        return
+                      }
+                      setClearingDate(date)
+                    }}
+                  >
+                    {clearingDate === date ? "Hapus" : "Clear"}
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
@@ -373,7 +433,10 @@ export function WeekScreen({
               type="button"
               variant="outline"
               size="touch"
-              onClick={() => setLockedDetailOpen(false)}
+              onClick={() => {
+                setLockedDetailOpen(false)
+                setClearingDate(null)
+              }}
             >
               Tutup
             </Button>

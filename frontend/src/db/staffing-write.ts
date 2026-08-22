@@ -28,7 +28,11 @@ import {
   SYSTEM_DRAFT_NOTE,
   weekHasActiveAssignments,
 } from "@/lib/recommend"
-import { EMPTY_ROSTER_STAFF_ID, lockedWorkDates } from "@/lib/calendar-select"
+import {
+  EMPTY_ROSTER_STAFF_ID,
+  isEmptyRosterLock,
+  lockedWorkDates,
+} from "@/lib/calendar-select"
 import {
   canBeAssignedToSlot,
   isStaleSystemAssignment,
@@ -1188,6 +1192,64 @@ export async function assignStaffToDates(
       }
     }
   })
+}
+
+/** Lepas penetapan manager pada tanggal ini, lalu isi ulang tanggal itu secara adil. */
+export async function clearManagerAssignedDates(
+  database: Database,
+  actor: StaffRecord,
+  input: {
+    dates: string[]
+    weekStartsOn: number
+  }
+): Promise<number> {
+  if (!canManage(actor.roles)) {
+    throw new Error("Lantai tidak boleh mengubah roster.")
+  }
+  if (input.dates.length === 0) {
+    throw new Error("Pilih minimal satu tanggal.")
+  }
+  await database.ready
+  const dates = new Set(input.dates)
+  const now = Date.now()
+  let cleared = 0
+  transact(database, () => {
+    for (const row of listRows(database, TABLES.shiftAssignments)) {
+      const workDate = cellStr(row, "workDate")
+      if (
+        dates.has(workDate) &&
+        cellStr(row, "status") !== "cancelled" &&
+        cellStr(row, "note") !== SYSTEM_DRAFT_NOTE
+      ) {
+        updateRow(database, TABLES.shiftAssignments, row.id, {
+          status: "cancelled",
+          updatedAt: now,
+        })
+        cleared += 1
+      }
+    }
+    for (const row of listRows(database, TABLES.scheduledDaysOff)) {
+      if (
+        dates.has(cellStr(row, "workDate")) &&
+        isEmptyRosterLock({
+          staffId: cellStr(row, "staffId"),
+          source: cellStr(row, "source") as DayOffSource,
+        })
+      ) {
+        deleteRow(database, TABLES.scheduledDaysOff, row.id)
+        cleared += 1
+      }
+    }
+  })
+  if (cleared === 0) return 0
+
+  const weekStarts = [
+    ...new Set(
+      input.dates.map((date) => weekStartOn(date, input.weekStartsOn))
+    ),
+  ]
+  await generateFairRemainingWeeks(database, weekStarts)
+  return cleared
 }
 
 /** Tulis usulan sistem hanya di tanggal yang belum dikunci manager. */
