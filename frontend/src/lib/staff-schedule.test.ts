@@ -7,6 +7,7 @@ import {
   loadAssignments,
   loadAttendance,
   loadDayOffs,
+  loadPreferences,
   loadSettings,
   loadSlots,
   loadStaff,
@@ -35,6 +36,7 @@ import {
   withdrawDayOffRequest,
 } from "@/db/staffing-write"
 import { MANAGER_ASSIGN_NOTE, SYSTEM_DRAFT_NOTE } from "@/lib/recommend"
+import { lockedWorkDates } from "@/lib/calendar-select"
 import { canEditSlots, canManage, isOwner } from "@/lib/permissions"
 import { recommendSchedule, wouldViolateConsecutive } from "@/lib/recommend"
 import {
@@ -1508,5 +1510,76 @@ describe("staffing persist + schedule", () => {
         row.workDate <= week[6]!
     )
     expect(after).toEqual([])
+  })
+
+  test("usulan tampilan shift menghormati minggu yang dikosongkan manager", async () => {
+    const { database, owner } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    await upsertStaff(database, owner, {
+      id: nia.id,
+      name: nia.name,
+      nickname: nia.nickname,
+      isActive: true,
+      roles: nia.roles,
+      preferredTemplateIds: [slotId],
+    })
+    const week = [
+      "2026-08-17",
+      "2026-08-18",
+      "2026-08-19",
+      "2026-08-20",
+      "2026-08-21",
+      "2026-08-22",
+      "2026-08-23",
+    ]
+    await assignStaffToDates(database, owner, {
+      dates: week,
+      workingStaffIds: [nia.id],
+      templateIdsByStaff: { [nia.id]: [slotId] },
+      weekStartsOn: 1,
+    })
+    await assignStaffToDates(database, owner, {
+      dates: week,
+      workingStaffIds: [],
+      templateIdsByStaff: {},
+      weekStartsOn: 1,
+    })
+
+    const assignments = await loadAssignments(database)
+    const offs = await loadDayOffs(database)
+    const staff = await loadStaff(database)
+    const slots = await loadSlots(database)
+    const preferences = await loadPreferences(database)
+    const settings = await loadSettings(database, DEFAULT_OUTLET_ID)
+    const lockedDates = lockedWorkDates(assignments, SYSTEM_DRAFT_NOTE, offs)
+    const result = recommendSchedule({
+      settings: settings!,
+      staff,
+      slots,
+      requirements: [],
+      assignments,
+      offs,
+      suggestions: [],
+      preferences,
+      weekStart: week[0]!,
+      lockedDates,
+    })
+
+    expect(result.assignments).toEqual([])
+    expect(result.assignments.some((row) => week.includes(row.workDate))).toBe(
+      false
+    )
   })
 })

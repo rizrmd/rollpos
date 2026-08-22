@@ -20,6 +20,7 @@ import {
   weekdayHeaders,
 } from "@/lib/format"
 import { canManage, floorRolesOf } from "@/lib/permissions"
+import { lockedWorkDates } from "@/lib/calendar-select"
 import {
   historyWorkDatesFrom,
   recommendSchedule,
@@ -149,6 +150,17 @@ export function PrefsScreen({
     for (const weekStart of weekStarts) {
       if (weekStart < weekStartOn(today, weekStartsOn)) continue
       if (weekHasActiveAssignments(assignments, weekStart)) continue
+      const weekDays = weekDates(weekStart)
+      const lockedDates = lockedWorkDates(
+        assignments.filter(
+          (row) =>
+            row.status !== "cancelled" &&
+            row.workDate >= weekStart &&
+            row.workDate <= weekDays[6]
+        ),
+        undefined,
+        offs
+      )
       const result = recommendSchedule({
         settings,
         staff,
@@ -160,6 +172,7 @@ export function PrefsScreen({
         preferences,
         weekStart,
         historyWorkDates: history,
+        lockedDates,
       })
       nextAssignments.push(...result.assignments)
       nextOffs.push(
