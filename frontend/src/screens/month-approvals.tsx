@@ -1,24 +1,14 @@
-import { useRef, useState, type PointerEvent } from "react"
+import { useState, type PointerEvent } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { datesInMonth, datesInRange } from "@/lib/calendar-select"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  datesInMonth,
-  datesInRange,
-  isEmptyRosterLock,
-  lockedWorkDates,
-} from "@/lib/calendar-select"
-import { SYSTEM_DRAFT_NOTE } from "@/lib/recommend"
-import { formatIsoWeekday, formatMonthYear, weekdayHeaders } from "@/lib/format"
+  formatIsoWeekday,
+  formatMonthYear,
+  weekdayHeaders,
+} from "@/lib/format"
 import {
   dayRoster,
   OFF_SOURCE_LABEL,
@@ -68,7 +58,6 @@ export function MonthApprovals({
   const summary = summarizeTeamMonth(days)
   const headers = weekdayHeaders(weekStartsOn)
   const visibleIds = new Set(staff.map((member) => member.id))
-  const lockedDates = new Set(lockedWorkDates(assignments, undefined, offs))
   const approvedRows = days
     .filter((day) => day.inMonth && day.approved.length > 0)
     .flatMap((day) =>
@@ -81,7 +70,6 @@ export function MonthApprovals({
     )
   const [dragOrigin, setDragOrigin] = useState<string | null>(null)
   const [dragHover, setDragHover] = useState<string | null>(null)
-  const [detailDate, setDetailDate] = useState<string | null>(null)
   const preview = dragOrigin
     ? new Set(
         datesInMonth(
@@ -113,42 +101,6 @@ export function MonthApprovals({
     if (dates.length > 0) onSelectDates(dates)
   }
 
-  function detailDay(day: TeamDayStatus | undefined) {
-    if (!day || !day.inMonth) return null
-    const managerAssignments = assignments.filter(
-      (row) =>
-        row.workDate === day.date &&
-        row.status !== "cancelled" &&
-        row.note !== SYSTEM_DRAFT_NOTE
-    )
-    const lockedByManager =
-      managerAssignments.length > 0 ||
-      offs.some((row) => row.workDate === day.date && isEmptyRosterLock(row))
-    if (!lockedByManager) return null
-
-    return {
-      day,
-      people: managerAssignments.map((row) => ({
-        staffId: row.staffId,
-        name:
-          staff.find((member) => member.id === row.staffId)?.name ??
-          row.staffId,
-        slotName: slots.find((slot) => slot.id === row.templateId)?.name ?? "-",
-      })),
-    }
-  }
-
-  const detail = detailDay(days.find((day) => day.date === detailDate))
-
-  function calendarClick(day: TeamDayStatus, pointerMoved: boolean) {
-    if (lockedDates.has(day.date)) {
-      if (!pointerMoved) setDetailDate(day.date)
-      return
-    }
-    if (!selectable || !day.inMonth) return
-    onSelectDates?.([day.date])
-  }
-
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -162,9 +114,7 @@ export function MonthApprovals({
           <ChevronLeft className="size-5" />
         </Button>
         <div className="min-w-0 flex-1 text-center">
-          <p className="text-base font-medium">
-            {formatMonthYear(monthCursor)}
-          </p>
+          <p className="text-base font-medium">{formatMonthYear(monthCursor)}</p>
           <p className="text-sm text-muted-foreground">
             {selectable
               ? "Seret tanggal untuk menentukan siapa kerja"
@@ -187,59 +137,6 @@ export function MonthApprovals({
           <ChevronRight className="size-5" />
         </Button>
       </div>
-
-      <Dialog
-        open={Boolean(detail)}
-        onOpenChange={(open) => {
-          if (!open) setDetailDate(null)
-        }}
-      >
-        <DialogContent className="sm:max-w-md" showCloseButton>
-          <DialogHeader>
-            <DialogTitle>Detail tanggal</DialogTitle>
-            <DialogDescription>
-              {detail ? formatIsoWeekday(detail.day.date) : ""} · ditetapkan
-              manager
-            </DialogDescription>
-          </DialogHeader>
-          {detail ? (
-            <div className="flex flex-col gap-3">
-              {detail.people.length > 0 ? (
-                <ul className="flex flex-col gap-2">
-                  {detail.people.map((person) => (
-                    <li
-                      key={`${person.staffId}-${person.slotName}`}
-                      className="rounded-lg border bg-muted/30 px-3 py-2"
-                    >
-                      <p className="font-medium">{person.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {person.slotName}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="rounded-lg border bg-muted/30 px-3 py-2 text-muted-foreground">
-                  Tidak ada yang masuk pada tanggal ini.
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Tanggal ini dikunci untuk pengisian otomatis.
-              </p>
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              size="touch"
-              onClick={() => setDetailDate(null)}
-            >
-              Tutup
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <div className="overflow-hidden border bg-card">
         <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-xs font-medium text-muted-foreground">
@@ -283,12 +180,6 @@ export function MonthApprovals({
                     suggestions,
                   })
                 )}
-                onOpenDetail={
-                  day.inMonth && lockedDates.has(day.date)
-                    ? () => setDetailDate(day.date)
-                    : undefined
-                }
-                onClick={(pointerMoved) => calendarClick(day, pointerMoved)}
                 onPointerDown={(event) => {
                   if (!selectable || !day.inMonth) return
                   event.currentTarget.setPointerCapture(event.pointerId)
@@ -325,9 +216,7 @@ export function MonthApprovals({
                     {row.note ? ` · ${row.note}` : ""}
                   </span>
                 </span>
-                <Badge variant="secondary">
-                  {OFF_SOURCE_LABEL[row.source]}
-                </Badge>
+                <Badge variant="secondary">{OFF_SOURCE_LABEL[row.source]}</Badge>
               </li>
             ))}
           </ul>
@@ -345,8 +234,6 @@ function MonthDayCell({
   selected,
   selectable,
   onPointerDown,
-  onOpenDetail,
-  onClick,
 }: {
   day: TeamDayStatus
   today: string
@@ -355,8 +242,6 @@ function MonthDayCell({
   selected: boolean
   selectable: boolean
   onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void
-  onOpenDetail?: () => void
-  onClick: (pointerMoved: boolean) => void
 }) {
   const isToday = day.date === today
   const offInitials = visibleStaffInitials(
@@ -367,8 +252,6 @@ function MonthDayCell({
     const member = staff.find((item) => item.id === row.staffId)
     return member ? [member.nickname || member.name] : []
   })
-  const origin = useRef<{ x: number; y: number } | null>(null)
-  const pointerMoved = useRef(false)
   const body = (
     <>
       <span className="text-xs font-medium">{Number(day.date.slice(8))}</span>
@@ -390,49 +273,13 @@ function MonthDayCell({
     </>
   )
 
-  if (onOpenDetail) {
-    return (
-      <button
-        type="button"
-        data-cal-date={day.inMonth ? day.date : undefined}
-        disabled={!day.inMonth}
-        onClick={onOpenDetail}
-        className={cn(
-          "flex h-full min-h-[4.5rem] w-full cursor-pointer flex-col gap-0.5 p-1.5 text-left hover:bg-muted/60",
-          "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-          day.inMonth ? "" : "bg-muted/20 text-muted-foreground/60",
-          isToday ? "ring-2 ring-ring ring-inset" : ""
-        )}
-      >
-        {body}
-      </button>
-    )
-  }
-
   if (selectable) {
     return (
       <button
         type="button"
         data-cal-date={day.inMonth ? day.date : undefined}
         disabled={!day.inMonth}
-        onPointerDown={(event) => {
-          origin.current = { x: event.clientX, y: event.clientY }
-          pointerMoved.current = false
-          onPointerDown(event)
-        }}
-        onPointerMove={(event) => {
-          if (!origin.current || pointerMoved.current) return
-          const moved =
-            Math.abs(event.clientX - origin.current.x) > 4 ||
-            Math.abs(event.clientY - origin.current.y) > 4
-          if (moved) pointerMoved.current = true
-        }}
-        onPointerCancel={() => {
-          origin.current = null
-        }}
-        onClick={() => {
-          onClick(pointerMoved.current)
-        }}
+        onPointerDown={onPointerDown}
         className={cn(
           "flex h-full min-h-[4.5rem] w-full flex-col gap-0.5 p-1.5 text-left",
           "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
