@@ -275,7 +275,10 @@ function StaffDialog({
             <legend className="mb-2 text-sm font-medium">Stasiun</legend>
             <div className="flex flex-wrap gap-3">
               {FLOOR_ROLES.map((role) => (
-                <label key={role} className="flex min-h-12 items-center gap-2 text-sm">
+                <label
+                  key={role}
+                  className="flex min-h-12 cursor-pointer items-center gap-2 px-3 text-sm transition-colors hover:bg-muted has-focus-visible:ring-3 has-focus-visible:ring-ring/50"
+                >
                   <Checkbox
                     checked={roles.includes(role)}
                     onCheckedChange={() => toggle(role)}
@@ -288,7 +291,7 @@ function StaffDialog({
           {usesAttendanceToggle(roles) ? (
             <fieldset>
               <legend className="mb-2 text-sm font-medium">Absensi</legend>
-              <label className="flex min-h-12 items-center gap-2 text-sm">
+              <label className="flex min-h-12 cursor-pointer items-center gap-2 px-3 text-sm transition-colors hover:bg-muted has-focus-visible:ring-3 has-focus-visible:ring-ring/50">
                 <Checkbox
                   checked={includeAttendance}
                   onCheckedChange={(checked) =>
@@ -315,7 +318,7 @@ function StaffDialog({
                     {activeSlots.map((slot) => (
                       <label
                         key={slot.id}
-                        className="flex min-h-12 items-center gap-2 text-sm"
+                        className="flex min-h-12 cursor-pointer items-center gap-2 px-3 text-sm transition-colors hover:bg-muted has-focus-visible:ring-3 has-focus-visible:ring-ring/50"
                       >
                         <Checkbox
                           checked={preferred.includes(slot.id)}
@@ -342,7 +345,10 @@ function StaffDialog({
             <div className="flex flex-wrap gap-3">
               {STAFF_ROLES.filter((role) => role === "owner" || role === "manager").map(
                 (role) => (
-                  <label key={role} className="flex min-h-12 items-center gap-2 text-sm">
+                  <label
+                    key={role}
+                    className="flex min-h-12 cursor-pointer items-center gap-2 px-3 text-sm transition-colors hover:bg-muted has-focus-visible:ring-3 has-focus-visible:ring-ring/50"
+                  >
                     <Checkbox
                       checked={roles.includes(role)}
                       disabled={!canLead}
@@ -354,7 +360,7 @@ function StaffDialog({
               )}
             </div>
           </fieldset>
-          <label className="flex min-h-12 items-center gap-2 text-sm">
+          <label className="flex min-h-12 cursor-pointer items-center gap-2 px-3 text-sm transition-colors hover:bg-muted has-focus-visible:ring-3 has-focus-visible:ring-ring/50">
             <Checkbox
               checked={active}
               onCheckedChange={(checked) => setActive(Boolean(checked))}
