@@ -1,12 +1,23 @@
 import type { Database } from "@/db/database"
 import { useMemo, useState } from "react"
+import { Trash2 } from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
 import { PinDialog } from "@/components/pin-dialog"
-import { clockPunch } from "@/db/staffing-write"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { clearAttendanceForDate, clockPunch } from "@/db/staffing-write"
 import {
   formatClockFromMinutes,
   formatDuration,
+  formatIsoLong,
   formatOccurredClock,
   minutesFromOccurred,
 } from "@/lib/format"
@@ -15,7 +26,7 @@ import {
   groupClockCards,
   openClockInAt,
 } from "@/lib/on-duty"
-import { deviceId } from "@/lib/time"
+import { deviceId, todayJakarta } from "@/lib/time"
 import { cn } from "@/lib/utils"
 import {
   isIncludedInAttendance,
@@ -48,6 +59,8 @@ export function ClockScreen({
 }) {
   const [selected, setSelected] = useState<StaffRecord | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [historyDate, setHistoryDate] = useState(today)
+  const [confirmClear, setConfirmClear] = useState(false)
   const active = staff.filter(
     (member) =>
       member.isActive &&
@@ -71,6 +84,19 @@ export function ClockScreen({
     [active, assignments, attendance, offs, openByStaff, slots, today]
   )
   const grouped = useMemo(() => groupClockCards(cards), [cards])
+  const staffById = useMemo(
+    () => new Map(staff.map((member) => [member.id, member])),
+    [staff]
+  )
+  const history = useMemo(
+    () =>
+      attendance
+        .filter(
+          (event) => todayJakarta(new Date(event.occurredAt)) === historyDate
+        )
+        .sort((left, right) => right.occurredAt - left.occurredAt),
+    [attendance, historyDate]
+  )
 
   function renderCards(items: typeof cards) {
     if (items.length === 0) return null
@@ -103,7 +129,7 @@ export function ClockScreen({
                 {card.clockInAt != null ? (
                   <time
                     dateTime={new Date(card.clockInAt).toISOString()}
-                    className="text-2xl font-semibold tabular-nums tracking-tight"
+                    className="text-2xl font-semibold tracking-tight tabular-nums"
                   >
                     {formatOccurredClock(card.clockInAt)}
                   </time>
@@ -149,7 +175,10 @@ export function ClockScreen({
         )}
       </section>
       {grouped.waiting.length > 0 ? (
-        <section aria-labelledby="clock-waiting" className="flex flex-col gap-3">
+        <section
+          aria-labelledby="clock-waiting"
+          className="flex flex-col gap-3"
+        >
           <h2
             id="clock-waiting"
             className="text-sm font-semibold tracking-wide text-muted-foreground uppercase"
@@ -172,6 +201,112 @@ export function ClockScreen({
           {renderCards(grouped.off)}
         </section>
       ) : null}
+      <section
+        aria-labelledby="attendance-history"
+        className="flex flex-col gap-3 rounded-2xl border p-4"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <label
+              htmlFor="attendance-history-date"
+              className="text-sm font-semibold"
+            >
+              Riwayat absensi
+            </label>
+            <input
+              id="attendance-history-date"
+              type="date"
+              value={historyDate}
+              max={today}
+              onChange={(event) => setHistoryDate(event.target.value || today)}
+              className="h-10 rounded-lg border bg-background px-3 text-sm"
+            />
+          </div>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={history.length === 0}
+            onClick={() => setConfirmClear(true)}
+          >
+            <Trash2 />
+            Clear tanggal ini
+          </Button>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {formatIsoLong(historyDate)} · {history.length} catatan
+        </p>
+        {history.length === 0 ? (
+          <p className="rounded-xl border border-dashed px-4 py-5 text-sm text-muted-foreground">
+            Belum ada riwayat absensi pada tanggal ini.
+          </p>
+        ) : (
+          <ul className="divide-y rounded-xl border">
+            {history.map((event) => {
+              const member = staffById.get(event.staffId)
+              return (
+                <li
+                  key={event.id}
+                  className="flex items-center justify-between gap-4 px-4 py-3"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">
+                      {member?.nickname ||
+                        member?.name ||
+                        "Staff tidak dikenal"}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {attendanceTypeLabel(event.type)}
+                      {event.note ? ` · ${event.note}` : ""}
+                    </span>
+                  </span>
+                  <time
+                    dateTime={new Date(event.occurredAt).toISOString()}
+                    className="text-lg font-semibold tabular-nums"
+                  >
+                    {formatOccurredClock(event.occurredAt)}
+                  </time>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+      <Dialog open={confirmClear} onOpenChange={setConfirmClear}>
+        <DialogContent className="sm:max-w-md" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Clear riwayat tanggal ini?</DialogTitle>
+            <DialogDescription>
+              {history.length} catatan pada {formatIsoLong(historyDate)} akan
+              dihapus permanen. Catatan tanggal lain tidak akan berubah.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmClear(false)}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={async () => {
+                const deleted = await clearAttendanceForDate(
+                  database,
+                  historyDate
+                )
+                setConfirmClear(false)
+                setNotice(
+                  `${deleted} catatan absensi ${formatIsoLong(historyDate)} dihapus.`
+                )
+              }}
+            >
+              Clear {history.length} catatan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <PinDialog
         open={Boolean(selected)}
         title={
@@ -205,6 +340,12 @@ export function ClockScreen({
       />
     </div>
   )
+}
+
+function attendanceTypeLabel(type: AttendanceEventRecord["type"]): string {
+  if (type === "clock_in") return "Masuk"
+  if (type === "clock_out") return "Pulang"
+  return "Koreksi"
 }
 
 function pinDescription(

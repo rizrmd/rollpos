@@ -479,6 +479,22 @@ export async function clockPunch(
   })
 }
 
+export async function clearAttendanceForDate(
+  database: Database,
+  workDate: string
+): Promise<number> {
+  await database.ready
+  const matching = listRows(database, TABLES.attendanceEvents).filter(
+    (row) => todayJakarta(new Date(Number(row.occurredAt ?? 0))) === workDate
+  )
+  transact(database, () => {
+    for (const row of matching) {
+      deleteRow(database, TABLES.attendanceEvents, row.id)
+    }
+  })
+  return matching.length
+}
+
 export async function correctAttendance(
   database: Database,
   actor: StaffRecord,
