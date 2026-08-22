@@ -162,7 +162,9 @@ export function MonthApprovals({
           <ChevronLeft className="size-5" />
         </Button>
         <div className="min-w-0 flex-1 text-center">
-          <p className="text-base font-medium">{formatMonthYear(monthCursor)}</p>
+          <p className="text-base font-medium">
+            {formatMonthYear(monthCursor)}
+          </p>
           <p className="text-sm text-muted-foreground">
             {selectable
               ? "Seret tanggal untuk menentukan siapa kerja"
@@ -323,7 +325,9 @@ export function MonthApprovals({
                     {row.note ? ` · ${row.note}` : ""}
                   </span>
                 </span>
-                <Badge variant="secondary">{OFF_SOURCE_LABEL[row.source]}</Badge>
+                <Badge variant="secondary">
+                  {OFF_SOURCE_LABEL[row.source]}
+                </Badge>
               </li>
             ))}
           </ul>
@@ -386,6 +390,25 @@ function MonthDayCell({
     </>
   )
 
+  if (onOpenDetail) {
+    return (
+      <button
+        type="button"
+        data-cal-date={day.inMonth ? day.date : undefined}
+        disabled={!day.inMonth}
+        onClick={onOpenDetail}
+        className={cn(
+          "flex h-full min-h-[4.5rem] w-full cursor-pointer flex-col gap-0.5 p-1.5 text-left hover:bg-muted/60",
+          "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+          day.inMonth ? "" : "bg-muted/20 text-muted-foreground/60",
+          isToday ? "ring-2 ring-ring ring-inset" : ""
+        )}
+      >
+        {body}
+      </button>
+    )
+  }
+
   if (selectable) {
     return (
       <button
@@ -413,31 +436,11 @@ function MonthDayCell({
         className={cn(
           "flex h-full min-h-[4.5rem] w-full flex-col gap-0.5 p-1.5 text-left",
           "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-          onOpenDetail ? "cursor-pointer hover:bg-muted/60" : "",
           day.inMonth ? "" : "bg-muted/20 text-muted-foreground/60",
           isToday ? "ring-2 ring-ring ring-inset" : "",
           selected
             ? "bg-primary/15 ring-2 ring-primary ring-inset dark:bg-primary/25"
             : ""
-        )}
-      >
-        {body}
-      </button>
-    )
-  }
-
-  if (onOpenDetail) {
-    return (
-      <button
-        type="button"
-        data-cal-date={day.inMonth ? day.date : undefined}
-        disabled={!day.inMonth}
-        onClick={onOpenDetail}
-        className={cn(
-          "flex h-full min-h-[4.5rem] w-full cursor-pointer flex-col gap-0.5 p-1.5 text-left hover:bg-muted/60",
-          "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-          day.inMonth ? "" : "bg-muted/20 text-muted-foreground/60",
-          isToday ? "ring-2 ring-ring ring-inset" : ""
         )}
       >
         {body}
