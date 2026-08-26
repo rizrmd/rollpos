@@ -27,7 +27,6 @@ import {
 import {
   formatIsoWeekday,
   formatMonthYear,
-  formatSelectedDates,
 } from "@/lib/format"
 import { floorRolesOf } from "@/lib/permissions"
 import { MANAGER_ASSIGN_NOTE } from "@/lib/recommend"
@@ -408,7 +407,6 @@ export function ScheduleScreen({
 
       <DateAssignDialog
         open={Boolean(actor) && selectedDates.length > 0}
-        dates={selectedDates}
         loads={loads}
         slots={activeSlots}
         shiftByStaff={shiftByStaff}
@@ -582,7 +580,6 @@ function BandBadge({ band }: { band: WorkloadBand }) {
 
 function DateAssignDialog({
   open,
-  dates,
   loads,
   slots,
   shiftByStaff,
@@ -596,7 +593,6 @@ function DateAssignDialog({
   onSave,
 }: {
   open: boolean
-  dates: string[]
   loads: {
     member: StaffRecord
     workDays: number
@@ -628,10 +624,6 @@ function DateAssignDialog({
       <DialogContent className="sm:max-w-lg" showCloseButton>
         <DialogHeader>
           <DialogTitle>Siapa kerja</DialogTitle>
-          <DialogDescription>
-            {formatSelectedDates(dates)}. Pilih shift tiap orang; tanpa shift =
-            libur. Kosongkan semua = tidak ada yang masuk hari itu.
-          </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap gap-2">
           <Button
