@@ -16,6 +16,8 @@ import {
   assignStaffToDates,
   clearManagerAssignedDates,
   generateFairRemainingWeeks,
+  undoClearManagerAssignedDates,
+  type ClearManagerRestore,
 } from "@/db/staffing-write"
 import { lockedWorkDates, monthWeekStarts } from "@/lib/calendar-select"
 import {
@@ -90,6 +92,10 @@ export function ScheduleScreen({
   const [busy, setBusy] = useState(false)
   const [lockedDetailOpen, setLockedDetailOpen] = useState(false)
   const [clearingDate, setClearingDate] = useState<string | null>(null)
+  const [confirmClearAll, setConfirmClearAll] = useState(false)
+  const [undoRestore, setUndoRestore] = useState<ClearManagerRestore | null>(
+    null
+  )
 
   const activeSlots = slots
     .filter((slot) => slot.isActive)
@@ -247,17 +253,55 @@ export function ScheduleScreen({
 
   async function clearLockedDate(date: string) {
     if (!actor || clearingDate !== date) return
+    const restore: ClearManagerRestore = {}
     await guarded(async () => {
-      const cleared = await clearManagerAssignedDates(database, actor, {
-        dates: [date],
-        weekStartsOn,
-      })
+      const cleared = await clearManagerAssignedDates(
+        database,
+        actor,
+        { dates: [date], weekStartsOn },
+        { restore }
+      )
       setClearingDate(null)
+      setUndoRestore(restore)
       setNotice(
         cleared > 0
           ? `${formatIsoWeekday(date)} dikembalikan ke jadwal otomatis.`
           : `${formatIsoWeekday(date)} sudah tidak dikunci manager.`
       )
+    })
+  }
+
+  async function clearAllLockedDates() {
+    if (!actor || locked.length === 0) return
+    const restore: ClearManagerRestore = {}
+    await guarded(async () => {
+      const cleared = await clearManagerAssignedDates(
+        database,
+        actor,
+        { dates: locked, weekStartsOn },
+        { restore }
+      )
+      setConfirmClearAll(false)
+      setClearingDate(null)
+      setUndoRestore(restore)
+      setNotice(
+        cleared > 0
+          ? `${cleared} penetapan manager pada ${locked.length} tanggal dikembalikan ke jadwal otomatis.`
+          : "Tidak ada penetapan manager yang perlu dihapus."
+      )
+    })
+  }
+
+  async function undoClearLockedDates() {
+    if (!actor || !undoRestore) return
+    const dates = undoRestore.dates ?? []
+    await guarded(async () => {
+      await undoClearManagerAssignedDates(database, actor, undoRestore, {
+        dates,
+        weekStartsOn,
+      })
+      setUndoRestore(null)
+      setNotice("Penetapan manager berhasil dikembalikan.")
     })
   }
 
@@ -381,6 +425,11 @@ export function ScheduleScreen({
               diisi ulang oleh sistem.
             </DialogDescription>
           </DialogHeader>
+          {confirmClearAll ? (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              Hapus penetapan manager pada {locked.length} tanggal?
+            </p>
+          ) : null}
           <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto">
             {lockedDetails.map(({ date, workers }) => (
               <li
@@ -429,6 +478,35 @@ export function ScheduleScreen({
             ))}
           </ul>
           <DialogFooter>
+            {undoRestore ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="touch"
+                disabled={busy}
+                onClick={() => void undoClearLockedDates()}
+              >
+                Undo
+              </Button>
+            ) : null}
+            {locked.length > 0 ? (
+              <Button
+                type="button"
+                variant={confirmClearAll ? "destructive" : "outline"}
+                size="touch"
+                disabled={busy}
+                onClick={() => {
+                  if (confirmClearAll) {
+                    void clearAllLockedDates()
+                    return
+                  }
+                  setClearingDate(null)
+                  setConfirmClearAll(true)
+                }}
+              >
+                {confirmClearAll ? "Hapus semua" : "Clear all"}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"

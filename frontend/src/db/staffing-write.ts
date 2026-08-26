@@ -1,6 +1,7 @@
 import {
   addRow,
   cellStr,
+  cellNum,
   deleteMatching,
   deleteRow,
   listRows,
@@ -33,10 +34,7 @@ import {
   isEmptyRosterLock,
   lockedWorkDates,
 } from "@/lib/calendar-select"
-import {
-  canBeAssignedToSlot,
-  isStaleSystemAssignment,
-} from "@/lib/staff-prefs"
+import { canBeAssignedToSlot, isStaleSystemAssignment } from "@/lib/staff-prefs"
 import { hashPin, newPinSalt, validatePin, verifyPin } from "@/lib/pin"
 import {
   assertCanChangeRoles,
@@ -58,7 +56,11 @@ import type {
   StaffRole,
   SuggestionStatus,
 } from "@/lib/types"
-import { DEFAULT_OUTLET_ID, isIncludedInAttendance, isStaffDeleted } from "@/lib/types"
+import {
+  DEFAULT_OUTLET_ID,
+  isIncludedInAttendance,
+  isStaffDeleted,
+} from "@/lib/types"
 import { nextWeekStart, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
 
 export function hasOpenSession(events: { type: AttendanceType }[]): boolean {
@@ -307,8 +309,7 @@ export async function upsertStaff(
     const attendanceChanged =
       input.includeInAttendance !== undefined &&
       isIncludedInAttendance(target) !== input.includeInAttendance
-    const leadershipChanged =
-      canManage(target.roles) !== canManage(input.roles)
+    const leadershipChanged = canManage(target.roles) !== canManage(input.roles)
     if (prefsChanged || attendanceChanged || leadershipChanged) {
       await rebuildOpenSystemWeeks(database)
     }
@@ -811,7 +812,8 @@ export async function requestDayOff(
   await database.ready
   const official = listRows(database, TABLES.scheduledDaysOff).find(
     (row) =>
-      cellStr(row, "staffId") === staffId && cellStr(row, "workDate") === workDate
+      cellStr(row, "staffId") === staffId &&
+      cellStr(row, "workDate") === workDate
   )
   if (official) {
     throw new Error("Tanggal itu sudah libur resmi.")
@@ -1201,7 +1203,8 @@ export async function clearManagerAssignedDates(
   input: {
     dates: string[]
     weekStartsOn: number
-  }
+  },
+  options?: { restore?: ClearManagerRestore }
 ): Promise<number> {
   if (!canManage(actor.roles)) {
     throw new Error("Lantai tidak boleh mengubah roster.")
@@ -1213,6 +1216,15 @@ export async function clearManagerAssignedDates(
   const dates = new Set(input.dates)
   const now = Date.now()
   let cleared = 0
+  const affectedAssignments: Array<{
+    id: string
+    status: AssignmentStatus
+    updatedAt: number
+  }> = []
+  const affectedOffs: Array<{
+    id: string
+    [cellId: string]: string | number | boolean
+  }> = []
   transact(database, () => {
     for (const row of listRows(database, TABLES.shiftAssignments)) {
       const workDate = cellStr(row, "workDate")
@@ -1221,6 +1233,11 @@ export async function clearManagerAssignedDates(
         cellStr(row, "status") !== "cancelled" &&
         cellStr(row, "note") !== SYSTEM_DRAFT_NOTE
       ) {
+        affectedAssignments.push({
+          id: row.id,
+          status: cellStr(row, "status") as AssignmentStatus,
+          updatedAt: cellNum(row, "updatedAt"),
+        })
         updateRow(database, TABLES.shiftAssignments, row.id, {
           status: "cancelled",
           updatedAt: now,
@@ -1236,12 +1253,26 @@ export async function clearManagerAssignedDates(
           source: cellStr(row, "source") as DayOffSource,
         })
       ) {
+        affectedOffs.push({
+          id: row.id,
+          staffId: cellStr(row, "staffId"),
+          workDate: cellStr(row, "workDate"),
+          weekStart: cellStr(row, "weekStart"),
+          source: cellStr(row, "source"),
+          note: cellStr(row, "note"),
+          createdAt: cellNum(row, "createdAt"),
+        })
         deleteRow(database, TABLES.scheduledDaysOff, row.id)
         cleared += 1
       }
     }
   })
   if (cleared === 0) return 0
+  if (options?.restore) {
+    options.restore.dates = [...dates]
+    options.restore.assignments = affectedAssignments
+    options.restore.offs = affectedOffs.map((row) => ({ ...row }))
+  }
 
   const weekStarts = [
     ...new Set(
@@ -1250,6 +1281,72 @@ export async function clearManagerAssignedDates(
   ]
   await generateFairRemainingWeeks(database, weekStarts)
   return cleared
+}
+
+export type ClearManagerRestore = {
+  dates?: string[]
+  assignments?: Array<{
+    id: string
+    status: AssignmentStatus
+    updatedAt: number
+  }>
+  offs?: Array<{
+    id: string
+    [cellId: string]: string | number | boolean
+  }>
+}
+
+/** Pulihkan hasil clear penetapan manager dan kembalikan usulan sistem menjadi batal. */
+export async function undoClearManagerAssignedDates(
+  database: Database,
+  actor: StaffRecord,
+  restore: ClearManagerRestore,
+  input: {
+    dates: string[]
+    weekStartsOn: number
+  }
+): Promise<number> {
+  if (!canManage(actor.roles)) {
+    throw new Error("Lantai tidak boleh mengubah roster.")
+  }
+  if (input.dates.length === 0) {
+    throw new Error("Pilih minimal satu tanggal.")
+  }
+  await database.ready
+  const dates = new Set(input.dates)
+  const now = Date.now()
+  let restored = 0
+  transact(database, () => {
+    for (const row of restore.assignments ?? []) {
+      const assignment = listRows(database, TABLES.shiftAssignments).find(
+        (item) => item.id === row.id
+      )
+      if (!assignment) continue
+      updateRow(database, TABLES.shiftAssignments, row.id, {
+        status: row.status,
+        updatedAt: now,
+      })
+      restored += 1
+    }
+    for (const row of listRows(database, TABLES.shiftAssignments)) {
+      const workDate = cellStr(row, "workDate")
+      if (
+        dates.has(workDate) &&
+        cellStr(row, "status") !== "cancelled" &&
+        cellStr(row, "note") === SYSTEM_DRAFT_NOTE
+      ) {
+        updateRow(database, TABLES.shiftAssignments, row.id, {
+          status: "cancelled",
+          updatedAt: now,
+        })
+      }
+    }
+    for (const row of restore.offs ?? []) {
+      database.store.setRow(TABLES.scheduledDaysOff, row.id, row)
+      restored += 1
+    }
+  })
+  return restored
 }
 
 /** Tulis usulan sistem hanya di tanggal yang belum dikunci manager. */
@@ -1321,19 +1418,29 @@ export async function generateFairRemainingWeeks(
   await database.ready
   const settings = await loadSettings(database, DEFAULT_OUTLET_ID)
   if (!settings) return 0
-  const [staff, slots, requirements, loadedAssignments, suggestions, offs, preferences] =
-    await Promise.all([
-      loadStaff(database),
-      loadSlots(database),
-      loadRequirements(database),
-      loadAssignments(database),
-      loadSuggestions(database),
-      loadDayOffs(database),
-      loadPreferences(database),
-    ])
+  const [
+    staff,
+    slots,
+    requirements,
+    loadedAssignments,
+    suggestions,
+    offs,
+    preferences,
+  ] = await Promise.all([
+    loadStaff(database),
+    loadSlots(database),
+    loadRequirements(database),
+    loadAssignments(database),
+    loadSuggestions(database),
+    loadDayOffs(database),
+    loadPreferences(database),
+  ])
   let assignments = loadedAssignments
   const activeSlots = slots.filter((slot) => slot.isActive)
-  if (staff.filter((row) => row.isActive).length === 0 || activeSlots.length === 0) {
+  if (
+    staff.filter((row) => row.isActive).length === 0 ||
+    activeSlots.length === 0
+  ) {
     return 0
   }
 
@@ -1347,7 +1454,10 @@ export async function generateFairRemainingWeeks(
         row.workDate <= weekEnd
     )
     const lockedDates = lockedWorkDates(weekRows, SYSTEM_DRAFT_NOTE, offs)
-    if (lockedDates.length === 0 && weekHasActiveAssignments(assignments, weekStart)) {
+    if (
+      lockedDates.length === 0 &&
+      weekHasActiveAssignments(assignments, weekStart)
+    ) {
       continue
     }
     const history = historyWorkDatesFrom(assignments, weekStart)
@@ -1391,19 +1501,29 @@ export async function ensureFairDefaultWeeks(
   await database.ready
   const settings = await loadSettings(database, DEFAULT_OUTLET_ID)
   if (!settings) return 0
-  const [staff, slots, requirements, loadedAssignments, suggestions, offs, preferences] =
-    await Promise.all([
-      loadStaff(database),
-      loadSlots(database),
-      loadRequirements(database),
-      loadAssignments(database),
-      loadSuggestions(database),
-      loadDayOffs(database),
-      loadPreferences(database),
-    ])
+  const [
+    staff,
+    slots,
+    requirements,
+    loadedAssignments,
+    suggestions,
+    offs,
+    preferences,
+  ] = await Promise.all([
+    loadStaff(database),
+    loadSlots(database),
+    loadRequirements(database),
+    loadAssignments(database),
+    loadSuggestions(database),
+    loadDayOffs(database),
+    loadPreferences(database),
+  ])
   let assignments = loadedAssignments
   const activeSlots = slots.filter((slot) => slot.isActive)
-  if (staff.filter((row) => row.isActive).length === 0 || activeSlots.length === 0) {
+  if (
+    staff.filter((row) => row.isActive).length === 0 ||
+    activeSlots.length === 0
+  ) {
     return 0
   }
 
@@ -1496,7 +1616,9 @@ export async function ensureFairDefaultWeeks(
 }
 
 /** Hitung ulang minggu berjalan + depan jika masih murni usulan sistem. */
-export async function rebuildOpenSystemWeeks(database: Database): Promise<number> {
+export async function rebuildOpenSystemWeeks(
+  database: Database
+): Promise<number> {
   const settings = await loadSettings(database, DEFAULT_OUTLET_ID)
   const weekStartsOn = settings?.weekStartsOn ?? 1
   return ensureFairDefaultWeeks(database, defaultScheduleWeeks(weekStartsOn), {
@@ -1552,7 +1674,12 @@ async function cancelStaleSystemAssignments(
       const member = staff.find((item) => item.id === cellStr(row, "staffId"))
       if (
         member &&
-        canBeAssignedToSlot(member, cellStr(row, "templateId"), preferences, weekStart)
+        canBeAssignedToSlot(
+          member,
+          cellStr(row, "templateId"),
+          preferences,
+          weekStart
+        )
       ) {
         continue
       }

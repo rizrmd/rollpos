@@ -4,6 +4,7 @@ import { addRow, createRollposDatabase, listRows, TABLES } from "@/db/database"
 import {
   clearAttendanceForDate,
   clearManagerAssignedDates,
+  undoClearManagerAssignedDates,
 } from "@/db/staffing-write"
 
 describe("clearAttendanceForDate", () => {
@@ -57,17 +58,75 @@ describe("clearManagerAssignedDates", () => {
       })
     ).toBe(2)
 
-    const rows = listRows(database, TABLES.shiftAssignments).sort(
-      (a, b) => a.id.localeCompare(b.id)
+    const rows = listRows(database, TABLES.shiftAssignments).sort((a, b) =>
+      a.id.localeCompare(b.id)
     )
     expect(
       rows.map((row) => [row.workDate, row.note, row.status] as const)
     ).toEqual([
       ["2026-08-22", "manager", "cancelled"],
-      ["2026-08-22", "usulan sistem", "published"],
       ["2026-08-23", "manager", "published"],
+      ["2026-08-22", "usulan sistem", "published"],
     ])
     expect(listRows(database, TABLES.scheduledDaysOff)).toHaveLength(0)
+  })
+
+  test("mengembalikan clear satu atau semua tanggal lewat undo", async () => {
+    const database = createRollposDatabase({ inMemory: true })
+    addStaff(database, "manager", ["manager"])
+    const manager = {
+      id: "manager",
+      name: "manager",
+      nickname: "manager",
+      pinHash: "",
+      pinSalt: "",
+      isActive: true,
+      outletId: "outlet-default",
+      roles: ["manager"],
+    }
+    addAssignment(database, "manager-assignment", "2026-08-22", "manager")
+    addAssignment(database, "system-assignment", "2026-08-22", "usulan sistem")
+    addRow(database, TABLES.scheduledDaysOff, {
+      id: "empty-lock",
+      staffId: "__empty_roster__",
+      workDate: "2026-08-23",
+      weekStart: "2026-08-17",
+      source: "manager",
+      note: "manager",
+      createdAt: 1,
+    })
+    const restore = {}
+
+    expect(
+      await clearManagerAssignedDates(
+        database,
+        manager,
+        { dates: ["2026-08-22", "2026-08-23"], weekStartsOn: 1 },
+        { restore }
+      )
+    ).toBe(2)
+    expect(
+      listRows(database, TABLES.shiftAssignments).find(
+        (row) => row.id === "manager-assignment"
+      )?.status
+    ).toBe("cancelled")
+    expect(listRows(database, TABLES.scheduledDaysOff)).toHaveLength(0)
+
+    expect(
+      await undoClearManagerAssignedDates(database, manager, restore, {
+        dates: ["2026-08-22"],
+        weekStartsOn: 1,
+      })
+    ).toBe(2)
+    expect(
+      listRows(database, TABLES.shiftAssignments)
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map((row) => [row.id, row.status] as const)
+    ).toEqual([
+      ["manager-assignment", "published"],
+      ["system-assignment", "cancelled"],
+    ])
+    expect(listRows(database, TABLES.scheduledDaysOff)).toHaveLength(1)
   })
 })
 
@@ -115,11 +174,11 @@ function addStaff(
 
 function addAssignment(
   database: ReturnType<typeof createRollposDatabase>,
-  _id: string,
+  id: string,
   workDate: string,
   note: string
 ) {
-  addRow(database, TABLES.shiftAssignments, {
+  const cells = {
     id,
     staffId: "manager",
     templateId: "shift-1",
@@ -132,5 +191,6 @@ function addAssignment(
     note,
     createdAt: 1,
     updatedAt: 1,
-  })
+  }
+  database.store.setRow(TABLES.shiftAssignments, id, cells)
 }
