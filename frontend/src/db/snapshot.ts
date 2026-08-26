@@ -32,7 +32,9 @@ import type {
   SuggestionStatus,
 } from "@/lib/types"
 
-export function toSettings(row: ReturnType<typeof listRows>[number]): OutletSettingsRecord {
+export function toSettings(
+  row: ReturnType<typeof listRows>[number]
+): OutletSettingsRecord {
   return {
     id: row.id,
     outletId: cellStr(row, "outletId"),
@@ -63,7 +65,9 @@ export function toSlot(row: ReturnType<typeof listRows>[number]): SlotRecord {
   }
 }
 
-export function toAssignment(row: ReturnType<typeof listRows>[number]): AssignmentRecord {
+export function toAssignment(
+  row: ReturnType<typeof listRows>[number]
+): AssignmentRecord {
   return {
     id: row.id,
     staffId: cellStr(row, "staffId"),
@@ -75,10 +79,13 @@ export function toAssignment(row: ReturnType<typeof listRows>[number]): Assignme
     status: cellStr(row, "status") as AssignmentStatus,
     outletId: cellStr(row, "outletId"),
     note: cellStr(row, "note"),
+    actorStaffId: cellStr(row, "actorStaffId"),
   }
 }
 
-export function toSuggestion(row: ReturnType<typeof listRows>[number]): SuggestionRecord {
+export function toSuggestion(
+  row: ReturnType<typeof listRows>[number]
+): SuggestionRecord {
   return {
     id: row.id,
     staffId: cellStr(row, "staffId"),
@@ -92,7 +99,9 @@ export function toSuggestion(row: ReturnType<typeof listRows>[number]): Suggesti
   }
 }
 
-export function toDayOff(row: ReturnType<typeof listRows>[number]): DayOffRecord {
+export function toDayOff(
+  row: ReturnType<typeof listRows>[number]
+): DayOffRecord {
   return {
     id: row.id,
     staffId: cellStr(row, "staffId"),
@@ -100,10 +109,13 @@ export function toDayOff(row: ReturnType<typeof listRows>[number]): DayOffRecord
     weekStart: cellStr(row, "weekStart"),
     source: cellStr(row, "source") as DayOffSource,
     note: cellStr(row, "note"),
+    actorStaffId: cellStr(row, "actorStaffId"),
   }
 }
 
-export function toAttendance(row: ReturnType<typeof listRows>[number]): AttendanceEventRecord {
+export function toAttendance(
+  row: ReturnType<typeof listRows>[number]
+): AttendanceEventRecord {
   return {
     id: row.id,
     staffId: cellStr(row, "staffId"),
@@ -119,7 +131,9 @@ export function toAttendance(row: ReturnType<typeof listRows>[number]): Attendan
   }
 }
 
-export function toProduct(row: ReturnType<typeof listRows>[number]): ProductRecord {
+export function toProduct(
+  row: ReturnType<typeof listRows>[number]
+): ProductRecord {
   return {
     id: row.id,
     name: cellStr(row, "name"),
@@ -137,7 +151,9 @@ export function toProduct(row: ReturnType<typeof listRows>[number]): ProductReco
   }
 }
 
-export function toMenuCategory(row: ReturnType<typeof listRows>[number]): MenuCategoryRecord {
+export function toMenuCategory(
+  row: ReturnType<typeof listRows>[number]
+): MenuCategoryRecord {
   return {
     id: row.id,
     slug: cellStr(row, "slug"),
@@ -148,7 +164,9 @@ export function toMenuCategory(row: ReturnType<typeof listRows>[number]): MenuCa
   }
 }
 
-export function toRecipeLine(row: ReturnType<typeof listRows>[number]): RecipeLineRecord {
+export function toRecipeLine(
+  row: ReturnType<typeof listRows>[number]
+): RecipeLineRecord {
   return {
     id: row.id,
     productId: cellStr(row, "productId"),
@@ -186,7 +204,11 @@ export function staffFromStore(database: Database): StaffRecord[] {
     deletedAt: cellNum(person, "deletedAt") || undefined,
     outletId: cellStr(person, "outletId"),
     roles: roles
-      .filter((row) => cellStr(row, "staffId") === person.id && isStaffRole(cellStr(row, "role")))
+      .filter(
+        (row) =>
+          cellStr(row, "staffId") === person.id &&
+          isStaffRole(cellStr(row, "role"))
+      )
       .map((row) => cellStr(row, "role") as StaffRole),
     preferredTemplateIds: preferred
       .filter((row) => cellStr(row, "staffId") === person.id)
@@ -288,19 +310,27 @@ export async function loadPreferences(
   }))
 }
 
-export async function loadProducts(database: Database): Promise<ProductRecord[]> {
+export async function loadProducts(
+  database: Database
+): Promise<ProductRecord[]> {
   await database.ready
   return listRows(database, TABLES.products).map(toProduct)
 }
 
-export async function loadMenuCategories(database: Database): Promise<MenuCategoryRecord[]> {
+export async function loadMenuCategories(
+  database: Database
+): Promise<MenuCategoryRecord[]> {
   await database.ready
   return listRows(database, TABLES.menuCategories)
     .map(toMenuCategory)
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "id"))
+    .sort(
+      (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "id")
+    )
 }
 
-export async function loadRecipeLines(database: Database): Promise<RecipeLineRecord[]> {
+export async function loadRecipeLines(
+  database: Database
+): Promise<RecipeLineRecord[]> {
   await database.ready
   return listRows(database, TABLES.recipeLines).map(toRecipeLine)
 }

@@ -1116,6 +1116,7 @@ export async function assignStaffToDates(
           weekStart,
           source: "manager",
           note: MANAGER_ASSIGN_NOTE,
+          actorStaffId: actor.id,
           createdAt: now,
         })
       }
@@ -1173,6 +1174,7 @@ export async function assignStaffToDates(
               dutyRole,
               status: "published",
               note: MANAGER_ASSIGN_NOTE,
+              actorStaffId: actor.id,
               updatedAt: now,
             })
             continue
@@ -1187,6 +1189,7 @@ export async function assignStaffToDates(
             status: "published",
             outletId: DEFAULT_OUTLET_ID,
             note: MANAGER_ASSIGN_NOTE,
+            actorStaffId: actor.id,
             createdAt: now,
             updatedAt: now,
           })
@@ -1260,6 +1263,7 @@ export async function clearManagerAssignedDates(
           weekStart: cellStr(row, "weekStart"),
           source: cellStr(row, "source"),
           note: cellStr(row, "note"),
+          actorStaffId: cellStr(row, "actorStaffId"),
           createdAt: cellNum(row, "createdAt"),
         })
         deleteRow(database, TABLES.scheduledDaysOff, row.id)

@@ -3,12 +3,13 @@ import { ChevronLeft, ChevronRight } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { datesInMonth, datesInRange } from "@/lib/calendar-select"
 import {
-  formatIsoWeekday,
-  formatMonthYear,
-  weekdayHeaders,
-} from "@/lib/format"
+  datesInMonth,
+  datesInRange,
+  isEmptyRosterLock,
+} from "@/lib/calendar-select"
+import { MANAGER_ASSIGN_NOTE } from "@/lib/recommend"
+import { formatIsoWeekday, formatMonthYear, weekdayHeaders } from "@/lib/format"
 import {
   dayRoster,
   OFF_SOURCE_LABEL,
@@ -79,6 +80,46 @@ export function MonthApprovals({
       )
     : new Set(selectedDates)
   const selectable = Boolean(onSelectDates)
+  const manualAdjustments = new Map<string, string[]>()
+  for (const day of days) {
+    if (!day.inMonth) continue
+    const actorIds = new Set(
+      assignments
+        .filter(
+          (row) =>
+            row.workDate === day.date &&
+            row.status !== "cancelled" &&
+            row.note === MANAGER_ASSIGN_NOTE
+        )
+        .map((row) => row.actorStaffId)
+        .filter((id): id is string => Boolean(id))
+    )
+    for (const off of offs) {
+      if (
+        off.workDate === day.date &&
+        isEmptyRosterLock(off) &&
+        off.actorStaffId
+      ) {
+        actorIds.add(off.actorStaffId)
+      }
+    }
+    const hasManualAdjustment =
+      assignments.some(
+        (row) =>
+          row.workDate === day.date &&
+          row.status !== "cancelled" &&
+          row.note === MANAGER_ASSIGN_NOTE
+      ) ||
+      offs.some((off) => off.workDate === day.date && isEmptyRosterLock(off))
+    if (hasManualAdjustment) {
+      manualAdjustments.set(
+        day.date,
+        actorIds.size > 0
+          ? [...actorIds].map((id) => nameOf(staff, id))
+          : ["Manager"]
+      )
+    }
+  }
 
   function dateFromPoint(clientX: number, clientY: number): string | null {
     const el = document.elementFromPoint(clientX, clientY)
@@ -114,7 +155,9 @@ export function MonthApprovals({
           <ChevronLeft className="size-5" />
         </Button>
         <div className="min-w-0 flex-1 text-center">
-          <p className="text-base font-medium">{formatMonthYear(monthCursor)}</p>
+          <p className="text-base font-medium">
+            {formatMonthYear(monthCursor)}
+          </p>
           <p className="text-sm text-muted-foreground">
             {selectable
               ? "Seret tanggal untuk menentukan siapa kerja"
@@ -170,6 +213,7 @@ export function MonthApprovals({
                 staff={staff}
                 selected={day.inMonth && preview.has(day.date)}
                 selectable={selectable}
+                adjustedBy={manualAdjustments.get(day.date) ?? []}
                 initials={workingInitials(
                   dayRoster({
                     date: day.date,
@@ -216,7 +260,9 @@ export function MonthApprovals({
                     {row.note ? ` · ${row.note}` : ""}
                   </span>
                 </span>
-                <Badge variant="secondary">{OFF_SOURCE_LABEL[row.source]}</Badge>
+                <Badge variant="secondary">
+                  {OFF_SOURCE_LABEL[row.source]}
+                </Badge>
               </li>
             ))}
           </ul>
@@ -233,6 +279,7 @@ function MonthDayCell({
   initials,
   selected,
   selectable,
+  adjustedBy,
   onPointerDown,
 }: {
   day: TeamDayStatus
@@ -241,6 +288,7 @@ function MonthDayCell({
   initials: string[]
   selected: boolean
   selectable: boolean
+  adjustedBy: string[]
   onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void
 }) {
   const isToday = day.date === today
@@ -254,6 +302,13 @@ function MonthDayCell({
   })
   const body = (
     <>
+      {day.inMonth && adjustedBy.length > 0 ? (
+        <span
+          title={`Disesuaikan manual oleh ${adjustedBy.join(", ")}`}
+          aria-label={`Disesuaikan manual oleh ${adjustedBy.join(", ")}`}
+          className="absolute top-0 right-0 size-0 border-t-[1.15rem] border-l-[1.15rem] border-t-amber-500 border-l-transparent"
+        />
+      ) : null}
       <span className="text-xs font-medium">{Number(day.date.slice(8))}</span>
       {day.inMonth && initials.length > 0 ? (
         <span className="text-[0.65rem] leading-tight font-medium tracking-wide">
@@ -281,7 +336,7 @@ function MonthDayCell({
         disabled={!day.inMonth}
         onPointerDown={onPointerDown}
         className={cn(
-          "flex h-full min-h-[4.5rem] w-full flex-col gap-0.5 p-1.5 text-left",
+          "relative flex h-full min-h-[4.5rem] w-full flex-col gap-0.5 p-1.5 text-left",
           "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
           day.inMonth ? "" : "bg-muted/20 text-muted-foreground/60",
           isToday ? "ring-2 ring-ring ring-inset" : "",
@@ -298,7 +353,7 @@ function MonthDayCell({
   return (
     <div
       className={cn(
-        "flex h-full min-h-[4.5rem] flex-col gap-0.5 p-1.5",
+        "relative flex h-full min-h-[4.5rem] flex-col gap-0.5 p-1.5",
         day.inMonth ? "" : "bg-muted/20 text-muted-foreground/60",
         isToday ? "ring-2 ring-ring ring-inset" : ""
       )}

@@ -91,7 +91,9 @@ export type StaffRecord = {
   includeInAttendance?: boolean
 }
 
-export function isStaffDeleted(member: Pick<StaffRecord, "deletedAt">): boolean {
+export function isStaffDeleted(
+  member: Pick<StaffRecord, "deletedAt">
+): boolean {
   return (member.deletedAt ?? 0) > 0
 }
 
@@ -137,6 +139,7 @@ export type AssignmentRecord = {
   status: AssignmentStatus
   outletId: string
   note: string
+  actorStaffId?: string
 }
 
 export type AttendanceType = "clock_in" | "clock_out" | "correction"
@@ -178,6 +181,7 @@ export type DayOffRecord = {
   weekStart: string
   source: DayOffSource
   note: string
+  actorStaffId?: string
 }
 
 export type PreferenceSlotRecord = {

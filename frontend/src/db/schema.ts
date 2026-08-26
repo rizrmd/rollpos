@@ -116,6 +116,7 @@ export const tablesSchema = {
     status: text,
     outletId: text,
     note: text,
+    actorStaffId: text,
     createdAt: amount,
     updatedAt: amount,
   },
@@ -163,6 +164,7 @@ export const tablesSchema = {
     weekStart: text,
     source: text,
     note: text,
+    actorStaffId: text,
     createdAt: amount,
   },
 } as const satisfies TablesSchema

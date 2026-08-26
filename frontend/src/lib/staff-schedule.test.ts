@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test"
 
 import { createRollposDatabase } from "@/db/database"
 import { seedCatalogIfEmpty } from "@/db/catalog"
-import { SEED_DEFAULTS, applyStaffingSeed, seedStaffingIfEmpty } from "@/db/seed"
+import {
+  SEED_DEFAULTS,
+  applyStaffingSeed,
+  seedStaffingIfEmpty,
+} from "@/db/seed"
 import {
   loadAssignments,
   loadAttendance,
@@ -43,7 +47,11 @@ import {
   preferredSlotIdsFromMember,
   preferredSlotIdsToStore,
 } from "@/lib/staff-prefs"
-import { isStaffDeleted, type OutletSettingsRecord, type StaffRecord } from "@/lib/types"
+import {
+  isStaffDeleted,
+  type OutletSettingsRecord,
+  type StaffRecord,
+} from "@/lib/types"
 import { DEFAULT_OUTLET_ID } from "@/lib/types"
 
 let dbSeq = 0
@@ -140,10 +148,7 @@ describe("staffing persist + schedule", () => {
       minStaffCount: 1,
       isActive: true,
     })
-    const slots = [
-      { id: pagiId },
-      { id: soreId },
-    ]
+    const slots = [{ id: pagiId }, { id: soreId }]
     const id = await upsertStaff(database, owner, {
       name: "Nia",
       nickname: "Nia",
@@ -154,7 +159,10 @@ describe("staffing persist + schedule", () => {
     })
     const afterAll = (await loadStaff(database)).find((row) => row.id === id)
     expect(afterAll?.preferredTemplateIds).toEqual([pagiId, soreId])
-    expect(preferredSlotIdsFromMember(afterAll, slots)).toEqual([pagiId, soreId])
+    expect(preferredSlotIdsFromMember(afterAll, slots)).toEqual([
+      pagiId,
+      soreId,
+    ])
 
     await upsertStaff(database, owner, {
       id,
@@ -258,7 +266,9 @@ describe("staffing persist + schedule", () => {
       roles: owner.roles,
       includeInAttendance: false,
     })
-    const excluded = (await loadStaff(database)).find((row) => row.id === owner.id)
+    const excluded = (await loadStaff(database)).find(
+      (row) => row.id === owner.id
+    )
     expect(excluded?.includeInAttendance).toBe(false)
     expect(
       (await loadAssignments(database)).filter(
@@ -332,9 +342,8 @@ describe("staffing persist + schedule", () => {
   })
 
   test("usulan sistem lama dihitung ulang jika di luar pembagian", async () => {
-    const { writeFairDefaultDraft, ensureFairDefaultWeeks } = await import(
-      "@/db/staffing-write"
-    )
+    const { writeFairDefaultDraft, ensureFairDefaultWeeks } =
+      await import("@/db/staffing-write")
     const { database, owner } = await bootstrap()
     const nia = await createPerson(database, {
       name: "Nia",
@@ -369,7 +378,9 @@ describe("staffing persist + schedule", () => {
       )
     ).toBe(true)
 
-    expect(await ensureFairDefaultWeeks(database, [weekStart])).toBeGreaterThan(0)
+    expect(await ensureFairDefaultWeeks(database, [weekStart])).toBeGreaterThan(
+      0
+    )
     const leftover = (await loadAssignments(database)).filter(
       (row) => row.staffId === nia.id && row.status !== "cancelled"
     )
@@ -499,7 +510,9 @@ describe("staffing persist + schedule", () => {
     ).toBe(0)
     const before = (await loadAssignments(database))
       .filter((row) => row.status !== "cancelled")
-      .map((row) => `${row.id}:${row.staffId}:${row.templateId}:${row.workDate}`)
+      .map(
+        (row) => `${row.id}:${row.staffId}:${row.templateId}:${row.workDate}`
+      )
       .sort()
     expect(before.length).toBeGreaterThan(0)
 
@@ -513,7 +526,9 @@ describe("staffing persist + schedule", () => {
 
     const after = (await loadAssignments(database))
       .filter((row) => row.status !== "cancelled")
-      .map((row) => `${row.id}:${row.staffId}:${row.templateId}:${row.workDate}`)
+      .map(
+        (row) => `${row.id}:${row.staffId}:${row.templateId}:${row.workDate}`
+      )
       .sort()
     expect(after).toEqual(before)
     expect(slotId).toBeTruthy()
@@ -643,7 +658,9 @@ describe("staffing persist + schedule", () => {
     const dimas = people.find((row) => row.nickname === "Dimas")
     if (!owner || !dimas) throw new Error("seed missing owner or Dimas")
 
-    const pagi = (await loadSlots(database)).find((slot) => slot.name === "Pagi")
+    const pagi = (await loadSlots(database)).find(
+      (slot) => slot.name === "Pagi"
+    )
     if (!pagi) throw new Error("seed missing Pagi")
 
     await upsertStaff(database, owner, {
@@ -865,7 +882,9 @@ describe("staffing persist + schedule", () => {
       roles: ["barista"],
       pin: "3333",
     })
-    await expect(softDeleteStaff(database, kasir, nia.id)).rejects.toThrow(/Lantai/)
+    await expect(softDeleteStaff(database, kasir, nia.id)).rejects.toThrow(
+      /Lantai/
+    )
     const still = (await loadStaff(database)).find((row) => row.id === nia.id)
     expect(isStaffDeleted(still!)).toBe(false)
   })
@@ -935,20 +954,24 @@ describe("staffing persist + schedule", () => {
     const pending = await loadSuggestions(database)
     expect(pending.filter((row) => row.staffId === nia.id)).toHaveLength(2)
     expect(pending.find((row) => row.id === first)?.workDate).toBe("2026-08-20")
-    expect(pending.find((row) => row.id === first)?.weekStart).toBe("2026-08-17")
-    expect(pending.find((row) => row.id === second)?.workDate).toBe("2026-08-22")
+    expect(pending.find((row) => row.id === first)?.weekStart).toBe(
+      "2026-08-17"
+    )
+    expect(pending.find((row) => row.id === second)?.workDate).toBe(
+      "2026-08-22"
+    )
 
     await withdrawDayOffRequest(database, nia.id, first)
     const after = await loadSuggestions(database)
     expect(after.some((row) => row.id === first)).toBe(false)
-    expect(after.some((row) => row.id === second && row.status === "suggested")).toBe(
-      true
-    )
+    expect(
+      after.some((row) => row.id === second && row.status === "suggested")
+    ).toBe(true)
 
     await acceptSuggestion(database, owner, second)
-    await expect(withdrawDayOffRequest(database, nia.id, second)).rejects.toThrow(
-      /diputuskan/
-    )
+    await expect(
+      withdrawDayOffRequest(database, nia.id, second)
+    ).rejects.toThrow(/diputuskan/)
     await expect(
       requestDayOff(database, nia.id, "2026-08-22", 1)
     ).rejects.toThrow(/libur resmi/)
@@ -1146,9 +1169,8 @@ describe("staffing persist + schedule", () => {
   })
 
   test("fair default writes published assignments once and skips the second write", async () => {
-    const { writeFairDefaultDraft, ensureFairDefaultWeeks } = await import(
-      "@/db/staffing-write"
-    )
+    const { writeFairDefaultDraft, ensureFairDefaultWeeks } =
+      await import("@/db/staffing-write")
     const { database, owner } = await bootstrap()
     const nia = await createPerson(database, {
       name: "Nia",
@@ -1310,17 +1332,20 @@ describe("staffing persist + schedule", () => {
     expect(afterPin.length).toBeGreaterThan(0)
     expect(afterPin.every((row) => row.staffId === nia.id)).toBe(true)
     expect(afterPin.every((row) => row.note === MANAGER_ASSIGN_NOTE)).toBe(true)
+    expect(afterPin.every((row) => row.actorStaffId === owner.id)).toBe(true)
     expect(afterPin.every((row) => row.templateId === slotId)).toBe(true)
 
-    expect(await generateFairRemainingWeeks(database, ["2026-08-17"])).toBeGreaterThan(
-      0
-    )
+    expect(
+      await generateFairRemainingWeeks(database, ["2026-08-17"])
+    ).toBeGreaterThan(0)
     const after = (await loadAssignments(database)).filter(
       (row) => row.status !== "cancelled"
     )
     const pinnedRows = after.filter((row) => pinned.includes(row.workDate))
     expect(pinnedRows.every((row) => row.staffId === nia.id)).toBe(true)
-    expect(pinnedRows.every((row) => row.note === MANAGER_ASSIGN_NOTE)).toBe(true)
+    expect(pinnedRows.every((row) => row.note === MANAGER_ASSIGN_NOTE)).toBe(
+      true
+    )
     expect(
       after.some(
         (row) =>
@@ -1373,8 +1398,7 @@ describe("staffing persist + schedule", () => {
       weekStartsOn: 1,
     })
     const first = (await loadAssignments(database)).filter(
-      (row) =>
-        row.status !== "cancelled" && row.workDate === "2026-08-17"
+      (row) => row.status !== "cancelled" && row.workDate === "2026-08-17"
     )
     expect(first).toHaveLength(1)
     expect(first[0]?.staffId).toBe(nia.id)
@@ -1388,8 +1412,7 @@ describe("staffing persist + schedule", () => {
       weekStartsOn: 1,
     })
     const second = (await loadAssignments(database)).filter(
-      (row) =>
-        row.status !== "cancelled" && row.workDate === "2026-08-17"
+      (row) => row.status !== "cancelled" && row.workDate === "2026-08-17"
     )
     expect(second).toHaveLength(1)
     expect(second[0]?.templateId).toBe(pagiId)
@@ -1448,9 +1471,13 @@ describe("staffing persist + schedule", () => {
         (row) => row.status !== "cancelled" && row.workDate === emptyDay
       )
     ).toEqual([])
-    expect(await generateFairRemainingWeeks(database, ["2026-08-17"])).toBeGreaterThan(
-      0
-    )
+    expect(
+      (await loadDayOffs(database)).find((row) => row.workDate === emptyDay)
+        ?.actorStaffId
+    ).toBe(owner.id)
+    expect(
+      await generateFairRemainingWeeks(database, ["2026-08-17"])
+    ).toBeGreaterThan(0)
     const after = (await loadAssignments(database)).filter(
       (row) => row.status !== "cancelled"
     )
