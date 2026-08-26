@@ -1,5 +1,5 @@
 import type { Database } from "@/db/database"
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 import { LiveNotice } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
@@ -99,6 +99,16 @@ export function ScheduleScreen({
   const [confirmClearAll, setConfirmClearAll] = useState(false)
   const [undoRestore, setUndoRestore] = useState<ClearManagerRestore | null>(
     null
+  )
+  const autosaveTimer = useRef<number | null>(null)
+  const pendingAutosave = useRef<{
+    dates: string[]
+    shifts: Record<string, string[]>
+  } | null>(null)
+  const canResetSelection = Boolean(
+    actor &&
+      (actor.name.trim().toLowerCase() === "rizky" ||
+        actor.nickname.trim().toLowerCase() === "rizky")
   )
 
   const activeSlots = slots
@@ -245,26 +255,56 @@ export function ScheduleScreen({
     )
   }
 
-  async function saveSelection() {
-    if (!actor || selectedDates.length === 0) return
-    const workingStaffIds = Object.keys(shiftByStaff).filter(
-      (id) => (shiftByStaff[id]?.length ?? 0) > 0
+  async function flushAutosave() {
+    if (autosaveTimer.current !== null) {
+      window.clearTimeout(autosaveTimer.current)
+      autosaveTimer.current = null
+    }
+    const pending = pendingAutosave.current
+    pendingAutosave.current = null
+    if (!actor || !pending || pending.dates.length === 0) return
+    const workingStaffIds = Object.keys(pending.shifts).filter(
+      (id) => (pending.shifts[id]?.length ?? 0) > 0
     )
     await guarded(async () => {
       await assignStaffToDates(database, actor, {
-        dates: selectedDates,
+        dates: pending.dates,
         workingStaffIds,
-        templateIdsByStaff: shiftByStaff,
+        templateIdsByStaff: pending.shifts,
         weekStartsOn,
       })
-      const generated = await generateFairRemainingWeeks(database, weekStarts)
+      await generateFairRemainingWeeks(database, weekStarts)
+      setNotice("Perubahan jadwal tersimpan otomatis.")
+    })
+  }
+
+  function queueAutosave(next: Record<string, string[]>) {
+    setShiftByStaff(next)
+    pendingAutosave.current = {
+      dates: [...selectedDates],
+      shifts: next,
+    }
+    if (autosaveTimer.current !== null) {
+      window.clearTimeout(autosaveTimer.current)
+    }
+    autosaveTimer.current = window.setTimeout(() => {
+      void flushAutosave()
+    }, 350)
+  }
+
+  async function resetSelectedDates() {
+    if (!actor || selectedDates.length === 0) return
+    if (autosaveTimer.current !== null) {
+      window.clearTimeout(autosaveTimer.current)
+      autosaveTimer.current = null
+    }
+    pendingAutosave.current = null
+    const dates = [...selectedDates]
+    await guarded(async () => {
+      await clearManagerAssignedDates(database, actor, { dates, weekStartsOn })
       setSelectedDates([])
       setShiftByStaff({})
-      setNotice(
-        generated > 0
-          ? `${selectedDates.length} tanggal ditetapkan. Sisa minggu diisi otomatis yang paling adil.`
-          : `${selectedDates.length} tanggal ditetapkan.`
-      )
+      setNotice(`${dates.length} tanggal dikembalikan ke jadwal otomatis.`)
     })
   }
 
@@ -413,19 +453,18 @@ export function ScheduleScreen({
         adjustedBy={adjustmentActors}
         busy={busy}
         onToggle={(staffId) => {
-          setShiftByStaff((current) => {
-            if ((current[staffId]?.length ?? 0) > 0) {
-              const rest = { ...current }
-              delete rest[staffId]
-              return rest
-            }
-            const next = defaultShiftsFor(staffId)
-            return next.length > 0 ? { ...current, [staffId]: next } : current
-          })
+          const next = { ...shiftByStaff }
+          if ((next[staffId]?.length ?? 0) > 0) {
+            delete next[staffId]
+          } else {
+            const defaults = defaultShiftsFor(staffId)
+            if (defaults.length > 0) next[staffId] = defaults
+          }
+          queueAutosave(next)
         }}
         onToggleShift={(staffId, templateId) => {
-          setShiftByStaff((current) =>
-            toggleStaffTemplateIds(current, staffId, templateId)
+          queueAutosave(
+            toggleStaffTemplateIds(shiftByStaff, staffId, templateId)
           )
         }}
         onSelectAll={() => {
@@ -434,16 +473,18 @@ export function ScheduleScreen({
             const ids = defaultShiftsFor(member.id)
             if (ids.length > 0) next[member.id] = ids
           }
-          setShiftByStaff(next)
+          queueAutosave(next)
         }}
-        onClearAll={() => setShiftByStaff({})}
+        onClearAll={() => queueAutosave({})}
+        canReset={canResetSelection}
+        onReset={() => void resetSelectedDates()}
         onOpenChange={(open) => {
           if (!open) {
+            void flushAutosave()
             setSelectedDates([])
             setShiftByStaff({})
           }
         }}
-        onSave={() => void saveSelection()}
       />
 
       <Dialog open={lockedDetailOpen} onOpenChange={setLockedDetailOpen}>
@@ -589,8 +630,9 @@ function DateAssignDialog({
   onToggleShift,
   onSelectAll,
   onClearAll,
+  canReset,
+  onReset,
   onOpenChange,
-  onSave,
 }: {
   open: boolean
   loads: {
@@ -607,8 +649,9 @@ function DateAssignDialog({
   onToggleShift: (staffId: string, templateId: string) => void
   onSelectAll: () => void
   onClearAll: () => void
+  canReset: boolean
+  onReset: () => void
   onOpenChange: (open: boolean) => void
-  onSave: () => void
 }) {
   const pageSize = 4
   const [page, setPage] = useState(0)
@@ -630,6 +673,7 @@ function DateAssignDialog({
             type="button"
             variant="outline"
             size="sm"
+            disabled={busy}
             onClick={onSelectAll}
           >
             Semua
@@ -638,6 +682,7 @@ function DateAssignDialog({
             type="button"
             variant="outline"
             size="sm"
+            disabled={busy}
             onClick={onClearAll}
           >
             Kosongkan
@@ -657,6 +702,7 @@ function DateAssignDialog({
               >
                 <button
                   type="button"
+                  disabled={busy}
                   onClick={() => onToggle(load.member.id)}
                   className={cn(
                     "flex min-w-0 items-center justify-between gap-2 text-left",
@@ -687,6 +733,7 @@ function DateAssignDialog({
                         <button
                           key={slot.id}
                           type="button"
+                          disabled={busy}
                           onClick={() => onToggleShift(load.member.id, slot.id)}
                           className={cn(
                             "min-h-9 min-w-14 border px-2 py-1.5 text-center text-xs font-medium",
@@ -737,16 +784,25 @@ function DateAssignDialog({
               Disesuaikan manual oleh {adjustedBy.join(", ")}
             </p>
           ) : null}
+          {canReset ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="touch"
+              disabled={busy}
+              onClick={onReset}
+            >
+              Reset
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
             size="touch"
+            disabled={busy}
             onClick={() => onOpenChange(false)}
           >
-            Batal
-          </Button>
-          <Button type="button" size="touch" disabled={busy} onClick={onSave}>
-            Simpan
+            {busy ? "Menyimpan…" : "Tutup"}
           </Button>
         </DialogFooter>
       </DialogContent>
