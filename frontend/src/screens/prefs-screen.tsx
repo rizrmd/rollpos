@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
@@ -14,12 +14,8 @@ import {
 } from "@/components/ui/dialog"
 import type { Database } from "@/db/database"
 import { replaceAssignment } from "@/db/staffing-write"
-import {
-  formatIsoWeekday,
-  formatMonthYear,
-  weekdayHeaders,
-} from "@/lib/format"
-import { canManage, floorRolesOf } from "@/lib/permissions"
+import { formatIsoWeekday, formatMonthYear, weekdayHeaders } from "@/lib/format"
+import { floorRolesOf } from "@/lib/permissions"
 import { lockedWorkDates } from "@/lib/calendar-select"
 import {
   historyWorkDatesFrom,
@@ -90,7 +86,6 @@ type PendingReplace = {
 export function PrefsScreen({
   database,
   actor,
-  onNeedManager,
   staff,
   slots,
   suggestions,
@@ -102,8 +97,7 @@ export function PrefsScreen({
   today = todayJakarta(),
 }: {
   database: Database
-  actor: StaffRecord | null
-  onNeedManager: () => void
+  actor: StaffRecord
   staff: StaffRecord[]
   slots: SlotRecord[]
   suggestions: SuggestionRecord[]
@@ -121,12 +115,13 @@ export function PrefsScreen({
   const [monthCursor, setMonthCursor] = useState(() => monthStartOf(today))
   const [pickedDate, setPickedDate] = useState<string | null>(null)
   const [replacing, setReplacing] = useState<ReplaceTarget | null>(null)
-  const [pending, setPending] = useState<PendingReplace | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const activeStaff = staff.filter(
     (member) =>
-      member.isActive && !isStaffDeleted(member) && isIncludedInAttendance(member)
+      member.isActive &&
+      !isStaffDeleted(member) &&
+      isIncludedInAttendance(member)
   )
 
   const cells = useMemo(
@@ -193,10 +188,7 @@ export function PrefsScreen({
     suggestions,
     preferences,
   ])
-  const days = useMemo(
-    () => cells.map((cell) => publicPrefsDay(cell)),
-    [cells]
-  )
+  const days = useMemo(() => cells.map((cell) => publicPrefsDay(cell)), [cells])
   const headers = weekdayHeaders(weekStartsOn)
   const picked = pickedDate
     ? (days.find((day) => day.date === pickedDate) ?? null)
@@ -212,9 +204,7 @@ export function PrefsScreen({
         suggestions,
       })
     : null
-  const pickedWeekStart = picked
-    ? weekStartOn(picked.date, weekStartsOn)
-    : ""
+  const pickedWeekStart = picked ? weekStartOn(picked.date, weekStartsOn) : ""
   const options =
     replacing && picked
       ? replacementOptions({
@@ -270,7 +260,6 @@ export function PrefsScreen({
       setError(null)
       await replaceAssignment(database, manager, payload)
       setNotice(`${payload.toName} menggantikan ${payload.fromName}.`)
-      setPending(null)
       setReplacing(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -288,35 +277,8 @@ export function PrefsScreen({
       fromName: replacing.person.name,
       toName: option.name,
     }
-    if (!actor || !canManage(actor.roles)) {
-      setPending(payload)
-      onNeedManager()
-      return
-    }
     void applyReplace(payload, actor)
   }
-
-  useEffect(() => {
-    if (!pending || !actor || !canManage(actor.roles)) return
-    let cancelled = false
-    void (async () => {
-      try {
-        setError(null)
-        await replaceAssignment(database, actor, pending)
-        if (cancelled) return
-        setNotice(`${pending.toName} menggantikan ${pending.fromName}.`)
-        setPending(null)
-        setReplacing(null)
-      } catch (err) {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : String(err))
-        setPending(null)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [actor, pending, database])
 
   const initialsByDate = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -469,16 +431,13 @@ export function PrefsScreen({
         onOpenChange={(open) => {
           if (!open) {
             setReplacing(null)
-            setPending(null)
           }
         }}
       >
         <DialogContent className="sm:max-w-md" showCloseButton>
           <DialogHeader>
             <DialogTitle>
-              {replacing
-                ? `Pengganti ${replacing.person.name}`
-                : "Pengganti"}
+              {replacing ? `Pengganti ${replacing.person.name}` : "Pengganti"}
             </DialogTitle>
             <DialogDescription>
               {replacing

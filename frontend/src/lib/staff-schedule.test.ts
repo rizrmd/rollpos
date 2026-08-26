@@ -964,6 +964,7 @@ describe("staffing persist + schedule", () => {
     })
     await submitPreferences(
       database,
+      owner,
       nia.id,
       "2026-08-17",
       [{ templateId: slotId, rank: 1 }],
@@ -1003,12 +1004,13 @@ describe("staffing persist + schedule", () => {
     })
     const first = await requestDayOff(
       database,
+      owner,
       nia.id,
       "2026-08-20",
       1,
       "acara"
     )
-    const second = await requestDayOff(database, nia.id, "2026-08-22", 1)
+    const second = await requestDayOff(database, owner, nia.id, "2026-08-22", 1)
     const pending = await loadSuggestions(database)
     expect(pending.filter((row) => row.staffId === nia.id)).toHaveLength(2)
     expect(pending.find((row) => row.id === first)?.workDate).toBe("2026-08-20")
@@ -1019,7 +1021,7 @@ describe("staffing persist + schedule", () => {
       "2026-08-22"
     )
 
-    await withdrawDayOffRequest(database, nia.id, first)
+    await withdrawDayOffRequest(database, owner, first)
     const after = await loadSuggestions(database)
     expect(after.some((row) => row.id === first)).toBe(false)
     expect(
@@ -1028,11 +1030,27 @@ describe("staffing persist + schedule", () => {
 
     await acceptSuggestion(database, owner, second)
     await expect(
-      withdrawDayOffRequest(database, nia.id, second)
+      withdrawDayOffRequest(database, owner, second)
     ).rejects.toThrow(/diputuskan/)
     await expect(
-      requestDayOff(database, nia.id, "2026-08-22", 1)
+      requestDayOff(database, owner, nia.id, "2026-08-22", 1)
     ).rejects.toThrow(/libur resmi/)
+  })
+
+  test("staff tidak boleh mengirim preferensi atau mengatur hari libur", async () => {
+    const { database } = await bootstrap()
+    const nia = await createPerson(database, {
+      name: "Nia",
+      roles: ["barista"],
+      pin: "3333",
+    })
+
+    await expect(
+      submitPreferences(database, nia, nia.id, "2026-08-17", [], [])
+    ).rejects.toThrow(/owner atau manager/)
+    await expect(
+      requestDayOff(database, nia, nia.id, "2026-08-20", 1)
+    ).rejects.toThrow(/owner atau manager/)
   })
 
   test("changing live slot hours does not rewrite copied assignment minutes", async () => {

@@ -780,12 +780,18 @@ export async function replaceAssignment(
 
 export async function submitPreferences(
   database: Database,
+  actor: StaffRecord,
   staffId: string,
   weekStart: string,
   slots: { templateId: string; rank: number }[],
   suggestions: { workDate: string; rank: number; note: string }[],
   note = ""
 ): Promise<void> {
+  if (!canManage(actor.roles)) {
+    throw new Error(
+      "Hanya owner atau manager yang boleh mengatur preferensi staff."
+    )
+  }
   await database.ready
   const now = Date.now()
   const existing = listRows(database, TABLES.weekPreferences).find(
@@ -853,11 +859,17 @@ export async function submitPreferences(
 
 export async function requestDayOff(
   database: Database,
+  actor: StaffRecord,
   staffId: string,
   workDate: string,
   weekStartsOn: number,
   note = ""
 ): Promise<string> {
+  if (!canManage(actor.roles)) {
+    throw new Error(
+      "Hanya owner atau manager yang boleh mengatur hari libur staff."
+    )
+  }
   await database.ready
   const official = listRows(database, TABLES.scheduledDaysOff).find(
     (row) =>
@@ -896,7 +908,7 @@ export async function requestDayOff(
     note,
     status: "suggested",
     alternativeDate: "",
-    actorStaffId: staffId,
+    actorStaffId: actor.id,
     createdAt: now,
     updatedAt: now,
   })
@@ -904,18 +916,20 @@ export async function requestDayOff(
 
 export async function withdrawDayOffRequest(
   database: Database,
-  staffId: string,
+  actor: StaffRecord,
   suggestionId: string
 ): Promise<void> {
+  if (!canManage(actor.roles)) {
+    throw new Error(
+      "Hanya owner atau manager yang boleh mengatur hari libur staff."
+    )
+  }
   await database.ready
   const row = listRows(database, TABLES.dayOffSuggestions).find(
     (item) => item.id === suggestionId
   )
   if (!row) {
     throw new Error("Permintaan tidak ditemukan.")
-  }
-  if (cellStr(row, "staffId") !== staffId) {
-    throw new Error("Hanya pemilik permintaan yang boleh mencabut.")
   }
   if (cellStr(row, "status") !== "suggested") {
     throw new Error("Permintaan sudah diputuskan manager.")

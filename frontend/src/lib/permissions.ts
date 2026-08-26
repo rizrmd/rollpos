@@ -46,8 +46,8 @@ export function canResetStaffPin(
   return canManage(actor.roles) && actor.id !== targetId
 }
 
-export function canSubmitOwnPrefs(_roles: readonly StaffRole[]): boolean {
-  return true
+export function canManagePreferences(roles: readonly StaffRole[]): boolean {
+  return canManage(roles)
 }
 
 export function floorRolesOf(roles: readonly StaffRole[]): StaffRole[] {

@@ -47,16 +47,20 @@ export function App() {
   const [actor, setActor] = useState<StaffRecord | null>(null)
   const [unlockWho, setUnlockWho] = useState<StaffRecord | null>(null)
   const [pickManager, setPickManager] = useState(false)
-  const [pendingPage, setPendingPage] = useState<Exclude<AppPage, "menu"> | null>(
-    null
-  )
+  const [pendingPage, setPendingPage] = useState<Exclude<
+    AppPage,
+    "menu"
+  > | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [nowLabel, setNowLabel] = useState(() => formatJakartaClock())
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const unlockAttemptedFor = useRef<AppPage | null>(null)
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNowLabel(formatJakartaClock()), 15_000)
+    const timer = window.setInterval(
+      () => setNowLabel(formatJakartaClock()),
+      15_000
+    )
     return () => window.clearInterval(timer)
   }, [])
 
@@ -166,11 +170,10 @@ export function App() {
       thisWeekStart={staffing.thisWeekStart}
       upcomingWeekStart={staffing.upcomingWeekStart}
     />
-  ) : page === "prefs" ? (
+  ) : page === "prefs" && actor ? (
     <PrefsScreen
       database={staffing.database}
       actor={actor}
-      onNeedManager={startUnlock}
       staff={staffing.staff}
       slots={staffing.slots}
       suggestions={staffing.suggestions}
@@ -207,7 +210,9 @@ export function App() {
   ) : page === "menu" ? null : item && !item.ready ? (
     <ComingSoonScreen item={item} />
   ) : MANAGE_PAGES.has(page) && !actor ? (
-    <p className="text-sm text-muted-foreground">Buka pengaturan untuk melihat halaman ini.</p>
+    <p className="text-sm text-muted-foreground">
+      Buka pengaturan untuk melihat halaman ini.
+    </p>
   ) : (
     <p className="text-sm text-muted-foreground">Halaman tidak ditemukan.</p>
   )
@@ -217,7 +222,9 @@ export function App() {
       <DialogContent showCloseButton>
         <DialogHeader>
           <DialogTitle>Siapa yang membuka pengaturan?</DialogTitle>
-          <DialogDescription>Pilih owner atau manager, lalu masukkan PIN.</DialogDescription>
+          <DialogDescription>
+            Pilih owner atau manager, lalu masukkan PIN.
+          </DialogDescription>
         </DialogHeader>
         <ul className="flex flex-col gap-2">
           {managers.map((member) => (
@@ -309,7 +316,11 @@ export function App() {
               <PanelLeft className="size-5" />
             </Button>
           )}
-          <main id="konten" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">
+          <main
+            id="konten"
+            tabIndex={-1}
+            className="min-h-0 flex-1 overflow-auto"
+          >
             <div className="mx-auto w-full max-w-5xl px-4 py-4">
               <LiveNotice message={notice ?? staffing.error} tone="error" />
               {content}

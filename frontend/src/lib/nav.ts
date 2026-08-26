@@ -150,7 +150,7 @@ export const NAV_GROUPS: NavGroup[] = [
         hint: "Kalender sebulan; ketuk nama untuk pilih pengganti",
         icon: SlidersHorizontal,
         ready: true,
-        access: "public",
+        access: "manage",
         plan: [],
       },
       {
@@ -213,16 +213,22 @@ export const NAV_GROUPS: NavGroup[] = [
 ]
 
 export function flattenNavEntries(entries: readonly NavEntry[]): NavItem[] {
-  return entries.flatMap((entry) => (isNavBranch(entry) ? entry.children : [entry]))
+  return entries.flatMap((entry) =>
+    isNavBranch(entry) ? entry.children : [entry]
+  )
 }
 
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((group) =>
   flattenNavEntries(group.items)
 )
 
-export const NAV_BY_ID: Record<Exclude<AppPage, "menu">, NavItem> = Object.fromEntries(
-  NAV_ITEMS.map((item) => [item.id, item])
-) as Record<Exclude<AppPage, "menu">, NavItem>
+export const NAV_BY_ID: Record<
+  Exclude<AppPage, "menu">,
+  NavItem
+> = Object.fromEntries(NAV_ITEMS.map((item) => [item.id, item])) as Record<
+  Exclude<AppPage, "menu">,
+  NavItem
+>
 
 export const MANAGE_PAGES = new Set<AppPage>(
   NAV_ITEMS.filter((item) => item.access === "manage").map((item) => item.id)
@@ -327,17 +333,13 @@ export function visibleNavEntry(
   entry: NavEntry,
   roles: readonly StaffRole[] | null | undefined
 ): NavEntry | null {
-  const canShowItem = (item: NavItem) =>
-    canSeeNavItem(item, roles) &&
-    !(item.id === "prefs" && canManage(roles ?? []))
-
   if (isNavBranch(entry)) {
-    const children = entry.children.filter(canShowItem)
+    const children = entry.children.filter((item) => canSeeNavItem(item, roles))
     if (children.length === 0) return null
     return { ...entry, children }
   }
 
-  return canShowItem(entry) ? entry : null
+  return canSeeNavItem(entry, roles) ? entry : null
 }
 
 export function visibleNavGroups(

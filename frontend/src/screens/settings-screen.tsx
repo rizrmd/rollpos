@@ -11,10 +11,21 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { saveOutletSettings, saveRoleRequirements, saveSlot } from "@/db/staffing-write"
+import {
+  saveOutletSettings,
+  saveRoleRequirements,
+  saveSlot,
+} from "@/db/staffing-write"
 import { WEEKDAY_LONG } from "@/lib/format"
 import { formatMinutes, parseMinutes } from "@/lib/time"
-import { FLOOR_ROLES, type FloorRole, type OutletSettingsRecord, type RoleRequirementRecord, type SlotRecord, type StaffRecord } from "@/lib/types"
+import {
+  FLOOR_ROLES,
+  type FloorRole,
+  type OutletSettingsRecord,
+  type RoleRequirementRecord,
+  type SlotRecord,
+  type StaffRecord,
+} from "@/lib/types"
 
 const fieldClass = "min-h-12"
 
@@ -45,7 +56,7 @@ export function SettingsScreen({
         <CardHeader>
           <CardTitle>Jadwal operasional outlet</CardTitle>
           <CardDescription>
-            Atur jam outlet beroperasi dan batas pengisian preferensi jadwal staf.
+            Atur jam outlet beroperasi dan periode jadwal staf.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
@@ -72,7 +83,7 @@ export function SettingsScreen({
             <div className="sm:col-span-2">
               <h3 className="text-sm font-medium">Periode jadwal staf</h3>
               <p className="text-sm text-muted-foreground">
-                Pilih awal minggu jadwal dan hari terakhir staf boleh mengirim preferensi.
+                Pilih hari dimulainya jadwal mingguan yang diatur manager.
               </p>
             </div>
             <SelectField
@@ -83,20 +94,6 @@ export function SettingsScreen({
                 value: String(index),
                 label: name,
               }))}
-            />
-            <SelectField
-              label="Hari terakhir pengisian preferensi"
-              value={form.deadlineDay}
-              onChange={(deadlineDay) => setForm({ ...form, deadlineDay })}
-              options={WEEKDAY_LONG.map((name, index) => ({
-                value: String(index),
-                label: name,
-              }))}
-            />
-            <Field
-              label="Pengisian ditutup pukul"
-              value={form.deadlineTime}
-              onChange={(deadlineTime) => setForm({ ...form, deadlineTime })}
             />
           </section>
         </CardContent>
@@ -132,7 +129,9 @@ export function SettingsScreen({
               type="checkbox"
               className="size-5"
               checked={form.weekend}
-              onChange={(event) => setForm({ ...form, weekend: event.target.checked })}
+              onChange={(event) =>
+                setForm({ ...form, weekend: event.target.checked })
+              }
             />
             Giliran weekend adil
           </label>
@@ -165,14 +164,18 @@ export function SettingsScreen({
       <Card>
         <CardHeader>
           <CardTitle>Shift harian</CardTitle>
-          <CardDescription>Jumlah baris aktif = jumlah shift dalam sehari.</CardDescription>
+          <CardDescription>
+            Jumlah baris aktif = jumlah shift dalam sehari.
+          </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {slots.map((slot) => (
             <SlotEditor
               key={slot.id}
               slot={slot}
-              requirements={requirements.filter((row) => row.templateId === slot.id)}
+              requirements={requirements.filter(
+                (row) => row.templateId === slot.id
+              )}
               onSave={async (next, roles) => {
                 await saveSlot(database, actor, next)
                 await saveRoleRequirements(database, actor, slot.id, roles)
@@ -199,7 +202,6 @@ export function SettingsScreen({
           </Button>
         </CardContent>
       </Card>
-
     </div>
   )
 }
@@ -238,11 +240,31 @@ function SlotEditor({
   return (
     <fieldset className="grid gap-3 rounded-xl border p-4">
       <legend className="px-1 text-sm font-medium">{slot.name}</legend>
-      <Field id={`${slot.id}-nama`} label="Nama" value={name} onChange={setName} />
+      <Field
+        id={`${slot.id}-nama`}
+        label="Nama"
+        value={name}
+        onChange={setName}
+      />
       <div className="grid gap-3 sm:grid-cols-3">
-        <Field id={`${slot.id}-mulai`} label="Mulai" value={start} onChange={setStart} />
-        <Field id={`${slot.id}-selesai`} label="Selesai" value={end} onChange={setEnd} />
-        <Field id={`${slot.id}-min`} label="Min staff" value={minStaff} onChange={setMinStaff} />
+        <Field
+          id={`${slot.id}-mulai`}
+          label="Mulai"
+          value={start}
+          onChange={setStart}
+        />
+        <Field
+          id={`${slot.id}-selesai`}
+          label="Selesai"
+          value={end}
+          onChange={setEnd}
+        />
+        <Field
+          id={`${slot.id}-min`}
+          label="Min staff"
+          value={minStaff}
+          onChange={setMinStaff}
+        />
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         {FLOOR_ROLES.map((role) => (

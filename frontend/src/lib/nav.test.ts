@@ -15,8 +15,16 @@ import {
   visibleNavGroups,
 } from "@/lib/nav"
 
-const manageIds = ["stock", "products", "week", "staff", "reports", "settings"] as const
-const publicIds = ["kasir", "orders", "clock", "prefs", "pin"] as const
+const manageIds = [
+  "stock",
+  "products",
+  "prefs",
+  "week",
+  "staff",
+  "reports",
+  "settings",
+] as const
+const publicIds = ["kasir", "orders", "clock", "pin"] as const
 
 describe("visibleNavGroups", () => {
   test("label grup memakai bahasa kasir, bukan Inti/Operasi/Tim", () => {
@@ -49,29 +57,29 @@ describe("visibleNavGroups", () => {
     }
   })
 
-  test("owner dan manager melihat semua menu kecuali Shift Kerja", () => {
+  test("owner dan manager melihat semua menu", () => {
     for (const role of ["owner", "manager"] as const) {
       const ids = visibleNavGroups([role]).flatMap((group) =>
         flattenNavEntries(group.items).map((item) => item.id)
       )
-      expect(ids).toEqual(
-        NAV_ITEMS.filter((item) => item.id !== "prefs").map((item) => item.id)
-      )
+      expect(ids).toEqual(NAV_ITEMS.map((item) => item.id))
     }
   })
 
-  test("Karyawan menampilkan Absensi, Shift Kerja, dan Ubah PIN langsung", () => {
+  test("Karyawan hanya menampilkan Absensi dan Ubah PIN langsung", () => {
     const karyawan = visibleNavGroups(null).find((group) => group.id === "tim")
     expect(karyawan).toBeDefined()
     expect(karyawan!.title).toBe("Karyawan")
     expect(
-      karyawan!.items.some((entry) => isNavBranch(entry) && entry.id === "prefs-menu")
+      karyawan!.items.some(
+        (entry) => isNavBranch(entry) && entry.id === "prefs-menu"
+      )
     ).toBe(false)
     expect(karyawan!.items.some((entry) => isNavBranch(entry))).toBe(false)
     const ids = flattenNavEntries(karyawan!.items).map((item) => item.id)
     const labels = flattenNavEntries(karyawan!.items).map((item) => item.label)
-    expect(ids).toEqual(["clock", "prefs", "pin"])
-    expect(labels).toEqual(["Absensi", "Shift Kerja", "Ubah PIN"])
+    expect(ids).toEqual(["clock", "pin"])
+    expect(labels).toEqual(["Absensi", "Ubah PIN"])
     expect(labels).not.toContain("Masuk")
     expect(labels).not.toContain("Hari ini")
     expect(labels).not.toContain("Preferensi")
