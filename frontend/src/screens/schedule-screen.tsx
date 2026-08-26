@@ -319,6 +319,7 @@ export function ScheduleScreen({
         weekStartsOn={weekStartsOn}
         today={todayJakarta()}
         staff={activeStaff}
+        auditStaff={staff}
         slots={activeSlots}
         assignments={assignments}
         offs={offs}

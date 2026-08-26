@@ -1,4 +1,5 @@
 import { useState, type PointerEvent } from "react"
+import { Popover } from "@base-ui/react/popover"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +36,7 @@ export function MonthApprovals({
   weekStartsOn,
   today,
   staff,
+  auditStaff = staff,
   slots = [],
   assignments = [],
   offs,
@@ -47,6 +49,7 @@ export function MonthApprovals({
   weekStartsOn: number
   today: string
   staff: StaffRecord[]
+  auditStaff?: StaffRecord[]
   slots?: SlotRecord[]
   assignments?: AssignmentRecord[]
   offs: DayOffRecord[]
@@ -115,7 +118,7 @@ export function MonthApprovals({
       manualAdjustments.set(
         day.date,
         actorIds.size > 0
-          ? [...actorIds].map((id) => nameOf(staff, id))
+          ? [...actorIds].map((id) => nameOf(auditStaff, id))
           : ["Manager"]
       )
     }
@@ -303,11 +306,35 @@ function MonthDayCell({
   const body = (
     <>
       {day.inMonth && adjustedBy.length > 0 ? (
-        <span
-          title={`Disesuaikan manual oleh ${adjustedBy.join(", ")}`}
-          aria-label={`Disesuaikan manual oleh ${adjustedBy.join(", ")}`}
-          className="absolute top-0 right-0 size-0 border-t-[1.15rem] border-l-[1.15rem] border-t-amber-500 border-l-transparent"
-        />
+        <Popover.Root>
+          <Popover.Trigger
+            nativeButton={false}
+            openOnHover
+            delay={100}
+            closeDelay={100}
+            render={<span />}
+            aria-label={`Disesuaikan manual oleh ${adjustedBy.join(", ")}`}
+            className="absolute top-0 right-0 z-10 size-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="absolute top-0 right-0 size-0 border-t-[1.15rem] border-l-[1.15rem] border-t-amber-500 border-l-transparent" />
+          </Popover.Trigger>
+          <Popover.Portal>
+            <Popover.Positioner
+              side="top"
+              align="end"
+              sideOffset={6}
+              className="isolate z-50 outline-none"
+            >
+              <Popover.Popup
+                initialFocus={false}
+                finalFocus={false}
+                className="max-w-64 origin-(--transform-origin) rounded-lg bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95"
+              >
+                Disesuaikan manual oleh {adjustedBy.join(", ")}
+              </Popover.Popup>
+            </Popover.Positioner>
+          </Popover.Portal>
+        </Popover.Root>
       ) : null}
       <span className="text-xs font-medium">{Number(day.date.slice(8))}</span>
       {day.inMonth && initials.length > 0 ? (
@@ -364,5 +391,6 @@ function MonthDayCell({
 }
 
 function nameOf(staff: StaffRecord[], id: string): string {
-  return staff.find((item) => item.id === id)?.name ?? id
+  const member = staff.find((item) => item.id === id)
+  return member ? member.nickname || member.name : "Manager"
 }
