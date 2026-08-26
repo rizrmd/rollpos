@@ -616,7 +616,10 @@ function DateAssignDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" showCloseButton>
+      <DialogContent
+        className="max-h-[calc(100svh-2rem)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-md"
+        showCloseButton
+      >
         <DialogHeader>
           <DialogTitle>Siapa kerja</DialogTitle>
           <DialogDescription>
@@ -642,7 +645,7 @@ function DateAssignDialog({
             Kosongkan
           </Button>
         </div>
-        <ul className="flex flex-col gap-2">
+        <ul className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain pr-1">
           {loads.map((load) => {
             const templateIds = shiftByStaff[load.member.id] ?? []
             const working = templateIds.length > 0
