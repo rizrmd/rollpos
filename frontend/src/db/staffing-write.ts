@@ -61,7 +61,15 @@ import {
   isIncludedInAttendance,
   isStaffDeleted,
 } from "@/lib/types"
-import { nextWeekStart, todayJakarta, weekDates, weekStartOn } from "@/lib/time"
+import {
+  nextWeekStart,
+  todayJakarta,
+  weekdayOf,
+  weekDates,
+  weekStartOn,
+} from "@/lib/time"
+
+const DEFAULT_DAY_OFF_NOTE = "jadwal default"
 
 export function hasOpenSession(events: { type: AttendanceType }[]): boolean {
   const punches = events.filter(
@@ -227,6 +235,7 @@ export async function upsertStaff(
     isActive: boolean
     roles: StaffRole[]
     preferredTemplateIds?: string[]
+    defaultDayOffWeekdays?: number[]
     includeInAttendance?: boolean
     outletId?: string
   }
@@ -302,6 +311,9 @@ export async function upsertStaff(
       if (input.preferredTemplateIds !== undefined) {
         writePreferredSlots(database, target.id, input.preferredTemplateIds)
       }
+      if (input.defaultDayOffWeekdays !== undefined) {
+        writeDefaultDaysOff(database, target.id, input.defaultDayOffWeekdays)
+      }
     })
     const prefsChanged =
       input.preferredTemplateIds !== undefined &&
@@ -309,8 +321,16 @@ export async function upsertStaff(
     const attendanceChanged =
       input.includeInAttendance !== undefined &&
       isIncludedInAttendance(target) !== input.includeInAttendance
+    const defaultDaysOffChanged =
+      input.defaultDayOffWeekdays !== undefined &&
+      !sameNumbers(target.defaultDayOffWeekdays, input.defaultDayOffWeekdays)
     const leadershipChanged = canManage(target.roles) !== canManage(input.roles)
-    if (prefsChanged || attendanceChanged || leadershipChanged) {
+    if (
+      prefsChanged ||
+      defaultDaysOffChanged ||
+      attendanceChanged ||
+      leadershipChanged
+    ) {
       await rebuildOpenSystemWeeks(database)
     }
     return target.id
@@ -340,8 +360,12 @@ export async function upsertStaff(
       })
     }
     writePreferredSlots(database, staffId, input.preferredTemplateIds ?? [])
+    writeDefaultDaysOff(database, staffId, input.defaultDayOffWeekdays ?? [])
   })
-  if (input.preferredTemplateIds !== undefined) {
+  if (
+    input.preferredTemplateIds !== undefined ||
+    input.defaultDayOffWeekdays !== undefined
+  ) {
     await rebuildOpenSystemWeeks(database)
   }
   return staffId
@@ -371,6 +395,31 @@ export async function softDeleteStaff(
 function sameTemplateIds(left: string[] = [], right: string[] = []): boolean {
   if (left.length !== right.length) return false
   return left.every((id, index) => id === right[index])
+}
+
+function sameNumbers(left: number[] = [], right: number[] = []): boolean {
+  const sortedLeft = [...new Set(left)].sort((a, b) => a - b)
+  const sortedRight = [...new Set(right)].sort((a, b) => a - b)
+  return (
+    sortedLeft.length === sortedRight.length &&
+    sortedLeft.every((value, index) => value === sortedRight[index])
+  )
+}
+
+function writeDefaultDaysOff(
+  database: Database,
+  staffId: string,
+  weekdays: number[]
+): void {
+  deleteMatching(
+    database,
+    TABLES.staffDefaultDaysOff,
+    (row) => cellStr(row, "staffId") === staffId
+  )
+  for (const weekday of [...new Set(weekdays)]) {
+    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) continue
+    addRow(database, TABLES.staffDefaultDaysOff, { staffId, weekday })
+  }
 }
 
 function writePreferredSlots(
@@ -1284,6 +1333,10 @@ export async function clearManagerAssignedDates(
     ),
   ]
   await generateFairRemainingWeeks(database, weekStarts)
+  // Jika lock manual terakhir dilepas, generator sisa sengaja melewati minggu
+  // yang sudah punya jadwal sistem. Paksa bangun ulang agar tanggal reset tidak
+  // tertinggal kosong.
+  await ensureFairDefaultWeeks(database, weekStarts, { rebuildSystem: true })
   return cleared
 }
 
@@ -1414,6 +1467,48 @@ export async function writeFairRemaining(
   return changed
 }
 
+function syncDefaultDaysOff(
+  database: Database,
+  staff: StaffRecord[],
+  weekStart: string,
+  lockedDates: string[]
+): void {
+  const dates = weekDates(weekStart)
+  const locked = new Set(lockedDates)
+  const now = Date.now()
+  transact(database, () => {
+    deleteMatching(
+      database,
+      TABLES.scheduledDaysOff,
+      (row) =>
+        cellStr(row, "weekStart") === weekStart &&
+        cellStr(row, "note") === DEFAULT_DAY_OFF_NOTE
+    )
+    for (const member of staff) {
+      if (!member.isActive || isStaffDeleted(member)) continue
+      if (!isIncludedInAttendance(member)) continue
+      const weekdays = new Set(member.defaultDayOffWeekdays ?? [])
+      for (const workDate of dates) {
+        if (locked.has(workDate) || !weekdays.has(weekdayOf(workDate))) continue
+        const already = listRows(database, TABLES.scheduledDaysOff).some(
+          (row) =>
+            cellStr(row, "staffId") === member.id &&
+            cellStr(row, "workDate") === workDate
+        )
+        if (already) continue
+        addRow(database, TABLES.scheduledDaysOff, {
+          staffId: member.id,
+          workDate,
+          weekStart,
+          source: "recommendation",
+          note: DEFAULT_DAY_OFF_NOTE,
+          createdAt: now,
+        })
+      }
+    }
+  })
+}
+
 /** Isi tanggal yang belum ditetapkan manager, paling adil menurut beban yang sudah dikunci. */
 export async function generateFairRemainingWeeks(
   database: Database,
@@ -1478,6 +1573,7 @@ export async function generateFairRemainingWeeks(
       historyWorkDates: history,
       lockedDates,
     })
+    syncDefaultDaysOff(database, staff, weekStart, lockedDates)
     const ok =
       lockedDates.length === 0
         ? await writeFairDefaultDraft(database, weekStart, result.assignments)
@@ -1601,6 +1697,7 @@ export async function ensureFairDefaultWeeks(
       historyWorkDates: history,
       lockedDates,
     })
+    syncDefaultDaysOff(database, staff, weekStart, lockedDates)
     const ok =
       lockedDates.length === 0
         ? await writeFairDefaultDraft(database, weekStart, result.assignments)

@@ -2,10 +2,14 @@ import { describe, expect, test } from "bun:test"
 
 import { addRow, createRollposDatabase, listRows, TABLES } from "@/db/database"
 import {
+  assignStaffToDates,
   clearAttendanceForDate,
   clearManagerAssignedDates,
+  ensureFairDefaultWeeks,
   undoClearManagerAssignedDates,
 } from "@/db/staffing-write"
+import { seedStaffingIfEmpty } from "@/db/seed"
+import { loadAssignments, loadStaff } from "@/db/snapshot"
 
 describe("clearAttendanceForDate", () => {
   test("menghapus semua event pada tanggal Jakarta yang dipilih saja", async () => {
@@ -26,6 +30,38 @@ describe("clearAttendanceForDate", () => {
 })
 
 describe("clearManagerAssignedDates", () => {
+  test("reset lock manual terakhir mengisi kembali tanggal dari jadwal otomatis", async () => {
+    const database = createRollposDatabase({ inMemory: true })
+    await seedStaffingIfEmpty(database)
+    const staff = await loadStaff(database)
+    const owner = staff.find((member) => member.roles.includes("owner"))
+    const worker = staff.find((member) => !member.roles.includes("owner"))
+    if (!owner || !worker) throw new Error("Seed owner/worker tidak tersedia")
+
+    await ensureFairDefaultWeeks(database, ["2026-08-17"])
+    await assignStaffToDates(database, owner, {
+      dates: ["2026-08-19"],
+      workingStaffIds: [],
+      weekStartsOn: 1,
+    })
+    expect(
+      (await loadAssignments(database)).filter(
+        (row) => row.status !== "cancelled" && row.workDate === "2026-08-19"
+      )
+    ).toEqual([])
+
+    await clearManagerAssignedDates(database, owner, {
+      dates: ["2026-08-19"],
+      weekStartsOn: 1,
+    })
+
+    expect(
+      (await loadAssignments(database)).some(
+        (row) => row.status !== "cancelled" && row.workDate === "2026-08-19"
+      )
+    ).toBe(true)
+  })
+
   test("melepas penetapan manager dan lock kosong saja", async () => {
     const database = createRollposDatabase({ inMemory: true })
     addStaff(database, "manager", ["manager"])

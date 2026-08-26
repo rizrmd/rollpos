@@ -24,10 +24,7 @@ import {
   lockedWorkDates,
   monthWeekStarts,
 } from "@/lib/calendar-select"
-import {
-  formatIsoWeekday,
-  formatMonthYear,
-} from "@/lib/format"
+import { formatIsoWeekday, formatMonthYear } from "@/lib/format"
 import { floorRolesOf } from "@/lib/permissions"
 import { MANAGER_ASSIGN_NOTE } from "@/lib/recommend"
 import {
@@ -107,8 +104,8 @@ export function ScheduleScreen({
   } | null>(null)
   const canResetSelection = Boolean(
     actor &&
-      (actor.name.trim().toLowerCase() === "rizky" ||
-        actor.nickname.trim().toLowerCase() === "rizky")
+    (actor.name.trim().toLowerCase() === "rizky" ||
+      actor.nickname.trim().toLowerCase() === "rizky")
   )
 
   const activeSlots = slots
@@ -778,33 +775,26 @@ function DateAssignDialog({
             </Button>
           </div>
         ) : null}
-        <DialogFooter>
-          {adjustedBy.length > 0 ? (
-            <p className="mr-auto self-center bg-amber-100 px-2 py-1 text-left text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-              Disesuaikan manual oleh {adjustedBy.join(", ")}
-            </p>
-          ) : null}
-          {canReset ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="touch"
-              disabled={busy}
-              onClick={onReset}
-            >
-              Reset
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            size="touch"
-            disabled={busy}
-            onClick={() => onOpenChange(false)}
-          >
-            {busy ? "Menyimpan…" : "Tutup"}
-          </Button>
-        </DialogFooter>
+        {adjustedBy.length > 0 || canReset ? (
+          <DialogFooter>
+            {adjustedBy.length > 0 ? (
+              <p className="mr-auto self-center bg-amber-100 px-2 py-1 text-left text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                Disesuaikan manual oleh {adjustedBy.join(", ")}
+              </p>
+            ) : null}
+            {canReset ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="touch"
+                disabled={busy}
+                onClick={onReset}
+              >
+                Reset
+              </Button>
+            ) : null}
+          </DialogFooter>
+        ) : null}
       </DialogContent>
     </Dialog>
   )
