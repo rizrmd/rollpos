@@ -43,43 +43,62 @@ export function SettingsScreen({
       <LiveNotice message={notice} />
       <Card>
         <CardHeader>
-          <CardTitle>Jam buka</CardTitle>
-          <CardDescription>Angka tersimpan di pengaturan, bukan di kode.</CardDescription>
+          <CardTitle>Jadwal operasional outlet</CardTitle>
+          <CardDescription>
+            Atur jam outlet beroperasi dan batas pengisian preferensi jadwal staf.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          <Field
-            label="Buka"
-            value={form.open}
-            onChange={(open) => setForm({ ...form, open })}
-          />
-          <Field
-            label="Tutup"
-            value={form.close}
-            onChange={(close) => setForm({ ...form, close })}
-          />
-          <SelectField
-            label="Minggu mulai"
-            value={form.weekStartsOn}
-            onChange={(weekStartsOn) => setForm({ ...form, weekStartsOn })}
-            options={WEEKDAY_LONG.map((name, index) => ({
-              value: String(index),
-              label: name,
-            }))}
-          />
-          <SelectField
-            label="Tutup pengisian preferensi"
-            value={form.deadlineDay}
-            onChange={(deadlineDay) => setForm({ ...form, deadlineDay })}
-            options={WEEKDAY_LONG.map((name, index) => ({
-              value: String(index),
-              label: name,
-            }))}
-          />
-          <Field
-            label="Jam tutup preferensi"
-            value={form.deadlineTime}
-            onChange={(deadlineTime) => setForm({ ...form, deadlineTime })}
-          />
+        <CardContent className="grid gap-5">
+          <section className="grid gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <h3 className="text-sm font-medium">Jam operasional harian</h3>
+              <p className="text-sm text-muted-foreground">
+                Jam outlet mulai melayani hingga selesai beroperasi.
+              </p>
+            </div>
+            <Field
+              label="Outlet buka pukul"
+              value={form.open}
+              onChange={(open) => setForm({ ...form, open })}
+            />
+            <Field
+              label="Outlet tutup pukul"
+              value={form.close}
+              onChange={(close) => setForm({ ...form, close })}
+            />
+          </section>
+
+          <section className="grid gap-3 border-t pt-5 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <h3 className="text-sm font-medium">Periode jadwal staf</h3>
+              <p className="text-sm text-muted-foreground">
+                Pilih awal minggu jadwal dan hari terakhir staf boleh mengirim preferensi.
+              </p>
+            </div>
+            <SelectField
+              label="Minggu jadwal dimulai pada"
+              value={form.weekStartsOn}
+              onChange={(weekStartsOn) => setForm({ ...form, weekStartsOn })}
+              options={WEEKDAY_LONG.map((name, index) => ({
+                value: String(index),
+                label: name,
+              }))}
+            />
+            <SelectField
+              label="Hari terakhir pengisian preferensi"
+              value={form.deadlineDay}
+              onChange={(deadlineDay) => setForm({ ...form, deadlineDay })}
+              options={WEEKDAY_LONG.map((name, index) => ({
+                value: String(index),
+                label: name,
+              }))}
+            />
+            <Field
+              label="Pengisian ditutup pukul"
+              value={form.deadlineTime}
+              onChange={(deadlineTime) => setForm({ ...form, deadlineTime })}
+            />
+          </section>
         </CardContent>
       </Card>
 
