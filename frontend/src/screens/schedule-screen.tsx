@@ -741,7 +741,7 @@ function DateAssignDialog({
         ) : null}
         <DialogFooter>
           {adjustedBy.length > 0 ? (
-            <p className="mr-auto self-center text-left text-xs text-muted-foreground">
+            <p className="mr-auto self-center bg-amber-100 px-2 py-1 text-left text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
               Disesuaikan manual oleh {adjustedBy.join(", ")}
             </p>
           ) : null}
