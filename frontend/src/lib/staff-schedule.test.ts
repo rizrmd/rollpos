@@ -130,6 +130,64 @@ function settingsFrom(row: OutletSettingsRecord): OutletSettingsRecord {
 }
 
 describe("staffing persist + schedule", () => {
+  test("jadwal dan hari libur default staf tersimpan", async () => {
+    const { database, owner } = await bootstrap()
+    const pagiId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    const id = await upsertStaff(database, owner, {
+      name: "Nia",
+      nickname: "Nia",
+      pin: "3333",
+      isActive: true,
+      roles: ["barista"],
+      preferredTemplateIds: [pagiId],
+      defaultDayOffWeekdays: [0, 3],
+    })
+
+    const saved = (await loadStaff(database)).find((row) => row.id === id)
+    expect(saved?.preferredTemplateIds).toEqual([pagiId])
+    expect(saved?.defaultDayOffWeekdays).toEqual([0, 3])
+  })
+
+  test("generator menulis hari libur default sebagai libur rekomendasi", async () => {
+    const { database, owner } = await bootstrap()
+    const slotId = await saveSlot(database, owner, {
+      name: "Pagi",
+      startMinutes: 420,
+      endMinutes: 900,
+      sortOrder: 1,
+      minStaffCount: 1,
+      isActive: true,
+    })
+    await upsertStaff(database, owner, {
+      name: "Nia",
+      nickname: "Nia",
+      pin: "3333",
+      isActive: true,
+      roles: ["barista"],
+      preferredTemplateIds: [slotId],
+      defaultDayOffWeekdays: [3],
+    })
+
+    await ensureFairDefaultWeeks(database, ["2026-08-17"], {
+      rebuildSystem: true,
+    })
+    const nia = (await loadStaff(database)).find((row) => row.name === "Nia")
+    const generated = (await loadDayOffs(database, "2026-08-17")).find(
+      (row) => row.staffId === nia?.id && row.workDate === "2026-08-19"
+    )
+    expect(generated).toMatchObject({
+      source: "recommendation",
+      note: "jadwal default",
+    })
+  })
+
   test("pembagian shift dari form (semua, sebagian, atau kosong) tetap ada setelah simpan dan buka ulang", async () => {
     const { database, owner } = await bootstrap()
     const pagiId = await saveSlot(database, owner, {
@@ -1213,7 +1271,7 @@ describe("staffing persist + schedule", () => {
         dutyRole: "barista",
       },
     ])
-    expect(first).toBe(false)
+    expect(first).toBe(true)
     expect(second).toBe(false)
     const assignments = await loadAssignments(database)
     expect(

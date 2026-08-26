@@ -87,6 +87,8 @@ export type StaffRecord = {
   outletId: string
   roles: StaffRole[]
   preferredTemplateIds?: string[]
+  /** Hari libur rutin (0=Minggu ... 6=Sabtu) yang dipakai generator. */
+  defaultDayOffWeekdays?: number[]
   /** Default true. Owner/manager yang false tidak masuk absensi maupun jadwal. */
   includeInAttendance?: boolean
 }

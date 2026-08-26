@@ -11,6 +11,7 @@ export const TABLES = {
   staffMembers: "staffMembers",
   staffMemberRoles: "staffMemberRoles",
   staffPreferredSlots: "staffPreferredSlots",
+  staffDefaultDaysOff: "staffDefaultDaysOff",
   shiftTemplates: "shiftTemplates",
   shiftRoleRequirements: "shiftRoleRequirements",
   shiftAssignments: "shiftAssignments",
@@ -88,6 +89,10 @@ export const tablesSchema = {
     staffId: text,
     templateId: text,
     rank: amount,
+  },
+  staffDefaultDaysOff: {
+    staffId: text,
+    weekday: amount,
   },
   shiftTemplates: {
     name: text,

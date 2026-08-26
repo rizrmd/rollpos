@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { staffFromStore } from "@/db/snapshot"
 import { softDeleteStaff, upsertStaff } from "@/db/staffing-write"
 import { capitalizePersonName } from "@/lib/format"
+import { WEEKDAY_LONG } from "@/lib/format"
 import { canGrantLeadership } from "@/lib/permissions"
 import {
   preferredSlotIdsFromMember,
@@ -109,8 +110,10 @@ export function StaffScreen({
       </ul>
 
       <StaffDialog
-        key={editingId === "new" ? "new" : editingId ?? "closed"}
-        open={editingId !== null && (editingId === "new" || Boolean(editingMember))}
+        key={editingId === "new" ? "new" : (editingId ?? "closed")}
+        open={
+          editingId !== null && (editingId === "new" || Boolean(editingMember))
+        }
         member={editingId === "new" ? undefined : editingMember}
         actor={actor}
         slots={slots}
@@ -154,6 +157,7 @@ function StaffDialog({
     isActive: boolean
     roles: StaffRole[]
     preferredTemplateIds: string[]
+    defaultDayOffWeekdays: number[]
     includeInAttendance: boolean
   }) => Promise<void>
   onDelete: (member: StaffRecord) => Promise<void>
@@ -170,6 +174,9 @@ function StaffDialog({
   )
   const [includeAttendance, setIncludeAttendance] = useState(
     isIncludedInAttendance(member ?? { includeInAttendance: true })
+  )
+  const [defaultDaysOff, setDefaultDaysOff] = useState<number[]>(
+    member?.defaultDayOffWeekdays ?? []
   )
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -206,6 +213,7 @@ function StaffDialog({
           setIncludeAttendance(
             isIncludedInAttendance(member ?? { includeInAttendance: true })
           )
+          setDefaultDaysOff(member?.defaultDayOffWeekdays ?? [])
           setError(null)
           setConfirmDelete(false)
           setBusy(false)
@@ -216,7 +224,9 @@ function StaffDialog({
       <DialogContent className="sm:max-w-md" showCloseButton>
         <DialogHeader>
           <DialogTitle>{member ? member.name : "Staff baru"}</DialogTitle>
-          <DialogDescription>Satu staff boleh merangkap role.</DialogDescription>
+          <DialogDescription>
+            Satu staff boleh merangkap role.
+          </DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-3"
@@ -235,6 +245,7 @@ function StaffDialog({
                 preferredTemplateIds: usesAttendanceToggle(roles)
                   ? []
                   : preferredSlotIdsToStore(preferred, activeSlots),
+                defaultDayOffWeekdays: includeAttendance ? defaultDaysOff : [],
                 includeInAttendance: usesAttendanceToggle(roles)
                   ? includeAttendance
                   : true,
@@ -252,7 +263,9 @@ function StaffDialog({
               id="staff-name"
               className="min-h-12"
               value={name}
-              onChange={(event) => setName(capitalizePersonName(event.target.value))}
+              onChange={(event) =>
+                setName(capitalizePersonName(event.target.value))
+              }
               autoCapitalize="words"
               required
             />
@@ -307,7 +320,9 @@ function StaffDialog({
             </fieldset>
           ) : (
             <fieldset>
-              <legend className="mb-2 text-sm font-medium">Pembagian shift</legend>
+              <legend className="mb-2 text-sm font-medium">
+                Jadwal default
+              </legend>
               {activeSlots.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Belum ada slot shift. Tambah di pengaturan outlet.
@@ -328,36 +343,68 @@ function StaffDialog({
                         />
                         {slot.name}
                         <span className="text-muted-foreground">
-                          {formatMinutes(slot.startMinutes)}–{formatMinutes(slot.endMinutes)}
+                          {formatMinutes(slot.startMinutes)}–
+                          {formatMinutes(slot.endMinutes)}
                         </span>
                       </label>
                     ))}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Centang shift yang diisi. Kosong = tidak di-assign sama sekali.
+                    Centang shift rutin staf. Generator akan memakai pilihan
+                    ini.
                   </p>
                 </>
               )}
             </fieldset>
           )}
+          {includeAttendance ? (
+            <fieldset>
+              <legend className="mb-2 text-sm font-medium">
+                Hari libur default
+              </legend>
+              <div className="flex flex-wrap gap-2">
+                {WEEKDAY_LONG.map((day, weekday) => (
+                  <label
+                    key={day}
+                    className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm hover:bg-muted"
+                  >
+                    <Checkbox
+                      checked={defaultDaysOff.includes(weekday)}
+                      onCheckedChange={(checked) =>
+                        setDefaultDaysOff((current) =>
+                          checked === true
+                            ? [...new Set([...current, weekday])]
+                            : current.filter((item) => item !== weekday)
+                        )
+                      }
+                    />
+                    {day}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Saat jadwal digenerate, staf otomatis libur pada hari ini.
+              </p>
+            </fieldset>
+          ) : null}
           <fieldset>
             <legend className="mb-2 text-sm font-medium">Pimpinan</legend>
             <div className="flex flex-wrap gap-3">
-              {STAFF_ROLES.filter((role) => role === "owner" || role === "manager").map(
-                (role) => (
-                  <label
-                    key={role}
-                    className="flex min-h-12 cursor-pointer items-center gap-2 px-3 text-sm transition-colors hover:bg-muted has-focus-visible:ring-3 has-focus-visible:ring-ring/50"
-                  >
-                    <Checkbox
-                      checked={roles.includes(role)}
-                      disabled={!canLead}
-                      onCheckedChange={() => toggle(role)}
-                    />
-                    {role}
-                  </label>
-                )
-              )}
+              {STAFF_ROLES.filter(
+                (role) => role === "owner" || role === "manager"
+              ).map((role) => (
+                <label
+                  key={role}
+                  className="flex min-h-12 cursor-pointer items-center gap-2 px-3 text-sm transition-colors hover:bg-muted has-focus-visible:ring-3 has-focus-visible:ring-ring/50"
+                >
+                  <Checkbox
+                    checked={roles.includes(role)}
+                    disabled={!canLead}
+                    onCheckedChange={() => toggle(role)}
+                  />
+                  {role}
+                </label>
+              ))}
             </div>
           </fieldset>
           <label className="flex min-h-12 cursor-pointer items-center gap-2 px-3 text-sm transition-colors hover:bg-muted has-focus-visible:ring-3 has-focus-visible:ring-ring/50">
@@ -411,5 +458,10 @@ function staffListHint(member: StaffRecord, slots: SlotRecord[]): string {
   const names = (member.preferredTemplateIds ?? [])
     .map((id) => slots.find((slot) => slot.id === id)?.name)
     .filter((name): name is string => Boolean(name))
-  return names.length > 0 ? ` · ${names.join("/")}` : ""
+  const daysOff = (member.defaultDayOffWeekdays ?? [])
+    .map((weekday) => WEEKDAY_LONG[weekday])
+    .filter(Boolean)
+  const shifts = names.length > 0 ? ` · ${names.join("/")}` : ""
+  const off = daysOff.length > 0 ? ` · libur ${daysOff.join("/")}` : ""
+  return `${shifts}${off}`
 }

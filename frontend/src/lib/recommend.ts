@@ -4,7 +4,14 @@ import {
   hasShiftAllocation,
   slotPreferenceRank,
 } from "@/lib/staff-prefs"
-import { addDays, consecutiveRunEnding, isWeekend, slotHours, weekDates } from "@/lib/time"
+import {
+  addDays,
+  consecutiveRunEnding,
+  isWeekend,
+  slotHours,
+  weekdayOf,
+  weekDates,
+} from "@/lib/time"
 import {
   isIncludedInAttendance,
   isStaffDeleted,
@@ -212,7 +219,9 @@ function canCoverDay(
     if (eligible.length < slot.minStaffCount) {
       return false
     }
-    for (const req of requirements.filter((row) => row.templateId === slot.id)) {
+    for (const req of requirements.filter(
+      (row) => row.templateId === slot.id
+    )) {
       const capable = eligible.filter((member) =>
         member.roles.includes(req.role)
       ).length
@@ -286,7 +295,9 @@ function grantStaffSuggestions({
   const recommendedDayOff: { staffId: string; workDate: string }[] = []
   const emptyWork = new Map<string, string[]>()
   const ranked = [...suggestions]
-    .filter((row) => row.status === "suggested" && !lockedDates.has(row.workDate))
+    .filter(
+      (row) => row.status === "suggested" && !lockedDates.has(row.workDate)
+    )
     .sort((a, b) => a.rank - b.rank || a.staffId.localeCompare(b.staffId))
 
   for (const suggestion of ranked) {
@@ -428,9 +439,7 @@ function allocateFairOffs({
           }
           return { date, score }
         })
-        .sort(
-          (a, b) => a.score - b.score || a.date.localeCompare(b.date)
-        )
+        .sort((a, b) => a.score - b.score || a.date.localeCompare(b.date))
 
       const pick = scored[0]
       if (!pick) continue
@@ -675,7 +684,9 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
     .sort((a, b) => a.sortOrder - b.sortOrder)
   const staff = input.staff.filter(
     (member) =>
-      member.isActive && !isStaffDeleted(member) && isIncludedInAttendance(member)
+      member.isActive &&
+      !isStaffDeleted(member) &&
+      isIncludedInAttendance(member)
   )
   const history = input.historyWorkDates ?? {}
   const maxConsecutive = input.settings.maxConsecutiveWorkDays
@@ -685,6 +696,17 @@ export function recommendSchedule(input: RecommendInput): RecommendResult {
       .filter((row) => dates.includes(row.workDate))
       .map((row) => offKey(row.staffId, row.workDate))
   )
+
+  // Pola mingguan staf menjadi titik awal generator. Libur resmi/permintaan
+  // tetap ikut digabung, sedangkan tanggal yang dikunci manager tidak disentuh.
+  for (const member of staff) {
+    const weekdays = new Set(member.defaultDayOffWeekdays ?? [])
+    for (const date of unlockedDates) {
+      if (weekdays.has(weekdayOf(date))) {
+        grantedOff.add(offKey(member.id, date))
+      }
+    }
+  }
 
   const seedAssignments: ProposedAssignment[] = input.assignments
     .filter(
@@ -772,5 +794,7 @@ export function wouldViolateConsecutive(
   candidate: string,
   maxConsecutive: number
 ): boolean {
-  return consecutiveRunEnding([...workDates, candidate], candidate) > maxConsecutive
+  return (
+    consecutiveRunEnding([...workDates, candidate], candidate) > maxConsecutive
+  )
 }

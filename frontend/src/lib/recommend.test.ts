@@ -57,7 +57,10 @@ const sore: SlotRecord = {
   outletId: "main",
 }
 
-function person(id: string, roles: StaffRecord["roles"] = ["barista"]): StaffRecord {
+function person(
+  id: string,
+  roles: StaffRecord["roles"] = ["barista"]
+): StaffRecord {
   return {
     id,
     name: id,
@@ -79,9 +82,7 @@ const crew = [
   person("sinta", ["barista"]),
 ]
 
-function run(
-  extras: Partial<Parameters<typeof recommendSchedule>[0]> = {}
-) {
+function run(extras: Partial<Parameters<typeof recommendSchedule>[0]> = {}) {
   return recommendSchedule({
     settings,
     staff: crew,
@@ -97,6 +98,24 @@ function run(
 }
 
 describe("recommendSchedule fair default", () => {
+  test("hari libur default staf dipakai saat generate", () => {
+    const staff = crew.map((member) =>
+      member.id === "nia" ? { ...member, defaultDayOffWeekdays: [3] } : member
+    )
+    const result = run({ staff })
+
+    expect(
+      result.offs.some(
+        (row) => row.staffId === "nia" && row.workDate === "2026-08-19"
+      )
+    ).toBe(true)
+    expect(
+      result.assignments.some(
+        (row) => row.staffId === "nia" && row.workDate === "2026-08-19"
+      )
+    ).toBe(false)
+  })
+
   test("setiap staff dapat target libur dan hari sisanya jadi kerja", () => {
     const result = run()
     for (const member of crew) {
@@ -123,8 +142,16 @@ describe("recommendSchedule fair default", () => {
       )
       expect(offCount).toBeLessThanOrEqual(1)
       expect(working.size).toBeGreaterThanOrEqual(4)
-      expect(result.assignments.filter((row) => row.workDate === date && row.templateId === "pagi").length).toBeGreaterThanOrEqual(2)
-      expect(result.assignments.filter((row) => row.workDate === date && row.templateId === "sore").length).toBeGreaterThanOrEqual(2)
+      expect(
+        result.assignments.filter(
+          (row) => row.workDate === date && row.templateId === "pagi"
+        ).length
+      ).toBeGreaterThanOrEqual(2)
+      expect(
+        result.assignments.filter(
+          (row) => row.workDate === date && row.templateId === "sore"
+        ).length
+      ).toBeGreaterThanOrEqual(2)
     }
   })
 
@@ -170,7 +197,9 @@ describe("recommendSchedule fair default", () => {
     const result = run({ historyWorkDates: history })
     const weekendOff = (id: string) =>
       result.offs.some(
-        (row) => row.staffId === id && (row.workDate === "2026-08-22" || row.workDate === "2026-08-23")
+        (row) =>
+          row.staffId === id &&
+          (row.workDate === "2026-08-22" || row.workDate === "2026-08-23")
       )
     expect(weekendOff("ayu") || weekendOff("dimas")).toBe(true)
     expect(weekendOff("nia") && weekendOff("raka") && weekendOff("sinta")).toBe(
@@ -196,7 +225,9 @@ describe("recommendSchedule fair default", () => {
     expect(hasConsecutiveShifts(result.assignments, [pagi, sore])).toBe(false)
     for (const member of crew) {
       const byDate = new Map<string, string[]>()
-      for (const row of result.assignments.filter((item) => item.staffId === member.id)) {
+      for (const row of result.assignments.filter(
+        (item) => item.staffId === member.id
+      )) {
         const list = byDate.get(row.workDate) ?? []
         list.push(row.templateId)
         byDate.set(row.workDate, list)
@@ -209,7 +240,9 @@ describe("recommendSchedule fair default", () => {
 
   test("pembagian shift hanya mengisi shift yang dicentang", () => {
     const staff = crew.map((member) =>
-      member.id === "nia" ? { ...member, preferredTemplateIds: ["pagi"] } : member
+      member.id === "nia"
+        ? { ...member, preferredTemplateIds: ["pagi"] }
+        : member
     )
     const result = run({ staff })
     const nia = result.assignments.filter((row) => row.staffId === "nia")
@@ -219,7 +252,9 @@ describe("recommendSchedule fair default", () => {
 
   test("pembagian minggu menimpa pembagian tetap di profil", () => {
     const staff = crew.map((member) =>
-      member.id === "nia" ? { ...member, preferredTemplateIds: ["pagi"] } : member
+      member.id === "nia"
+        ? { ...member, preferredTemplateIds: ["pagi"] }
+        : member
     )
     const result = run({
       staff,
@@ -304,7 +339,9 @@ describe("recommendSchedule fair default", () => {
         note: "",
       },
     ]
-    expect(historyWorkDatesFrom(rows, weekStart)).toEqual({ ayu: ["2026-08-10"] })
+    expect(historyWorkDatesFrom(rows, weekStart)).toEqual({
+      ayu: ["2026-08-10"],
+    })
     expect(weekHasActiveAssignments(rows, weekStart)).toBe(true)
     expect(weekHasActiveAssignments(rows, "2026-08-24")).toBe(false)
   })
@@ -341,10 +378,16 @@ describe("recommendSchedule fair default", () => {
       assignments: pinned,
       lockedDates: [locked],
     })
-    expect(result.assignments.some((row) => row.workDate === locked)).toBe(false)
-    const otherDays = result.assignments.filter((row) => row.workDate !== locked)
+    expect(result.assignments.some((row) => row.workDate === locked)).toBe(
+      false
+    )
+    const otherDays = result.assignments.filter(
+      (row) => row.workDate !== locked
+    )
     expect(otherDays.length).toBeGreaterThan(0)
-    expect(new Set(otherDays.map((row) => row.workDate)).has(locked)).toBe(false)
+    expect(new Set(otherDays.map((row) => row.workDate)).has(locked)).toBe(
+      false
+    )
     const ayuDays = new Set(
       result.assignments
         .filter((row) => row.staffId === "ayu")

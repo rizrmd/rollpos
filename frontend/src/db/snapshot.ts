@@ -191,6 +191,7 @@ export function staffFromStore(database: Database): StaffRecord[] {
   const people = listRows(database, TABLES.staffMembers)
   const roles = listRows(database, TABLES.staffMemberRoles)
   const preferred = listRows(database, TABLES.staffPreferredSlots)
+  const defaultDaysOff = listRows(database, TABLES.staffDefaultDaysOff)
   return people.map((person) => ({
     id: person.id,
     name: cellStr(person, "name"),
@@ -215,6 +216,11 @@ export function staffFromStore(database: Database): StaffRecord[] {
       .sort((a, b) => cellNum(a, "rank") - cellNum(b, "rank"))
       .map((row) => cellStr(row, "templateId"))
       .filter(Boolean),
+    defaultDayOffWeekdays: defaultDaysOff
+      .filter((row) => cellStr(row, "staffId") === person.id)
+      .map((row) => cellNum(row, "weekday"))
+      .filter((weekday) => weekday >= 0 && weekday <= 6)
+      .sort((a, b) => a - b),
   }))
 }
 
