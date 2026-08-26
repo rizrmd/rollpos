@@ -19,13 +19,18 @@ import {
   undoClearManagerAssignedDates,
   type ClearManagerRestore,
 } from "@/db/staffing-write"
-import { lockedWorkDates, monthWeekStarts } from "@/lib/calendar-select"
+import {
+  isEmptyRosterLock,
+  lockedWorkDates,
+  monthWeekStarts,
+} from "@/lib/calendar-select"
 import {
   formatIsoWeekday,
   formatMonthYear,
   formatSelectedDates,
 } from "@/lib/format"
 import { floorRolesOf } from "@/lib/permissions"
+import { MANAGER_ASSIGN_NOTE } from "@/lib/recommend"
 import {
   staffWeekLoad,
   WORKLOAD_BAND_LABEL,
@@ -118,6 +123,31 @@ export function ScheduleScreen({
       row.workDate >= (monthDates[0] ?? "") &&
       row.workDate <= (monthDates[monthDates.length - 1] ?? "")
   )
+  const selectedDateSet = new Set(selectedDates)
+  const adjustmentActorIds = new Set(
+    assignments
+      .filter(
+        (row) =>
+          selectedDateSet.has(row.workDate) &&
+          row.status !== "cancelled" &&
+          row.note === MANAGER_ASSIGN_NOTE &&
+          row.actorStaffId
+      )
+      .map((row) => row.actorStaffId as string)
+  )
+  for (const off of offs) {
+    if (
+      selectedDateSet.has(off.workDate) &&
+      isEmptyRosterLock(off) &&
+      off.actorStaffId
+    ) {
+      adjustmentActorIds.add(off.actorStaffId)
+    }
+  }
+  const adjustmentActors = [...adjustmentActorIds].map((id) => {
+    const member = staff.find((item) => item.id === id)
+    return member ? member.nickname || member.name : "Manager"
+  })
   const locked = lockedWorkDates(monthAssignments, undefined, offs)
   const lockedDetails = locked.map((date) => ({
     date,
@@ -382,6 +412,7 @@ export function ScheduleScreen({
         loads={loads}
         slots={activeSlots}
         shiftByStaff={shiftByStaff}
+        adjustedBy={adjustmentActors}
         busy={busy}
         onToggle={(staffId) => {
           setShiftByStaff((current) => {
@@ -555,6 +586,7 @@ function DateAssignDialog({
   loads,
   slots,
   shiftByStaff,
+  adjustedBy,
   busy,
   onToggle,
   onToggleShift,
@@ -573,6 +605,7 @@ function DateAssignDialog({
   }[]
   slots: SlotRecord[]
   shiftByStaff: Record<string, string[]>
+  adjustedBy: string[]
   busy: boolean
   onToggle: (staffId: string) => void
   onToggleShift: (staffId: string, templateId: string) => void
@@ -673,6 +706,11 @@ function DateAssignDialog({
           })}
         </ul>
         <DialogFooter>
+          {adjustedBy.length > 0 ? (
+            <p className="mr-auto self-center text-left text-xs text-muted-foreground">
+              Disesuaikan manual oleh {adjustedBy.join(", ")}
+            </p>
+          ) : null}
           <Button
             type="button"
             variant="outline"

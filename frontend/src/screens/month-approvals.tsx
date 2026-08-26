@@ -310,8 +310,8 @@ function MonthDayCell({
           <Popover.Trigger
             nativeButton={false}
             openOnHover
-            delay={100}
-            closeDelay={100}
+            delay={0}
+            closeDelay={0}
             render={<span />}
             aria-label={`Disesuaikan manual oleh ${adjustedBy.join(", ")}`}
             className="absolute top-0 right-0 z-10 size-6 outline-none focus-visible:ring-2 focus-visible:ring-ring"
