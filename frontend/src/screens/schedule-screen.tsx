@@ -614,12 +614,18 @@ function DateAssignDialog({
   onOpenChange: (open: boolean) => void
   onSave: () => void
 }) {
+  const pageSize = 4
+  const [page, setPage] = useState(0)
+  const pageCount = Math.max(1, Math.ceil(loads.length / pageSize))
+  const currentPage = Math.min(page, pageCount - 1)
+  const visibleLoads = loads.slice(
+    currentPage * pageSize,
+    (currentPage + 1) * pageSize
+  )
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-h-[calc(100svh-2rem)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-md"
-        showCloseButton
-      >
+      <DialogContent className="sm:max-w-lg" showCloseButton>
         <DialogHeader>
           <DialogTitle>Siapa kerja</DialogTitle>
           <DialogDescription>
@@ -645,15 +651,15 @@ function DateAssignDialog({
             Kosongkan
           </Button>
         </div>
-        <ul className="flex min-h-0 flex-col gap-2 overflow-y-auto overscroll-contain pr-1">
-          {loads.map((load) => {
+        <ul className="grid gap-2">
+          {visibleLoads.map((load) => {
             const templateIds = shiftByStaff[load.member.id] ?? []
             const working = templateIds.length > 0
             return (
               <li
                 key={load.member.id}
                 className={cn(
-                  "border px-3 py-2.5",
+                  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border px-3 py-2",
                   working ? "bg-primary/10" : "bg-background"
                 )}
               >
@@ -661,15 +667,15 @@ function DateAssignDialog({
                   type="button"
                   onClick={() => onToggle(load.member.id)}
                   className={cn(
-                    "flex w-full items-center justify-between gap-3 text-left",
+                    "flex min-w-0 items-center justify-between gap-2 text-left",
                     "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                   )}
                 >
-                  <span>
-                    <span className="block font-medium">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">
                       {load.member.name}
                     </span>
-                    <span className="block text-xs text-muted-foreground">
+                    <span className="block truncate text-xs text-muted-foreground">
                       {floorRolesOf(load.member.roles).join(" · ") || "—"}
                       {` · ${load.workDays} hari · ${load.hours.toFixed(1)} jam`}
                     </span>
@@ -682,7 +688,7 @@ function DateAssignDialog({
                   </span>
                 </button>
                 {slots.length > 0 ? (
-                  <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                  <div className="flex gap-1">
                     {slots.map((slot) => {
                       const selected = templateIds.includes(slot.id)
                       return (
@@ -691,7 +697,7 @@ function DateAssignDialog({
                           type="button"
                           onClick={() => onToggleShift(load.member.id, slot.id)}
                           className={cn(
-                            "min-h-10 border px-2.5 py-2 text-center text-xs font-medium",
+                            "min-h-9 min-w-14 border px-2 py-1.5 text-center text-xs font-medium",
                             "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                             selected
                               ? "border-primary bg-primary text-primary-foreground"
@@ -708,6 +714,31 @@ function DateAssignDialog({
             )
           })}
         </ul>
+        {pageCount > 1 ? (
+          <div className="flex items-center justify-between gap-3 border-t pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 0}
+              onClick={() => setPage(currentPage - 1)}
+            >
+              Sebelumnya
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {currentPage + 1} / {pageCount}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={currentPage === pageCount - 1}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              Berikutnya
+            </Button>
+          </div>
+        ) : null}
         <DialogFooter>
           {adjustedBy.length > 0 ? (
             <p className="mr-auto self-center text-left text-xs text-muted-foreground">
