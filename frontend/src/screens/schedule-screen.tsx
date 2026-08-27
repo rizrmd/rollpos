@@ -591,6 +591,7 @@ export function ScheduleScreen({
                 type="button"
                 variant="outline"
                 size="touch"
+                className="ml-auto self-end"
                 disabled={busy}
                 onClick={() => void undoClearLockedDates()}
               >
