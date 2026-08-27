@@ -44,7 +44,14 @@ import {
   toggleStaffTemplateIds,
 } from "@/lib/staff-prefs"
 import { MonthApprovals } from "@/screens/month-approvals"
-import { monthGrid, monthStartOf, todayJakarta, weekStartOn } from "@/lib/time"
+import {
+  formatMinutes,
+  monthGrid,
+  monthStartOf,
+  slotHours,
+  todayJakarta,
+  weekStartOn,
+} from "@/lib/time"
 import { cn } from "@/lib/utils"
 import {
   isIncludedInAttendance,
@@ -661,7 +668,9 @@ function GlobalScheduleDialog({
       <DialogContent className="sm:max-w-md" showCloseButton>
         <DialogHeader>
           <DialogTitle>
-            {member ? `Konfigurasi jadwal ${member.name}` : "Konfigurasi jadwal"}
+            {member
+              ? `Konfigurasi jadwal ${member.name}`
+              : "Konfigurasi jadwal"}
           </DialogTitle>
           <DialogDescription>
             Pengaturan global ini dipakai saat jadwal otomatis dibuat.
@@ -685,7 +694,20 @@ function GlobalScheduleDialog({
                     )
                   }
                 />
-                {slot.name}
+                <span>
+                  <span className="block">{slot.name}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {formatMinutes(slot.startMinutes)}–
+                    {formatMinutes(slot.endMinutes)} ·{" "}
+                    {slotHours(
+                      slot.startMinutes,
+                      slot.endMinutes
+                    ).toLocaleString("id-ID", {
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    jam
+                  </span>
+                </span>
               </label>
             ))}
           </div>
