@@ -487,6 +487,12 @@ export function ScheduleScreen({
         shiftByStaff={shiftByStaff}
         adjustedBy={adjustmentActors}
         busy={busy}
+        onConfigure={(member) => {
+          void flushAutosave()
+          setSelectedDates([])
+          setShiftByStaff({})
+          setConfiguringMember(member)
+        }}
         onToggle={(staffId) => {
           const next = { ...shiftByStaff }
           if ((next[staffId]?.length ?? 0) > 0) {
@@ -762,6 +768,7 @@ function DateAssignDialog({
   shiftByStaff,
   adjustedBy,
   busy,
+  onConfigure,
   onToggle,
   onToggleShift,
   onSelectAll,
@@ -781,6 +788,7 @@ function DateAssignDialog({
   shiftByStaff: Record<string, string[]>
   adjustedBy: string[]
   busy: boolean
+  onConfigure: (member: StaffRecord) => void
   onToggle: (staffId: string) => void
   onToggleShift: (staffId: string, templateId: string) => void
   onSelectAll: () => void
@@ -836,19 +844,16 @@ function DateAssignDialog({
                   working ? "bg-primary/10" : "bg-background"
                 )}
               >
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onToggle(load.member.id)}
-                  className={cn(
-                    "flex min-w-0 items-center justify-between gap-2 text-left",
-                    "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                  )}
-                >
+                <div className="flex min-w-0 items-center justify-between gap-2">
                   <span className="min-w-0">
-                    <span className="block truncate font-medium">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onConfigure(load.member)}
+                      className="block max-w-full truncate rounded-sm text-left font-medium underline decoration-muted-foreground/50 underline-offset-4 hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
                       {load.member.name}
-                    </span>
+                    </button>
                     <span className="block truncate text-xs text-muted-foreground">
                       {floorRolesOf(load.member.roles).join(" · ") || "—"}
                       {` · ${load.workDays} hari · ${load.hours.toFixed(1)} jam`}
@@ -856,11 +861,17 @@ function DateAssignDialog({
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
                     <BandBadge band={load.band} />
-                    {working ? null : (
-                      <span className="text-sm font-medium">libur</span>
-                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => onToggle(load.member.id)}
+                    >
+                      {working ? "Kerja" : "Libur"}
+                    </Button>
                   </span>
-                </button>
+                </div>
                 {slots.length > 0 ? (
                   <div className="flex gap-1">
                     {slots.map((slot) => {
