@@ -922,7 +922,7 @@ function DateAssignDialog({
           </div>
         ) : null}
         {adjustedBy.length > 0 || canReset ? (
-          <DialogFooter>
+          <DialogFooter className="flex-row items-center justify-between">
             {adjustedBy.length > 0 ? (
               <p className="mr-auto self-center bg-amber-100 px-2 py-1 text-left text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
                 Disesuaikan manual oleh {adjustedBy.join(", ")}
@@ -933,7 +933,7 @@ function DateAssignDialog({
                 type="button"
                 variant="outline"
                 size="touch"
-                className="ml-auto self-end"
+                className="ml-auto"
                 disabled={busy}
                 onClick={onReset}
               >
