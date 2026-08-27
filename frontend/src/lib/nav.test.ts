@@ -15,15 +15,15 @@ import {
   visibleNavGroups,
 } from "@/lib/nav"
 
-const manageIds = [
+const visibleManageIds = [
   "stock",
   "products",
-  "prefs",
   "week",
   "staff",
   "reports",
   "settings",
 ] as const
+const manageIds = ["prefs", ...visibleManageIds] as const
 const publicIds = ["kasir", "orders", "clock", "pin"] as const
 
 describe("visibleNavGroups", () => {
@@ -57,12 +57,16 @@ describe("visibleNavGroups", () => {
     }
   })
 
-  test("owner dan manager melihat semua menu", () => {
+  test("owner dan manager hanya melihat Jadwal tanpa menu Shift Kerja", () => {
     for (const role of ["owner", "manager"] as const) {
       const ids = visibleNavGroups([role]).flatMap((group) =>
         flattenNavEntries(group.items).map((item) => item.id)
       )
-      expect(ids).toEqual(NAV_ITEMS.map((item) => item.id))
+      expect(ids).toEqual(
+        NAV_ITEMS.filter((item) => item.id !== "prefs").map((item) => item.id)
+      )
+      expect(ids).toContain("week")
+      expect(ids).not.toContain("prefs")
     }
   })
 

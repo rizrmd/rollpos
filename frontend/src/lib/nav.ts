@@ -39,6 +39,7 @@ export type NavItem = {
   icon: LucideIcon
   ready: boolean
   access: NavAccess
+  hidden?: boolean
   plan: string[]
 }
 
@@ -151,6 +152,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: SlidersHorizontal,
         ready: true,
         access: "manage",
+        hidden: true,
         plan: [],
       },
       {
@@ -334,12 +336,14 @@ export function visibleNavEntry(
   roles: readonly StaffRole[] | null | undefined
 ): NavEntry | null {
   if (isNavBranch(entry)) {
-    const children = entry.children.filter((item) => canSeeNavItem(item, roles))
+    const children = entry.children.filter(
+      (item) => !item.hidden && canSeeNavItem(item, roles)
+    )
     if (children.length === 0) return null
     return { ...entry, children }
   }
 
-  return canSeeNavItem(entry, roles) ? entry : null
+  return !entry.hidden && canSeeNavItem(entry, roles) ? entry : null
 }
 
 export function visibleNavGroups(
