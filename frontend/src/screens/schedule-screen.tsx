@@ -108,11 +108,7 @@ export function ScheduleScreen({
     dates: string[]
     shifts: Record<string, string[]>
   } | null>(null)
-  const canResetSelection = Boolean(
-    actor &&
-    (actor.name.trim().toLowerCase() === "rizky" ||
-      actor.nickname.trim().toLowerCase() === "rizky")
-  )
+  const canResetSelection = Boolean(actor)
 
   const activeSlots = slots
     .filter((slot) => slot.isActive)
