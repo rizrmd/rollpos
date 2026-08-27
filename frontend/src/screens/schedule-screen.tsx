@@ -4,6 +4,7 @@ import { useRef, useState } from "react"
 import { LiveNotice } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -17,6 +18,7 @@ import {
   clearManagerAssignedDates,
   generateFairRemainingWeeks,
   undoClearManagerAssignedDates,
+  upsertStaff,
   type ClearManagerRestore,
 } from "@/db/staffing-write"
 import {
@@ -24,7 +26,7 @@ import {
   lockedWorkDates,
   monthWeekStarts,
 } from "@/lib/calendar-select"
-import { formatIsoWeekday, formatMonthYear } from "@/lib/format"
+import { formatIsoWeekday, formatMonthYear, WEEKDAY_LONG } from "@/lib/format"
 import { floorRolesOf } from "@/lib/permissions"
 import { MANAGER_ASSIGN_NOTE } from "@/lib/recommend"
 import {
@@ -36,6 +38,8 @@ import {
 import {
   defaultTemplateIdsForStaff,
   dayRoster,
+  preferredSlotIdsFromMember,
+  preferredSlotIdsToStore,
   templateIdsByStaffOnDates,
   toggleStaffTemplateIds,
 } from "@/lib/staff-prefs"
@@ -94,6 +98,8 @@ export function ScheduleScreen({
   const [lockedDetailOpen, setLockedDetailOpen] = useState(false)
   const [clearingDate, setClearingDate] = useState<string | null>(null)
   const [confirmClearAll, setConfirmClearAll] = useState(false)
+  const [configuringMember, setConfiguringMember] =
+    useState<StaffRecord | null>(null)
   const [undoRestore, setUndoRestore] = useState<ClearManagerRestore | null>(
     null
   )
@@ -430,7 +436,13 @@ export function ScheduleScreen({
               className="border bg-card px-3 py-2 text-sm"
             >
               <p className="flex items-center justify-between gap-2 font-medium">
-                <span>{load.member.name}</span>
+                <button
+                  type="button"
+                  className="rounded-sm text-left underline decoration-muted-foreground/50 underline-offset-4 hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  onClick={() => setConfiguringMember(load.member)}
+                >
+                  {load.member.name}
+                </button>
                 <BandBadge band={load.band} />
               </p>
               <p className="text-muted-foreground">
@@ -441,6 +453,32 @@ export function ScheduleScreen({
           ))}
         </ul>
       </section>
+
+      <GlobalScheduleDialog
+        key={configuringMember?.id ?? "closed"}
+        member={configuringMember}
+        slots={activeSlots}
+        busy={busy}
+        onOpenChange={(open) => {
+          if (!open) setConfiguringMember(null)
+        }}
+        onSave={async (preferredTemplateIds, defaultDayOffWeekdays) => {
+          if (!actor || !configuringMember) return
+          await guarded(async () => {
+            await upsertStaff(database, actor, {
+              id: configuringMember.id,
+              name: configuringMember.name,
+              nickname: configuringMember.nickname,
+              isActive: configuringMember.isActive,
+              roles: configuringMember.roles,
+              includeInAttendance: isIncludedInAttendance(configuringMember),
+              preferredTemplateIds,
+              defaultDayOffWeekdays,
+            })
+            setConfiguringMember(null)
+          }, `Konfigurasi jadwal ${configuringMember.name} tersimpan.`)
+        }}
+      />
 
       <DateAssignDialog
         open={Boolean(actor) && selectedDates.length > 0}
@@ -590,6 +628,107 @@ export function ScheduleScreen({
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+function GlobalScheduleDialog({
+  member,
+  slots,
+  busy,
+  onOpenChange,
+  onSave,
+}: {
+  member: StaffRecord | null
+  slots: SlotRecord[]
+  busy: boolean
+  onOpenChange: (open: boolean) => void
+  onSave: (
+    preferredTemplateIds: string[],
+    defaultDayOffWeekdays: number[]
+  ) => Promise<void>
+}) {
+  const [preferred, setPreferred] = useState<string[]>(() =>
+    member ? preferredSlotIdsFromMember(member, slots) : []
+  )
+  const [daysOff, setDaysOff] = useState<number[]>(
+    member?.defaultDayOffWeekdays ?? []
+  )
+
+  return (
+    <Dialog open={Boolean(member)} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>
+            {member ? `Konfigurasi jadwal ${member.name}` : "Konfigurasi jadwal"}
+          </DialogTitle>
+          <DialogDescription>
+            Pengaturan global ini dipakai saat jadwal otomatis dibuat.
+          </DialogDescription>
+        </DialogHeader>
+        <fieldset>
+          <legend className="mb-2 text-sm font-medium">Jadwal default</legend>
+          <div className="flex flex-wrap gap-2">
+            {slots.map((slot) => (
+              <label
+                key={slot.id}
+                className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm hover:bg-muted"
+              >
+                <Checkbox
+                  checked={preferred.includes(slot.id)}
+                  onCheckedChange={(checked) =>
+                    setPreferred((current) =>
+                      checked === true
+                        ? [...new Set([...current, slot.id])]
+                        : current.filter((id) => id !== slot.id)
+                    )
+                  }
+                />
+                {slot.name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend className="mb-2 text-sm font-medium">
+            Hari libur default
+          </legend>
+          <div className="flex flex-wrap gap-2">
+            {WEEKDAY_LONG.map((day, weekday) => (
+              <label
+                key={day}
+                className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm hover:bg-muted"
+              >
+                <Checkbox
+                  checked={daysOff.includes(weekday)}
+                  onCheckedChange={(checked) =>
+                    setDaysOff((current) =>
+                      checked === true
+                        ? [...new Set([...current, weekday])]
+                        : current.filter((item) => item !== weekday)
+                    )
+                  }
+                />
+                {day}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <DialogFooter>
+          <Button
+            type="button"
+            disabled={busy || !member}
+            onClick={() =>
+              void onSave(
+                preferredSlotIdsToStore(preferred, slots),
+                [...daysOff].sort((a, b) => a - b)
+              )
+            }
+          >
+            Simpan
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
