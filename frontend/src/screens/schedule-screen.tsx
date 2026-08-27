@@ -460,6 +460,7 @@ export function ScheduleScreen({
       <GlobalScheduleDialog
         key={configuringMember?.id ?? "closed"}
         member={configuringMember}
+        load={loads.find((load) => load.member.id === configuringMember?.id)}
         slots={activeSlots}
         busy={busy}
         onOpenChange={(open) => {
@@ -642,12 +643,18 @@ export function ScheduleScreen({
 
 function GlobalScheduleDialog({
   member,
+  load,
   slots,
   busy,
   onOpenChange,
   onSave,
 }: {
   member: StaffRecord | null
+  load?: {
+    workDays: number
+    hours: number
+    band: WorkloadBand
+  }
   slots: SlotRecord[]
   busy: boolean
   onOpenChange: (open: boolean) => void
@@ -676,6 +683,22 @@ function GlobalScheduleDialog({
             Pengaturan global ini dipakai saat jadwal otomatis dibuat.
           </DialogDescription>
         </DialogHeader>
+        {load ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2.5">
+            <div>
+              <p className="text-xs text-muted-foreground">
+                Total waktu kerja bulan ini
+              </p>
+              <p className="font-medium tabular-nums">
+                {load.hours.toLocaleString("id-ID", {
+                  maximumFractionDigits: 2,
+                })}{" "}
+                jam · {load.workDays} hari
+              </p>
+            </div>
+            <BandBadge band={load.band} />
+          </div>
+        ) : null}
         <fieldset>
           <legend className="mb-2 text-sm font-medium">Jadwal default</legend>
           <div className="flex flex-wrap gap-2">
