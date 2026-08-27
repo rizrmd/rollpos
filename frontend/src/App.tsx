@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ArrowLeft, PanelLeft } from "lucide-react"
 
 import { AppSidebar } from "@/components/app-sidebar"
@@ -19,6 +19,11 @@ import { useLandscape } from "@/hooks/use-landscape"
 import { useStaffing } from "@/hooks/use-staffing"
 import { canManage } from "@/lib/permissions"
 import { formatJakartaClock } from "@/lib/format"
+import {
+  clearPinSession,
+  readPinSession,
+  savePinSession,
+} from "@/lib/pin-session"
 import { isStaffDeleted, type StaffRecord } from "@/lib/types"
 import { CatalogScreen } from "@/screens/catalog-screen"
 import { ClockScreen } from "@/screens/clock-screen"
@@ -44,7 +49,7 @@ export function App() {
   const staffing = useStaffing()
   const landscape = useLandscape()
   const { page, navigate } = useAppPage()
-  const [actor, setActor] = useState<StaffRecord | null>(null)
+  const [actorId, setActorId] = useState<string | null>(() => readPinSession())
   const [unlockWho, setUnlockWho] = useState<StaffRecord | null>(null)
   const [pickManager, setPickManager] = useState(false)
   const [pendingPage, setPendingPage] = useState<Exclude<
@@ -72,6 +77,18 @@ export function App() {
         setNotice(err instanceof Error ? err.message : String(err))
       )
   }, [staffing.database, staffing.ready, staffing.refresh])
+
+  const actor = useMemo(
+    () =>
+      staffing.staff.find(
+        (candidate) =>
+          candidate.id === actorId &&
+          candidate.isActive &&
+          !isStaffDeleted(candidate) &&
+          canManage(candidate.roles)
+      ) ?? null,
+    [actorId, staffing.staff]
+  )
 
   useEffect(() => {
     if (landscape && page === "menu") navigate(DEFAULT_PAGE, { replace: true })
@@ -101,7 +118,8 @@ export function App() {
   }
 
   function lock() {
-    setActor(null)
+    clearPinSession()
+    setActorId(null)
     if (MANAGE_PAGES.has(page)) {
       navigate(landscape ? DEFAULT_PAGE : "menu")
     }
@@ -271,7 +289,8 @@ export function App() {
             "Hanya owner atau manager yang boleh membuka pengaturan."
           )
         }
-        setActor(member)
+        savePinSession(member.id)
+        setActorId(member.id)
         if (pendingPage) navigate(pendingPage)
         else if (landscape) navigate("week")
         setPendingPage(null)
