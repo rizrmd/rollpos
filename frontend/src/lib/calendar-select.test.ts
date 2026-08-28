@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   datesInMonth,
   datesInRange,
+  datesOnSameWeekday,
   EMPTY_ROSTER_STAFF_ID,
   lockedWorkDates,
   monthWeekStarts,
@@ -50,6 +51,21 @@ describe("calendar select", () => {
         "2026-08-01"
       )
     ).toEqual(["2026-08-01", "2026-08-31"])
+  })
+
+  test("datesOnSameWeekday hanya memilih hari yang sama saat drag", () => {
+    expect(datesOnSameWeekday("2026-08-03", "2026-08-24")).toEqual([
+      "2026-08-03",
+      "2026-08-10",
+      "2026-08-17",
+      "2026-08-24",
+    ])
+    expect(datesOnSameWeekday("2026-08-24", "2026-08-03")).toEqual([
+      "2026-08-03",
+      "2026-08-10",
+      "2026-08-17",
+      "2026-08-24",
+    ])
   })
 
   test("monthWeekStarts hanya minggu yang memuat tanggal dalam bulan", () => {

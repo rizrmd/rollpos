@@ -1,4 +1,10 @@
-import { addDays, inSameMonth, monthGrid, weekStartOn } from "@/lib/time"
+import {
+  addDays,
+  inSameMonth,
+  monthGrid,
+  weekdayOf,
+  weekStartOn,
+} from "@/lib/time"
 import { SYSTEM_DRAFT_NOTE } from "@/lib/recommend"
 import type { AssignmentRecord, DayOffRecord } from "@/lib/types"
 
@@ -22,6 +28,12 @@ export function datesInRange(start: string, end: string): string[] {
     if (dates.length > 62) break
   }
   return dates
+}
+
+/** Tanggal pada weekday yang sama dengan tanggal awal di dalam rentang drag. */
+export function datesOnSameWeekday(start: string, end: string): string[] {
+  const weekday = weekdayOf(start)
+  return datesInRange(start, end).filter((date) => weekdayOf(date) === weekday)
 }
 
 export function datesInMonth(dates: string[], monthCursor: string): string[] {
@@ -53,9 +65,7 @@ export function lockedWorkDates(
 ): string[] {
   const dates = new Set(
     assignments
-      .filter(
-        (row) => row.status !== "cancelled" && row.note !== systemNote
-      )
+      .filter((row) => row.status !== "cancelled" && row.note !== systemNote)
       .map((row) => row.workDate)
   )
   for (const off of offs) {

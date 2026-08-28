@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import {
   datesInMonth,
   datesInRange,
+  datesOnSameWeekday,
   isEmptyRosterLock,
 } from "@/lib/calendar-select"
 import { MANAGER_ASSIGN_NOTE } from "@/lib/recommend"
@@ -74,13 +75,16 @@ export function MonthApprovals({
     )
   const [dragOrigin, setDragOrigin] = useState<string | null>(null)
   const [dragHover, setDragHover] = useState<string | null>(null)
+  const [selectionMode, setSelectionMode] = useState<"default" | "per-day">(
+    "default"
+  )
+  const draggedDates = dragOrigin
+    ? selectionMode === "per-day"
+      ? datesOnSameWeekday(dragOrigin, dragHover ?? dragOrigin)
+      : datesInRange(dragOrigin, dragHover ?? dragOrigin)
+    : []
   const preview = dragOrigin
-    ? new Set(
-        datesInMonth(
-          datesInRange(dragOrigin, dragHover ?? dragOrigin),
-          monthCursor
-        )
-      )
+    ? new Set(datesInMonth(draggedDates, monthCursor))
     : new Set(selectedDates)
   const selectable = Boolean(onSelectDates)
   const manualAdjustments = new Map<string, string[]>()
@@ -137,7 +141,9 @@ export function MonthApprovals({
       return
     }
     const dates = datesInMonth(
-      datesInRange(dragOrigin, dragHover ?? dragOrigin),
+      selectionMode === "per-day"
+        ? datesOnSameWeekday(dragOrigin, dragHover ?? dragOrigin)
+        : datesInRange(dragOrigin, dragHover ?? dragOrigin),
       monthCursor
     )
     setDragOrigin(null)
@@ -183,6 +189,32 @@ export function MonthApprovals({
           <ChevronRight className="size-5" />
         </Button>
       </div>
+
+      {selectable ? (
+        <div
+          className="grid grid-cols-2 rounded-lg bg-muted p-1"
+          aria-label="Mode pemilihan tanggal"
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant={selectionMode === "default" ? "secondary" : "ghost"}
+            aria-pressed={selectionMode === "default"}
+            onClick={() => setSelectionMode("default")}
+          >
+            Default
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={selectionMode === "per-day" ? "secondary" : "ghost"}
+            aria-pressed={selectionMode === "per-day"}
+            onClick={() => setSelectionMode("per-day")}
+          >
+            Per hari
+          </Button>
+        </div>
+      ) : null}
 
       <div className="overflow-hidden border bg-card">
         <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-xs font-medium text-muted-foreground">
