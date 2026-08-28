@@ -191,34 +191,31 @@ export function MonthApprovals({
       </div>
 
       {selectable ? (
-        <div
-          className="grid grid-cols-2 rounded-lg bg-muted p-1"
-          aria-label="Mode pemilihan tanggal"
-        >
-          <Button
-            type="button"
-            variant={selectionMode === "default" ? "secondary" : "ghost"}
-            className="h-auto flex-col gap-0.5 py-2 whitespace-normal"
-            aria-pressed={selectionMode === "default"}
-            onClick={() => setSelectionMode("default")}
+        <div className="flex items-center gap-3">
+          <span className="shrink-0 text-sm font-medium">Multi Select:</span>
+          <div
+            className="grid flex-1 grid-cols-2 rounded-lg bg-muted p-1"
+            aria-label="Mode multi select"
           >
-            <span>Rentang tanggal</span>
-            <span className="text-xs font-normal text-muted-foreground">
-              Semua tanggal terlewati
-            </span>
-          </Button>
-          <Button
-            type="button"
-            variant={selectionMode === "per-day" ? "secondary" : "ghost"}
-            className="h-auto flex-col gap-0.5 py-2 whitespace-normal"
-            aria-pressed={selectionMode === "per-day"}
-            onClick={() => setSelectionMode("per-day")}
-          >
-            <span>Hari yang sama</span>
-            <span className="text-xs font-normal text-muted-foreground">
-              Senin saja, Selasa saja, dst.
-            </span>
-          </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={selectionMode === "default" ? "secondary" : "ghost"}
+              aria-pressed={selectionMode === "default"}
+              onClick={() => setSelectionMode("default")}
+            >
+              Default
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={selectionMode === "per-day" ? "secondary" : "ghost"}
+              aria-pressed={selectionMode === "per-day"}
+              onClick={() => setSelectionMode("per-day")}
+            >
+              Per hari
+            </Button>
+          </div>
         </div>
       ) : null}
 
