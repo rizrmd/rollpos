@@ -197,21 +197,27 @@ export function MonthApprovals({
         >
           <Button
             type="button"
-            size="sm"
             variant={selectionMode === "default" ? "secondary" : "ghost"}
+            className="h-auto flex-col gap-0.5 py-2 whitespace-normal"
             aria-pressed={selectionMode === "default"}
             onClick={() => setSelectionMode("default")}
           >
-            Default
+            <span>Rentang tanggal</span>
+            <span className="text-xs font-normal text-muted-foreground">
+              Semua tanggal terlewati
+            </span>
           </Button>
           <Button
             type="button"
-            size="sm"
             variant={selectionMode === "per-day" ? "secondary" : "ghost"}
+            className="h-auto flex-col gap-0.5 py-2 whitespace-normal"
             aria-pressed={selectionMode === "per-day"}
             onClick={() => setSelectionMode("per-day")}
           >
-            Per hari
+            <span>Hari yang sama</span>
+            <span className="text-xs font-normal text-muted-foreground">
+              Senin saja, Selasa saja, dst.
+            </span>
           </Button>
         </div>
       ) : null}
