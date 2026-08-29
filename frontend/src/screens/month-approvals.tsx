@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import {
   datesInMonth,
   datesInRange,
-  datesOnSameWeekday,
+  datesOnWeekdayInMonth,
   isEmptyRosterLock,
 } from "@/lib/calendar-select"
 import { MANAGER_ASSIGN_NOTE } from "@/lib/recommend"
@@ -75,13 +75,8 @@ export function MonthApprovals({
     )
   const [dragOrigin, setDragOrigin] = useState<string | null>(null)
   const [dragHover, setDragHover] = useState<string | null>(null)
-  const [selectionMode, setSelectionMode] = useState<"default" | "per-day">(
-    "default"
-  )
   const draggedDates = dragOrigin
-    ? selectionMode === "per-day"
-      ? datesOnSameWeekday(dragOrigin, dragHover ?? dragOrigin)
-      : datesInRange(dragOrigin, dragHover ?? dragOrigin)
+    ? datesInRange(dragOrigin, dragHover ?? dragOrigin)
     : []
   const preview = dragOrigin
     ? new Set(datesInMonth(draggedDates, monthCursor))
@@ -141,9 +136,7 @@ export function MonthApprovals({
       return
     }
     const dates = datesInMonth(
-      selectionMode === "per-day"
-        ? datesOnSameWeekday(dragOrigin, dragHover ?? dragOrigin)
-        : datesInRange(dragOrigin, dragHover ?? dragOrigin),
+      datesInRange(dragOrigin, dragHover ?? dragOrigin),
       monthCursor
     )
     setDragOrigin(null)
@@ -169,7 +162,7 @@ export function MonthApprovals({
           </p>
           <p className="text-sm text-muted-foreground">
             {selectable
-              ? "Seret tanggal untuk menentukan siapa kerja"
+              ? "Seret tanggal, atau ketuk nama hari untuk pilih semuanya"
               : `${summary.approved} libur disetujui · ${summary.peopleOff} staff`}
             {!selectable && summary.pending > 0
               ? ` · ${summary.pending} menunggu`
@@ -190,42 +183,33 @@ export function MonthApprovals({
         </Button>
       </div>
 
-      {selectable ? (
-        <div className="flex items-center gap-3">
-          <span className="shrink-0 text-sm font-medium">Multi Select:</span>
-          <div
-            className="grid flex-1 grid-cols-2 rounded-lg bg-muted p-1"
-            aria-label="Mode multi select"
-          >
-            <Button
-              type="button"
-              size="sm"
-              variant={selectionMode === "default" ? "secondary" : "ghost"}
-              aria-pressed={selectionMode === "default"}
-              onClick={() => setSelectionMode("default")}
-            >
-              Default
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={selectionMode === "per-day" ? "secondary" : "ghost"}
-              aria-pressed={selectionMode === "per-day"}
-              onClick={() => setSelectionMode("per-day")}
-            >
-              Per hari
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
       <div className="overflow-hidden border bg-card">
         <div className="grid grid-cols-7 border-b bg-muted/40 text-center text-xs font-medium text-muted-foreground">
-          {headers.map((label) => (
-            <div key={label} className="px-1 py-2">
-              {label}
-            </div>
-          ))}
+          {headers.map((label, index) =>
+            selectable ? (
+              <button
+                key={label}
+                type="button"
+                className="min-h-10 px-1 py-2 transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+                aria-label={`Pilih semua hari ${label} bulan ini`}
+                onClick={() =>
+                  onSelectDates?.(
+                    datesOnWeekdayInMonth(
+                      monthCursor,
+                      weekStartsOn,
+                      (weekStartsOn + index) % 7
+                    )
+                  )
+                }
+              >
+                {label}
+              </button>
+            ) : (
+              <div key={label} className="px-1 py-2">
+                {label}
+              </div>
+            )
+          )}
         </div>
         <ol
           className={cn(

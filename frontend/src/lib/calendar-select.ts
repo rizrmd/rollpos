@@ -30,14 +30,19 @@ export function datesInRange(start: string, end: string): string[] {
   return dates
 }
 
-/** Tanggal pada weekday yang sama dengan tanggal awal di dalam rentang drag. */
-export function datesOnSameWeekday(start: string, end: string): string[] {
-  const weekday = weekdayOf(start)
-  return datesInRange(start, end).filter((date) => weekdayOf(date) === weekday)
-}
-
 export function datesInMonth(dates: string[], monthCursor: string): string[] {
   return dates.filter((date) => inSameMonth(date, monthCursor))
+}
+
+/** Semua tanggal pada weekday tertentu di dalam bulan yang tampil. */
+export function datesOnWeekdayInMonth(
+  monthCursor: string,
+  weekStartsOn: number,
+  weekday: number
+): string[] {
+  return monthGrid(monthCursor, weekStartsOn)
+    .filter((cell) => cell.inMonth && weekdayOf(cell.date) === weekday)
+    .map((cell) => cell.date)
 }
 
 /** Awal minggu yang memuat tanggal dalam bulan yang tampil. */
