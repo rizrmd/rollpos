@@ -13,7 +13,9 @@ bun run db:seed
 bun run dev
 ```
 
-Production menjalankan `bun run build && NODE_ENV=production bun run start`. API dan UI dilayani pada port yang sama (`PORT`, default 3000). Seed hanya membuat enam master item development dan tidak membuat transaksi stok palsu.
+Production menjalankan `bun run build && NODE_ENV=production bun run start`. API dan UI dilayani pada port yang sama (`PORT`, default 3000). Startup production menjalankan migrasi ketika `DATABASE_URL` tersedia, tetapi tidak menjalankan seed otomatis. Untuk sandbox development yang memang boleh menerima enam master item development, set `ROLLPOS_SEED_DEVELOPMENT=true`; seed idempotent berdasarkan SKU dan tidak membuat transaksi stok palsu.
+
+`GET /api/health` tetap tersedia ketika database belum dikonfigurasi. Responsnya `503` dengan status `degraded`, tanpa membuka connection string atau detail error database.
 
 Autorisasi inventory UI saat ini mengikuti sesi PIN owner/manager yang sudah ada. Karena sesi staff tersebut masih browser-local, `actorStaffId` belum dapat diverifikasi server-side; ini adalah keterbatasan eksplisit slice pertama, bukan jaminan keamanan backend.
 

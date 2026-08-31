@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Boot the RollPOS frontend on the organization "pos" custom sandbox.
-# Serves the production Vite preview on :3000 (pos-rollnbrew.fural.space).
+# Boot RollPOS on the organization "pos" custom sandbox.
+# Bun serves the production frontend and REST API on :3000.
 set -euo pipefail
 
 export PATH="${HOME}/.local/bin:${HOME}/.bun/bin:${PATH}"
@@ -28,11 +28,13 @@ fi
 cd "${REPO}/frontend"
 bun install --frozen-lockfile
 bun run build
-if [ -z "${DATABASE_URL:-}" ]; then
-  echo "DATABASE_URL wajib tersedia untuk inventory API" >&2
-  exit 1
+if [ -n "${DATABASE_URL:-}" ]; then
+  bun run db:migrate
+  if [ "${ROLLPOS_SEED_DEVELOPMENT:-false}" = "true" ]; then
+    bun run db:seed
+  fi
+else
+  echo "DATABASE_URL belum tersedia; server dimulai dengan inventory degraded." >&2
 fi
-bun run db:migrate
-bun run db:seed
 export NODE_ENV=production PORT=3000
 exec bun run start

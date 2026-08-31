@@ -9,11 +9,39 @@ function json(data: unknown, status = 200): Response {
   })
 }
 
-export function createApi(sql: Sql = createSql()) {
-  const inventory = new InventoryRepository(sql)
+export function createApi(sql?: Sql) {
+  let database = sql
+  if (!database) {
+    try {
+      database = createSql()
+    } catch {
+      database = undefined
+    }
+  }
+  const inventory = database ? new InventoryRepository(database) : null
   return async function api(request: Request): Promise<Response | null> {
     const url = new URL(request.url)
     if (!url.pathname.startsWith("/api/")) return null
+    if (request.method === "GET" && url.pathname === "/api/health") {
+      if (!database) {
+        return json({ status: "degraded", database: "unavailable" }, 503)
+      }
+      try {
+        await database`SELECT 1`
+        return json({ status: "ok", database: "ok" })
+      } catch {
+        return json({ status: "degraded", database: "unavailable" }, 503)
+      }
+    }
+    if (!inventory) {
+      return json(
+        {
+          error:
+            "Inventory unavailable. Please check the connection and try again.",
+        },
+        503
+      )
+    }
     try {
       if (request.method === "GET" && url.pathname === "/api/inventory")
         return json(await inventory.list())
@@ -42,7 +70,7 @@ export function createApi(sql: Sql = createSql()) {
     } catch (error) {
       if (error instanceof ValidationError)
         return json({ error: error.message }, 400)
-      console.error(error)
+      console.error("Inventory request failed.")
       return json(
         {
           error:

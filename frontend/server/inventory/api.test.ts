@@ -104,6 +104,31 @@ describe("inventory repository", () => {
 })
 
 describe("inventory API", () => {
+  test("health membedakan aplikasi tanpa database", async () => {
+    const previous = process.env.DATABASE_URL
+    delete process.env.DATABASE_URL
+    try {
+      const api = createApi()
+      const response = await api(new Request("http://local/api/health"))
+      expect(response?.status).toBe(503)
+      expect(await response?.json()).toEqual({
+        status: "degraded",
+        database: "unavailable",
+      })
+    } finally {
+      if (previous === undefined) delete process.env.DATABASE_URL
+      else process.env.DATABASE_URL = previous
+    }
+  })
+
+  test("health melaporkan database tersedia", async () => {
+    const { sql } = fakeSql()
+    const api = createApi(sql as never)
+    const response = await api(new Request("http://local/api/health"))
+    expect(response?.status).toBe(200)
+    expect(await response?.json()).toEqual({ status: "ok", database: "ok" })
+  })
+
   test("GET inventory, GET detail/lots, dan POST receive", async () => {
     const { sql } = fakeSql()
     const api = createApi(sql as never)
