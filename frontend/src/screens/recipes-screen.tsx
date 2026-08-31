@@ -5,7 +5,14 @@ import {
   useState,
   type FormEvent,
 } from "react"
-import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react"
+import {
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
@@ -13,7 +20,6 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -35,6 +41,9 @@ import type { ProductRecord } from "@/lib/types"
 
 type DraftLine = { inventoryItemId: string; quantity: string; unit: RecipeUnit }
 
+const RECIPE_PAGE_SIZE = 6
+const INGREDIENT_PAGE_SIZE = 3
+
 const selectClass =
   "flex min-h-10 w-full border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
 
@@ -47,7 +56,13 @@ export function RecipesScreen() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
   const store = database.store
+  const pageCount = Math.max(1, Math.ceil(recipes.length / RECIPE_PAGE_SIZE))
+  const visibleRecipes = recipes.slice(
+    (Math.min(page, pageCount) - 1) * RECIPE_PAGE_SIZE,
+    Math.min(page, pageCount) * RECIPE_PAGE_SIZE
+  )
 
   const refresh = useCallback(async () => {
     try {
@@ -83,13 +98,7 @@ export function RecipesScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Recipe / SOP</h1>
-          <p className="text-sm text-muted-foreground">
-            Hubungkan satu menu dengan takaran ingredient inventory.
-          </p>
-        </div>
+      <div className="flex justify-end">
         <Button
           size="touch"
           onClick={() => setEditing("new")}
@@ -103,28 +112,34 @@ export function RecipesScreen() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Membuka recipe lokal…</p>
       ) : recipes.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 border border-dashed p-8 text-center">
+        <div className="flex items-center justify-center gap-3 border border-dashed p-8 text-sm text-muted-foreground">
           <BookOpen className="size-8 text-muted-foreground" />
-          <div>
-            <p className="font-medium">Belum ada recipe</p>
-            <p className="text-sm text-muted-foreground">
-              Tambahkan menu dan ingredient inventory pertamanya.
-            </p>
-          </div>
+          Belum ada recipe
         </div>
       ) : (
-        <ul className="grid gap-3 lg:grid-cols-2">
-          {recipes.map((recipe) => (
-            <li key={recipe.id} className="border bg-card p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold">{recipe.menuName}</h2>
-                  <div className="mt-1 flex gap-2">
-                    <Badge variant="outline">Versi {recipe.version}</Badge>
+        <>
+          <ul className="divide-y border">
+            {visibleRecipes.map((recipe) => (
+              <li
+                key={recipe.id}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <strong className="truncate">{recipe.menuName}</strong>
+                    <Badge variant="outline">V{recipe.version}</Badge>
                     <Badge variant={recipe.isActive ? "secondary" : "outline"}>
                       {recipe.isActive ? "Aktif" : "Nonaktif"}
                     </Badge>
                   </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">
+                    {recipe.ingredients
+                      .map(
+                        (line) =>
+                          `${line.inventoryItemName} ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 3 }).format(line.quantity)} ${line.unit}`
+                      )
+                      .join(" · ")}
+                  </p>
                 </div>
                 <Button
                   variant="outline"
@@ -134,26 +149,15 @@ export function RecipesScreen() {
                 >
                   <Pencil />
                 </Button>
-              </div>
-              <ul className="mt-4 divide-y border-t">
-                {recipe.ingredients.map((line) => (
-                  <li
-                    key={line.id}
-                    className="flex justify-between gap-3 py-2 text-sm"
-                  >
-                    <span>{line.inventoryItemName}</span>
-                    <strong className="tabular-nums">
-                      {new Intl.NumberFormat("id-ID", {
-                        maximumFractionDigits: 3,
-                      }).format(line.quantity)}{" "}
-                      {line.unit}
-                    </strong>
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+          <Pagination
+            page={Math.min(page, pageCount)}
+            pageCount={pageCount}
+            onPage={setPage}
+          />
+        </>
       )}
       <RecipeDialog
         key={editing === "new" ? "new" : (editing?.id ?? "closed")}
@@ -227,6 +231,18 @@ function RecipeDialog({
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [ingredientPage, setIngredientPage] = useState(1)
+  const ingredientPageCount = Math.max(
+    1,
+    Math.ceil(lines.length / INGREDIENT_PAGE_SIZE)
+  )
+  const currentIngredientPage = Math.min(ingredientPage, ingredientPageCount)
+  const visibleLines = lines
+    .map((line, index) => ({ line, index }))
+    .slice(
+      (currentIngredientPage - 1) * INGREDIENT_PAGE_SIZE,
+      currentIngredientPage * INGREDIENT_PAGE_SIZE
+    )
   const inventoryById = useMemo(
     () => new Map(inventory.map((item) => [item.id, item])),
     [inventory]
@@ -265,15 +281,12 @@ function RecipeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <form onSubmit={submit} className="flex flex-col gap-5">
+      <DialogContent className="sm:max-w-2xl">
+        <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="sr-only">
               {recipe ? "Edit recipe" : "Tambah recipe"}
             </DialogTitle>
-            <DialogDescription>
-              Quantity recipe belum memengaruhi saldo stok.
-            </DialogDescription>
           </DialogHeader>
           <LiveNotice message={error} tone="error" />
           <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
@@ -328,23 +341,29 @@ function RecipeDialog({
                         !lines.some((line) => line.inventoryItemId === item.id)
                     ) ?? inventory[0]
                   if (next)
-                    setLines((current) => [
-                      ...current,
-                      {
-                        inventoryItemId: next.id,
-                        quantity: "",
-                        unit: next.baseUnit as RecipeUnit,
-                      },
-                    ])
+                    setLines((current) => {
+                      const updated = [
+                        ...current,
+                        {
+                          inventoryItemId: next.id,
+                          quantity: "",
+                          unit: next.baseUnit as RecipeUnit,
+                        },
+                      ]
+                      setIngredientPage(
+                        Math.ceil(updated.length / INGREDIENT_PAGE_SIZE)
+                      )
+                      return updated
+                    })
                 }}
               >
                 <Plus /> Ingredient
               </Button>
             </div>
-            {lines.map((line, index) => (
+            {visibleLines.map(({ line, index }) => (
               <div
                 key={index}
-                className="grid grid-cols-[minmax(0,1fr)_6rem_5rem_auto] gap-2"
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border p-2"
               >
                 <select
                   aria-label={`Ingredient ${index + 1}`}
@@ -364,32 +383,6 @@ function RecipeDialog({
                     </option>
                   ))}
                 </select>
-                <Input
-                  aria-label={`Quantity ${index + 1}`}
-                  type="number"
-                  min="0.001"
-                  step="any"
-                  placeholder="Qty"
-                  value={line.quantity}
-                  onChange={(event) =>
-                    updateLine(index, { quantity: event.target.value })
-                  }
-                  required
-                />
-                <select
-                  aria-label={`Unit ${index + 1}`}
-                  className={selectClass}
-                  value={line.unit}
-                  onChange={(event) =>
-                    updateLine(index, {
-                      unit: event.target.value as RecipeUnit,
-                    })
-                  }
-                >
-                  {RECIPE_UNITS.map((unit) => (
-                    <option key={unit}>{unit}</option>
-                  ))}
-                </select>
                 <Button
                   type="button"
                   variant="outline"
@@ -404,8 +397,41 @@ function RecipeDialog({
                 >
                   <Trash2 />
                 </Button>
+                <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-2">
+                  <Input
+                    aria-label={`Quantity ${index + 1}`}
+                    type="number"
+                    min="0.001"
+                    step="any"
+                    placeholder="Qty"
+                    value={line.quantity}
+                    onChange={(event) =>
+                      updateLine(index, { quantity: event.target.value })
+                    }
+                    required
+                  />
+                  <select
+                    aria-label={`Unit ${index + 1}`}
+                    className={selectClass}
+                    value={line.unit}
+                    onChange={(event) =>
+                      updateLine(index, {
+                        unit: event.target.value as RecipeUnit,
+                      })
+                    }
+                  >
+                    {RECIPE_UNITS.map((unit) => (
+                      <option key={unit}>{unit}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             ))}
+            <Pagination
+              page={currentIngredientPage}
+              pageCount={ingredientPageCount}
+              onPage={setIngredientPage}
+            />
           </div>
           <DialogFooter>
             <Button
@@ -425,5 +451,47 @@ function RecipeDialog({
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function Pagination({
+  page,
+  pageCount,
+  onPage,
+}: {
+  page: number
+  pageCount: number
+  onPage: (page: number) => void
+}) {
+  if (pageCount <= 1) return null
+  return (
+    <div
+      className="flex items-center justify-end gap-2"
+      aria-label="Pagination"
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-sm"
+        disabled={page <= 1}
+        onClick={() => onPage(page - 1)}
+        aria-label="Halaman sebelumnya"
+      >
+        <ChevronLeft />
+      </Button>
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {page} / {pageCount}
+      </span>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon-sm"
+        disabled={page >= pageCount}
+        onClick={() => onPage(page + 1)}
+        aria-label="Halaman berikutnya"
+      >
+        <ChevronRight />
+      </Button>
+    </div>
   )
 }
