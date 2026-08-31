@@ -23,6 +23,8 @@ export const TABLES = {
   inventoryItems: "inventoryItems",
   inventoryLots: "inventoryLots",
   inventoryStockMovements: "inventoryStockMovements",
+  recipes: "recipes",
+  recipeIngredients: "recipeIngredients",
 } as const
 
 export type TableName = (typeof TABLES)[keyof typeof TABLES]
@@ -208,5 +210,21 @@ export const tablesSchema = {
     reason: text,
     actorStaffId: text,
     createdAt: amount,
+  },
+  recipes: {
+    menuProductId: text,
+    version: { type: "number", default: 1 },
+    isActive: { type: "boolean", default: true },
+    createdAt: amount,
+    updatedAt: amount,
+  },
+  recipeIngredients: {
+    recipeId: text,
+    inventoryItemId: text,
+    quantity: amount,
+    unit: text,
+    sortOrder: amount,
+    createdAt: amount,
+    updatedAt: amount,
   },
 } as const satisfies TablesSchema

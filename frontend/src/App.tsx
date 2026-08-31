@@ -33,6 +33,7 @@ import { PinScreen } from "@/screens/pin-screen"
 import { PrefsScreen } from "@/screens/prefs-screen"
 import { SettingsScreen } from "@/screens/settings-screen"
 import { StockScreen } from "@/screens/stock-screen"
+import { RecipesScreen } from "@/screens/recipes-screen"
 import { StaffScreen } from "@/screens/staff-screen"
 import { ScheduleScreen } from "@/screens/schedule-screen"
 import {
@@ -228,6 +229,8 @@ export function App() {
     <CatalogScreen actor={actor} />
   ) : page === "stock" && actor ? (
     <StockScreen actor={actor} />
+  ) : page === "recipes" && actor ? (
+    <RecipesScreen />
   ) : page === "menu" ? null : item && !item.ready ? (
     <ComingSoonScreen item={item} />
   ) : MANAGE_PAGES.has(page) && !actor ? (

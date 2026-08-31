@@ -6,6 +6,7 @@ import {
   Clock3,
   KeyRound,
   Receipt,
+  BookOpenText,
   UtensilsCrossed,
   Settings,
   ShoppingCart,
@@ -23,6 +24,7 @@ export type AppPage =
   | "orders"
   | "products"
   | "stock"
+  | "recipes"
   | "prefs"
   | "pin"
   | "week"
@@ -129,6 +131,15 @@ export const NAV_GROUPS: NavGroup[] = [
           "Peringatan residu rendah",
           "Belum mengurangi stok otomatis dari kasir",
         ],
+      },
+      {
+        id: "recipes",
+        label: "Recipe / SOP",
+        hint: "Takaran bahan inventory per menu",
+        icon: BookOpenText,
+        ready: true,
+        access: "manage",
+        plan: [],
       },
     ],
   },
@@ -244,6 +255,7 @@ export const PAGE_PATH: Record<AppPage, string> = {
   orders: "/pesanan",
   products: "/katalog",
   stock: "/stok",
+  recipes: "/recipe",
   prefs: "/shift",
   pin: "/pin",
   week: "/jadwal",
@@ -266,6 +278,9 @@ const PATH_ALIAS: Record<string, AppPage> = {
   produk: "products",
   stock: "stock",
   stok: "stock",
+  recipes: "recipes",
+  recipe: "recipes",
+  resep: "recipes",
   prefs: "prefs",
   shift: "prefs",
   preferensi: "prefs",
