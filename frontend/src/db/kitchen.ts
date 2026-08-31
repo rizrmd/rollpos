@@ -223,8 +223,7 @@ export async function startKitchenItem(
   ).some(
     (movement) =>
       cellStr(movement, "movementType") === "CONSUMPTION" &&
-      cellStr(movement, "orderId") === orderId &&
-      cellStr(movement, "menuProductId") === menuProductId
+      cellStr(movement, "kitchenOrderItemId") === itemId
   )
   if (alreadyConsumed) return
 
@@ -249,15 +248,6 @@ export async function startKitchenItem(
   const inventoryRows = new Map(
     listRows(database, TABLES.inventoryItems).map((item) => [item.id, item])
   )
-  const balances = new Map<string, number>()
-  for (const movement of listRows(database, TABLES.inventoryStockMovements)) {
-    const inventoryItemId = cellStr(movement, "inventoryItemId")
-    balances.set(
-      inventoryItemId,
-      (balances.get(inventoryItemId) ?? 0) + cellNum(movement, "quantity")
-    )
-  }
-
   const requirements = new Map<
     string,
     { quantity: number; unit: string; name: string }
@@ -280,9 +270,45 @@ export async function startKitchenItem(
     })
   }
 
+  const lotsByInventory = new Map<string, ReturnType<typeof listRows>>()
+  for (const lot of listRows(database, TABLES.inventoryLots)) {
+    const inventoryItemId = cellStr(lot, "inventoryItemId")
+    const current = lotsByInventory.get(inventoryItemId) ?? []
+    current.push(lot)
+    lotsByInventory.set(inventoryItemId, current)
+  }
+  for (const lots of lotsByInventory.values()) {
+    lots.sort(
+      (a, b) =>
+        cellStr(a, "receivedAt").localeCompare(cellStr(b, "receivedAt")) ||
+        cellNum(a, "createdAt") - cellNum(b, "createdAt") ||
+        a.id.localeCompare(b.id)
+    )
+  }
+
+  const allocations: Array<{
+    inventoryItemId: string
+    lot: ReturnType<typeof listRows>[number]
+    quantity: number
+    unit: string
+  }> = []
   for (const [inventoryItemId, required] of requirements) {
-    const available = balances.get(inventoryItemId) ?? 0
-    if (available < required.quantity) {
+    let remaining = required.quantity
+    for (const lot of lotsByInventory.get(inventoryItemId) ?? []) {
+      const available = cellNum(lot, "remainingQuantity")
+      if (available <= 0) continue
+      const allocated = Math.min(available, remaining)
+      allocations.push({
+        inventoryItemId,
+        lot,
+        quantity: allocated,
+        unit: required.unit,
+      })
+      remaining -= allocated
+      if (remaining <= Number.EPSILON) break
+    }
+    if (remaining > Number.EPSILON) {
+      const available = required.quantity - remaining
       throw new Error(
         `Stok ${required.name} tidak cukup. Tersedia ${available} ${required.unit}, dibutuhkan ${required.quantity} ${required.unit}.`
       )
@@ -291,13 +317,15 @@ export async function startKitchenItem(
 
   const now = Date.now()
   transact(database, () => {
-    for (const [inventoryItemId, required] of requirements) {
+    for (const allocation of allocations) {
       addRow(database, TABLES.inventoryStockMovements, {
-        inventoryItemId,
-        inventoryLotId: "",
+        inventoryItemId: allocation.inventoryItemId,
+        inventoryLotId: allocation.lot.id,
+        lotCode: cellStr(allocation.lot, "lotCode"),
+        containerCode: cellStr(allocation.lot, "containerCode"),
         movementType: "CONSUMPTION",
-        quantity: -required.quantity,
-        unit: required.unit,
+        quantity: -allocation.quantity,
+        unit: allocation.unit,
         referenceType: "KITCHEN_ORDER_MENU",
         referenceId: `${orderId}:${menuProductId}`,
         orderId,
@@ -306,6 +334,11 @@ export async function startKitchenItem(
         reason: `Kitchen START · recipe v${cellNum(recipe, "version")}`,
         actorStaffId: "",
         createdAt: now,
+      })
+      updateRow(database, TABLES.inventoryLots, allocation.lot.id, {
+        remainingQuantity:
+          cellNum(allocation.lot, "remainingQuantity") - allocation.quantity,
+        updatedAt: now,
       })
     }
     updateRow(database, TABLES.kitchenOrderItems, itemId, {

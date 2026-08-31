@@ -111,6 +111,71 @@ describe("Kitchen View lokal", () => {
     )
   })
 
+  test("START membagi konsumsi ke lot berikutnya dan mengurangi saldo tiap lot", async () => {
+    const database = await fixture()
+    stockAllIngredients(database)
+    const strawberry = loadInventory(database).find(
+      (item) => item.name === "Strawberry"
+    )!
+    const firstLotId = receiveInventory(database, {
+      inventoryItemId: strawberry.id,
+      quantity: 0.1,
+      unit: "kg",
+      receivedDate: "2026-08-01",
+      lotCode: "LOT-A",
+      containerCode: "A.1",
+      actorStaffId: "staff-1",
+    })
+    const secondLotId = receiveInventory(database, {
+      inventoryItemId: strawberry.id,
+      quantity: 0.3,
+      unit: "kg",
+      receivedDate: "2026-08-02",
+      lotCode: "LOT-B",
+      containerCode: "A.2",
+      actorStaffId: "staff-1",
+    })
+    const [order] = await loadKitchenOrders(database)
+    const item = order!.items[0]!
+
+    await startKitchenItem(database, item.id)
+
+    const strawberryConsumption = listRows(
+      database,
+      TABLES.inventoryStockMovements
+    ).filter(
+      (movement) =>
+        movement.movementType === "CONSUMPTION" &&
+        movement.inventoryItemId === strawberry.id
+    )
+    expect(strawberryConsumption).toEqual([
+      expect.objectContaining({
+        inventoryLotId: firstLotId,
+        lotCode: "LOT-A",
+        containerCode: "A.1",
+        quantity: -0.1,
+      }),
+      expect.objectContaining({
+        inventoryLotId: secondLotId,
+        lotCode: "LOT-B",
+        containerCode: "A.2",
+        quantity: -0.3,
+      }),
+    ])
+    const lots = new Map(
+      listRows(database, TABLES.inventoryLots).map((lot) => [lot.id, lot])
+    )
+    expect(lots.get(firstLotId)?.remainingQuantity).toBe(0)
+    expect(lots.get(secondLotId)?.remainingQuantity).toBe(0)
+
+    await startKitchenItem(database, item.id)
+    expect(
+      listRows(database, TABLES.inventoryStockMovements).filter(
+        (movement) => movement.movementType === "CONSUMPTION"
+      )
+    ).toHaveLength(5)
+  })
+
   test("START menolak item yang tidak ada", async () => {
     const database = await fixture()
     await expect(startKitchenItem(database, "missing")).rejects.toThrow(

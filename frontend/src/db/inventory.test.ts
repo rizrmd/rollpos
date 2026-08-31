@@ -50,6 +50,8 @@ describe("inventory offline", () => {
     expect(listRows(database, TABLES.inventoryStockMovements)).toEqual([
       expect.objectContaining({
         inventoryLotId: lotId,
+        lotCode: "2026-09-01-001",
+        containerCode: "TEST-A.1",
         movementType: "RECEIVE",
         quantity: 2,
       }),

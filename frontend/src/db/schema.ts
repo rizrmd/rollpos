@@ -204,6 +204,8 @@ export const tablesSchema = {
   inventoryStockMovements: {
     inventoryItemId: text,
     inventoryLotId: text,
+    lotCode: text,
+    containerCode: text,
     movementType: text,
     quantity: amount,
     unit: text,

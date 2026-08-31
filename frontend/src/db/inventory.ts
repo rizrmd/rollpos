@@ -141,6 +141,8 @@ export function receiveInventory(
     addRow(database, TABLES.inventoryStockMovements, {
       inventoryItemId: input.inventoryItemId,
       inventoryLotId: lotId,
+      lotCode: input.lotCode?.trim() ?? "",
+      containerCode: input.containerCode?.trim() ?? "",
       movementType: "RECEIVE",
       quantity: input.quantity,
       unit: input.unit,
