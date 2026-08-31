@@ -2,6 +2,14 @@ import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { ChevronDown, ChevronRight, PackagePlus, RefreshCw } from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
+import {
+  loadInventory,
+  loadInventoryLots,
+  receiveInventory,
+  seedInventoryIfEmpty,
+} from "@/db/inventory"
+import type { Database } from "@/db/database"
+import { useDatabase } from "@/db/database-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,7 +24,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  apiRequest,
   stockStatus,
   type InventoryItem,
   type InventoryLot,
@@ -49,33 +56,40 @@ function dateLabel(value: string | null) {
 }
 
 export function StockScreen({ actor }: { actor: StaffRecord }) {
+  const database = useDatabase()
   const [items, setItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [receiving, setReceiving] = useState(false)
   const [selected, setSelected] = useState<InventoryItem | null>(null)
+  const store = database.store
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      setItems(await apiRequest<InventoryItem[]>("/api/inventory"))
+      await seedInventoryIfEmpty(database)
+      setItems(loadInventory(database))
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Inventory unavailable. Please check the connection and try again."
+          : "Inventory lokal tidak dapat dibuka. Silakan coba lagi."
       )
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [database])
 
   useEffect(() => {
+    const listenerId = store.addTablesListener(() => void load())
     const timer = window.setTimeout(() => void load(), 0)
-    return () => window.clearTimeout(timer)
-  }, [load])
+    return () => {
+      window.clearTimeout(timer)
+      store.delListener(listenerId)
+    }
+  }, [load, store])
 
   return (
     <div className="flex flex-col gap-4">
@@ -83,7 +97,7 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
         <div>
           <h1 className="text-xl font-semibold">Stok</h1>
           <p className="text-sm text-muted-foreground">
-            Saldo dihitung dari ledger pergerakan terpusat.
+            Saldo dihitung dari ledger lokal pada perangkat ini.
           </p>
         </div>
         <div className="flex gap-2">
@@ -110,9 +124,9 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
         <p className="text-sm text-muted-foreground">Loading inventory...</p>
       ) : error ? (
         <div className="border p-4">
-          <p className="font-medium">Inventory unavailable.</p>
+          <p className="font-medium">Inventory lokal tidak tersedia.</p>
           <p className="text-sm text-muted-foreground">
-            Please check the connection and try again.
+            Periksa penyimpanan browser lalu coba lagi.
           </p>
         </div>
       ) : (
@@ -168,7 +182,7 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
                     {status}
                   </Badge>
                 </button>
-                {open ? <LotDetail item={item} /> : null}
+                {open ? <LotDetail database={database} item={item} /> : null}
               </div>
             )
           })}
@@ -178,6 +192,7 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
         open={receiving}
         items={items}
         actor={actor}
+        database={database}
         onOpenChange={setReceiving}
         onReceived={async (name) => {
           setNotice(`${name} berhasil diterima dan saldo diperbarui.`)
@@ -188,26 +203,20 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
   )
 }
 
-function LotDetail({ item }: { item: InventoryItem }) {
-  const [lots, setLots] = useState<InventoryLot[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  useEffect(() => {
-    apiRequest<InventoryLot[]>(`/api/inventory/${item.id}/lots`)
-      .then(setLots)
-      .catch((cause) =>
-        setError(cause instanceof Error ? cause.message : String(cause))
-      )
-  }, [item.id])
+function LotDetail({
+  database,
+  item,
+}: {
+  database: Database
+  item: InventoryItem
+}) {
+  const lots: InventoryLot[] = loadInventoryLots(database, item.id)
   return (
     <div className="bg-muted/30 px-4 py-3 sm:pl-10">
       <p className="mb-2 text-sm font-medium">
         Lots · {quantity(item.balance)} {item.baseUnit}
       </p>
-      {error ? (
-        <p className="text-sm text-destructive">{error}</p>
-      ) : lots === null ? (
-        <p className="text-sm text-muted-foreground">Memuat lot...</p>
-      ) : lots.length === 0 ? (
+      {lots.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Belum ada lot penerimaan.
         </p>
@@ -237,12 +246,14 @@ function ReceiveDialog({
   open,
   items,
   actor,
+  database,
   onOpenChange,
   onReceived,
 }: {
   open: boolean
   items: InventoryItem[]
   actor: StaffRecord
+  database: Database
   onOpenChange: (open: boolean) => void
   onReceived: (name: string) => Promise<void>
 }) {
@@ -257,19 +268,16 @@ function ReceiveDialog({
     setError(null)
     const form = new FormData(event.currentTarget)
     try {
-      await apiRequest("/api/inventory/receive", {
-        method: "POST",
-        body: JSON.stringify({
-          inventoryItemId: item?.id,
-          quantity: Number(form.get("quantity")),
-          unit: item?.baseUnit,
-          receivedDate: form.get("receivedDate"),
-          expiryDate: form.get("expiryDate") || null,
-          lotCode: form.get("lotCode") || null,
-          containerCode: form.get("containerCode") || null,
-          notes: form.get("notes") || null,
-          actorStaffId: actor.id,
-        }),
+      receiveInventory(database, {
+        inventoryItemId: item?.id ?? "",
+        quantity: Number(form.get("quantity")),
+        unit: item?.baseUnit ?? "",
+        receivedDate: String(form.get("receivedDate") ?? ""),
+        expiryDate: String(form.get("expiryDate") ?? "") || null,
+        lotCode: String(form.get("lotCode") ?? "") || null,
+        containerCode: String(form.get("containerCode") ?? "") || null,
+        notes: String(form.get("notes") ?? "") || null,
+        actorStaffId: actor.id,
       })
       onOpenChange(false)
       await onReceived(item?.name ?? "Stok")

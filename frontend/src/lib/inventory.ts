@@ -30,16 +30,3 @@ export function stockStatus(
   if (item.balance <= item.minimumStock) return "LOW"
   return "OK"
 }
-
-export async function apiRequest<T>(
-  path: string,
-  init?: RequestInit
-): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  })
-  const data = (await response.json()) as T & { error?: string }
-  if (!response.ok) throw new Error(data.error || "Permintaan inventory gagal.")
-  return data
-}

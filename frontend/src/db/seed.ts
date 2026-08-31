@@ -8,6 +8,7 @@ import {
   TABLES,
 } from "@/db/database"
 import { seedCatalogIfEmpty } from "@/db/catalog"
+import { seedInventoryIfEmpty } from "@/db/inventory"
 import { hashPin, newPinSalt, verifyPin } from "@/lib/pin"
 import { DEFAULT_OUTLET_ID, type StaffRole } from "@/lib/types"
 
@@ -26,8 +27,20 @@ export const SEED_DEFAULTS = {
   weekendFairnessEnabled: true,
   graceLateMinutes: 10,
   slots: [
-    { name: "Pagi", startMinutes: 7 * 60, endMinutes: 15 * 60, sortOrder: 1, minStaffCount: 2 },
-    { name: "Sore", startMinutes: 15 * 60, endMinutes: 22 * 60, sortOrder: 2, minStaffCount: 2 },
+    {
+      name: "Pagi",
+      startMinutes: 7 * 60,
+      endMinutes: 15 * 60,
+      sortOrder: 1,
+      minStaffCount: 2,
+    },
+    {
+      name: "Sore",
+      startMinutes: 15 * 60,
+      endMinutes: 22 * 60,
+      sortOrder: 2,
+      minStaffCount: 2,
+    },
   ],
   staff: [
     {
@@ -83,7 +96,12 @@ function matchesSeedPerson(row: StaffRow, person: SeedPerson): boolean {
   const nickname = cellStr(row, "nickname").trim().toLowerCase()
   const wantName = person.name.trim().toLowerCase()
   const wantNick = person.nickname.trim().toLowerCase()
-  return name === wantName || name === wantNick || nickname === wantName || nickname === wantNick
+  return (
+    name === wantName ||
+    name === wantNick ||
+    nickname === wantName ||
+    nickname === wantNick
+  )
 }
 
 async function hashSeedPeople(people: readonly SeedPerson[]) {
@@ -128,6 +146,7 @@ function insertSeedPerson(
 /** Seed sekali per store. Tes yang mensimulasikan reload memakai `applyStaffingSeed`. */
 export async function applyStaffingSeed(database: Database): Promise<void> {
   await seedCatalogIfEmpty(database)
+  await seedInventoryIfEmpty(database)
   await database.ready
 
   const existing = listRows(database, TABLES.staffMembers)
@@ -201,17 +220,26 @@ async function backfillMissingSeedStaff(
 }
 
 function seedPinForRow(row: StaffRow): string {
-  const person = SEED_DEFAULTS.staff.find((candidate) => matchesSeedPerson(row, candidate))
+  const person = SEED_DEFAULTS.staff.find((candidate) =>
+    matchesSeedPerson(row, candidate)
+  )
   return person?.pin ?? "000000"
 }
 
-async function resetStaffPinsToSeed(database: Database, existing: StaffRow[]): Promise<void> {
+async function resetStaffPinsToSeed(
+  database: Database,
+  existing: StaffRow[]
+): Promise<void> {
   const now = Date.now()
   const updates: Array<{ id: string; pinSalt: string; pinHash: string }> = []
 
   for (const row of existing) {
     const pin = seedPinForRow(row)
-    const already = await verifyPin(pin, cellStr(row, "pinSalt"), cellStr(row, "pinHash"))
+    const already = await verifyPin(
+      pin,
+      cellStr(row, "pinSalt"),
+      cellStr(row, "pinHash")
+    )
     if (already) continue
     const pinSalt = newPinSalt()
     updates.push({
