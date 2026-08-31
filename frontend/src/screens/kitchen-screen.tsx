@@ -79,7 +79,9 @@ export function KitchenScreen() {
     setError(null)
     try {
       await startKitchenItem(database, selectedItem.id)
-      setNotice(`${selectedItem.menuName} dimulai. Inventory tidak berubah.`)
+      setNotice(
+        `${selectedItem.menuName} dimulai. Inventory recipe sudah dikonsumsi.`
+      )
       await refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Menu gagal dimulai.")
@@ -262,8 +264,7 @@ export function KitchenScreen() {
                         ))}
                       </ul>
                       <p className="mt-4 text-xs text-muted-foreground">
-                        START hanya menandai pengerjaan menu dan belum
-                        mengurangi inventory.
+                        START mengonsumsi inventory sesuai total quantity order.
                       </p>
                       <Button
                         type="button"

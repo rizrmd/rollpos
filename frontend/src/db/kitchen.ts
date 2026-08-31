@@ -209,10 +209,131 @@ export async function startKitchenItem(
     throw new Error("Item order dapur tidak ditemukan.")
   }
   if (cellStr(row, "status") === "started") return
+
+  const orderId = cellStr(row, "orderId")
+  const menuProductId = cellStr(row, "menuProductId")
+  const quantity = cellNum(row, "quantity")
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new Error("Quantity order harus lebih dari 0.")
+  }
+
+  const alreadyConsumed = listRows(
+    database,
+    TABLES.inventoryStockMovements
+  ).some(
+    (movement) =>
+      cellStr(movement, "movementType") === "CONSUMPTION" &&
+      cellStr(movement, "orderId") === orderId &&
+      cellStr(movement, "menuProductId") === menuProductId
+  )
+  if (alreadyConsumed) return
+
+  const activeRecipes = listRows(database, TABLES.recipes).filter(
+    (recipe) =>
+      cellStr(recipe, "menuProductId") === menuProductId &&
+      Boolean(recipe.isActive)
+  )
+  if (activeRecipes.length === 0) {
+    throw new Error("Recipe / SOP aktif belum tersedia.")
+  }
+  const recipe = activeRecipes.sort(
+    (a, b) => cellNum(b, "version") - cellNum(a, "version")
+  )[0]!
+  const recipeLines = listRows(database, TABLES.recipeIngredients).filter(
+    (line) => cellStr(line, "recipeId") === recipe.id
+  )
+  if (recipeLines.length === 0) {
+    throw new Error("Recipe / SOP aktif tidak memiliki ingredient.")
+  }
+
+  const inventoryRows = new Map(
+    listRows(database, TABLES.inventoryItems).map((item) => [item.id, item])
+  )
+  const balances = new Map<string, number>()
+  for (const movement of listRows(database, TABLES.inventoryStockMovements)) {
+    const inventoryItemId = cellStr(movement, "inventoryItemId")
+    balances.set(
+      inventoryItemId,
+      (balances.get(inventoryItemId) ?? 0) + cellNum(movement, "quantity")
+    )
+  }
+
+  const requirements = new Map<
+    string,
+    { quantity: number; unit: string; name: string }
+  >()
+  for (const line of recipeLines) {
+    const inventoryItemId = cellStr(line, "inventoryItemId")
+    const inventory = inventoryRows.get(inventoryItemId)
+    if (!inventory) throw new Error("Ingredient inventory tidak ditemukan.")
+    const baseUnit = cellStr(inventory, "baseUnit")
+    const required = convertQuantity(
+      cellNum(line, "quantity") * quantity,
+      cellStr(line, "unit"),
+      baseUnit
+    )
+    const current = requirements.get(inventoryItemId)
+    requirements.set(inventoryItemId, {
+      quantity: (current?.quantity ?? 0) + required,
+      unit: baseUnit,
+      name: cellStr(inventory, "name"),
+    })
+  }
+
+  for (const [inventoryItemId, required] of requirements) {
+    const available = balances.get(inventoryItemId) ?? 0
+    if (available < required.quantity) {
+      throw new Error(
+        `Stok ${required.name} tidak cukup. Tersedia ${available} ${required.unit}, dibutuhkan ${required.quantity} ${required.unit}.`
+      )
+    }
+  }
+
   const now = Date.now()
-  updateRow(database, TABLES.kitchenOrderItems, itemId, {
-    status: "started",
-    startedAt: now,
-    updatedAt: now,
+  transact(database, () => {
+    for (const [inventoryItemId, required] of requirements) {
+      addRow(database, TABLES.inventoryStockMovements, {
+        inventoryItemId,
+        inventoryLotId: "",
+        movementType: "CONSUMPTION",
+        quantity: -required.quantity,
+        unit: required.unit,
+        referenceType: "KITCHEN_ORDER_MENU",
+        referenceId: `${orderId}:${menuProductId}`,
+        orderId,
+        menuProductId,
+        kitchenOrderItemId: itemId,
+        reason: `Kitchen START · recipe v${cellNum(recipe, "version")}`,
+        actorStaffId: "",
+        createdAt: now,
+      })
+    }
+    updateRow(database, TABLES.kitchenOrderItems, itemId, {
+      status: "started",
+      startedAt: now,
+      updatedAt: now,
+    })
   })
+}
+
+function convertQuantity(quantity: number, from: string, to: string): number {
+  if (from === to) return quantity
+  const factors: Record<string, number> = {
+    g: 1,
+    kg: 1000,
+    ml: 1,
+    l: 1000,
+    pcs: 1,
+  }
+  const groups: Record<string, string> = {
+    g: "mass",
+    kg: "mass",
+    ml: "volume",
+    l: "volume",
+    pcs: "count",
+  }
+  if (!factors[from] || !factors[to] || groups[from] !== groups[to]) {
+    throw new Error(`Unit recipe ${from} tidak kompatibel dengan stok ${to}.`)
+  }
+  return (quantity * factors[from]) / factors[to]
 }

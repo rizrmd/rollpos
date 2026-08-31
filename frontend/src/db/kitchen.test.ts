@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test"
 
 import { seedCatalogIfEmpty } from "./catalog"
 import { createRollposDatabase, listRows, TABLES } from "./database"
-import { seedInventoryIfEmpty } from "./inventory"
+import {
+  loadInventory,
+  receiveInventory,
+  seedInventoryIfEmpty,
+} from "./inventory"
 import {
   loadKitchenOrders,
   seedKitchenDemoIfEmpty,
@@ -15,6 +19,18 @@ async function fixture() {
   await seedInventoryIfEmpty(database)
   await seedKitchenDemoIfEmpty(database)
   return database
+}
+
+function stockAllIngredients(database: Awaited<ReturnType<typeof fixture>>) {
+  for (const item of loadInventory(database)) {
+    receiveInventory(database, {
+      inventoryItemId: item.id,
+      quantity: item.baseUnit === "kg" ? 2 : 2_000,
+      unit: item.baseUnit,
+      receivedDate: "2026-08-31",
+      actorStaffId: "staff-1",
+    })
+  }
 }
 
 describe("Kitchen View lokal", () => {
@@ -37,20 +53,61 @@ describe("Kitchen View lokal", () => {
     expect(orders[0]?.items[0]?.recipe?.ingredients).toHaveLength(4)
   })
 
-  test("START hanya mengubah status item dan tidak menulis stock movement", async () => {
+  test("START mengonsumsi recipe dikali quantity dan menyimpan referensi order/menu", async () => {
     const database = await fixture()
+    stockAllIngredients(database)
     const [order] = await loadKitchenOrders(database)
     const item = order?.items[0]
     expect(item).toBeDefined()
-    const movementsBefore = listRows(database, TABLES.inventoryStockMovements)
+    const before = new Map(
+      loadInventory(database).map((item) => [item.name, item.balance])
+    )
 
     await startKitchenItem(database, item!.id)
 
     const [updated] = await loadKitchenOrders(database)
     expect(updated?.items[0]?.status).toBe("started")
     expect(updated?.items[0]?.startedAt).toBeGreaterThan(0)
-    expect(listRows(database, TABLES.inventoryStockMovements)).toEqual(
-      movementsBefore
+    expect(
+      loadInventory(database).find((item) => item.name === "Strawberry")
+        ?.balance
+    ).toBe((before.get("Strawberry") ?? 0) - 0.4)
+    expect(
+      loadInventory(database).find((item) => item.name === "Gula Cair")?.balance
+    ).toBe((before.get("Gula Cair") ?? 0) - 40)
+    const consumption = listRows(
+      database,
+      TABLES.inventoryStockMovements
+    ).filter((movement) => movement.movementType === "CONSUMPTION")
+    expect(consumption).toHaveLength(4)
+    expect(consumption[0]).toMatchObject({
+      orderId: order!.id,
+      menuProductId: item!.menuProductId,
+      kitchenOrderItemId: item!.id,
+      referenceType: "KITCHEN_ORDER_MENU",
+    })
+
+    await startKitchenItem(database, item!.id)
+    expect(
+      listRows(database, TABLES.inventoryStockMovements).filter(
+        (movement) => movement.movementType === "CONSUMPTION"
+      )
+    ).toHaveLength(4)
+  })
+
+  test("START ditolak secara atomik ketika satu ingredient tidak cukup", async () => {
+    const database = await fixture()
+    const [order] = await loadKitchenOrders(database)
+    const item = order!.items[0]!
+    const before = listRows(database, TABLES.inventoryStockMovements)
+
+    await expect(startKitchenItem(database, item.id)).rejects.toThrow(
+      "tidak cukup"
+    )
+
+    expect(listRows(database, TABLES.inventoryStockMovements)).toEqual(before)
+    expect((await loadKitchenOrders(database))[0]?.items[0]?.status).toBe(
+      "queued"
     )
   })
 
