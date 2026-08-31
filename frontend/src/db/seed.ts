@@ -9,6 +9,7 @@ import {
 } from "@/db/database"
 import { seedCatalogIfEmpty } from "@/db/catalog"
 import { seedInventoryIfEmpty } from "@/db/inventory"
+import { seedKitchenDemoIfEmpty } from "@/db/kitchen"
 import { hashPin, newPinSalt, verifyPin } from "@/lib/pin"
 import { DEFAULT_OUTLET_ID, type StaffRole } from "@/lib/types"
 
@@ -147,6 +148,7 @@ function insertSeedPerson(
 export async function applyStaffingSeed(database: Database): Promise<void> {
   await seedCatalogIfEmpty(database)
   await seedInventoryIfEmpty(database)
+  await seedKitchenDemoIfEmpty(database)
   await database.ready
 
   const existing = listRows(database, TABLES.staffMembers)

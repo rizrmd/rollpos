@@ -25,6 +25,8 @@ export const TABLES = {
   inventoryStockMovements: "inventoryStockMovements",
   recipes: "recipes",
   recipeIngredients: "recipeIngredients",
+  kitchenOrders: "kitchenOrders",
+  kitchenOrderItems: "kitchenOrderItems",
 } as const
 
 export type TableName = (typeof TABLES)[keyof typeof TABLES]
@@ -223,6 +225,24 @@ export const tablesSchema = {
     inventoryItemId: text,
     quantity: amount,
     unit: text,
+    sortOrder: amount,
+    createdAt: amount,
+    updatedAt: amount,
+  },
+  kitchenOrders: {
+    orderNumber: text,
+    customerName: text,
+    status: { type: "string", default: "queued" },
+    placedAt: amount,
+    createdAt: amount,
+    updatedAt: amount,
+  },
+  kitchenOrderItems: {
+    orderId: text,
+    menuProductId: text,
+    quantity: amount,
+    status: { type: "string", default: "queued" },
+    startedAt: amount,
     sortOrder: amount,
     createdAt: amount,
     updatedAt: amount,

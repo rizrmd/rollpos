@@ -24,7 +24,7 @@ const visibleManageIds = [
   "settings",
 ] as const
 const manageIds = ["prefs", ...visibleManageIds] as const
-const publicIds = ["kasir", "orders", "clock", "pin"] as const
+const publicIds = ["kasir", "orders", "kitchen", "clock", "pin"] as const
 
 describe("visibleNavGroups", () => {
   test("label grup memakai bahasa kasir, bukan Inti/Operasi/Tim", () => {
@@ -137,6 +137,7 @@ describe("path per screen", () => {
     expect(PAGE_PATH.kasir).toBe("/kasir")
     expect(PAGE_PATH.clock).toBe("/absensi")
     expect(PAGE_PATH.orders).toBe("/pesanan")
+    expect(PAGE_PATH.kitchen).toBe("/dapur")
     expect(PAGE_PATH.products).toBe("/katalog")
     expect(PAGE_PATH.stock).toBe("/stok")
     expect(PAGE_PATH.prefs).toBe("/shift")

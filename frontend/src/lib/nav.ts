@@ -7,6 +7,7 @@ import {
   KeyRound,
   Receipt,
   BookOpenText,
+  ChefHat,
   UtensilsCrossed,
   Settings,
   ShoppingCart,
@@ -22,6 +23,7 @@ export type AppPage =
   | "kasir"
   | "clock"
   | "orders"
+  | "kitchen"
   | "products"
   | "stock"
   | "recipes"
@@ -109,6 +111,15 @@ export const NAV_GROUPS: NavGroup[] = [
           "Ulangi atau batalkan transaksi",
           "Tiket dapur terpisah dari struk kasir",
         ],
+      },
+      {
+        id: "kitchen",
+        label: "Kitchen View",
+        hint: "Order, Recipe / SOP, dan mulai pengerjaan",
+        icon: ChefHat,
+        ready: true,
+        access: "public",
+        plan: [],
       },
       {
         id: "products",
@@ -253,6 +264,7 @@ export const PAGE_PATH: Record<AppPage, string> = {
   kasir: "/kasir",
   clock: "/absensi",
   orders: "/pesanan",
+  kitchen: "/dapur",
   products: "/katalog",
   stock: "/stok",
   recipes: "/recipe",
@@ -273,6 +285,8 @@ const PATH_ALIAS: Record<string, AppPage> = {
   masuk: "clock",
   orders: "orders",
   pesanan: "orders",
+  kitchen: "kitchen",
+  dapur: "kitchen",
   products: "products",
   katalog: "products",
   produk: "products",
