@@ -17,13 +17,6 @@ import {
 import { LiveNotice } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { loadProducts } from "@/db/catalog"
@@ -52,10 +45,11 @@ export function RecipesScreen() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [menus, setMenus] = useState<ProductRecord[]>([])
   const [inventory, setInventory] = useState<InventoryItem[]>([])
-  const [editing, setEditing] = useState<Recipe | "new" | null>(null)
+  const [locationKey, setLocationKey] = useState(
+    () => `${window.location.pathname}${window.location.search}`
+  )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const store = database.store
   const pageCount = Math.max(1, Math.ceil(recipes.length / RECIPE_PAGE_SIZE))
@@ -96,18 +90,60 @@ export function RecipesScreen() {
     }
   }, [refresh, store])
 
+  useEffect(() => {
+    const onPop = () =>
+      setLocationKey(`${window.location.pathname}${window.location.search}`)
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [])
+
+  function openEditor(recipe?: Recipe) {
+    const path = recipe
+      ? `/recipe/edit?id=${encodeURIComponent(recipe.id)}`
+      : "/recipe/baru"
+    window.history.pushState(null, "", path)
+    setLocationKey(path)
+  }
+
+  function closeEditor() {
+    window.history.pushState(null, "", "/recipe")
+    setLocationKey("/recipe")
+  }
+
+  const editorId = new URLSearchParams(window.location.search).get("id")
+  const editing = recipes.find((recipe) => recipe.id === editorId)
+  const editorOpen =
+    locationKey.startsWith("/recipe/baru") ||
+    locationKey.startsWith("/recipe/edit")
+
+  if (editorOpen) {
+    return (
+      <RecipeEditorPage
+        key={editing?.id ?? "new"}
+        recipe={editing}
+        recipes={recipes}
+        menus={menus}
+        inventory={inventory}
+        onCancel={closeEditor}
+        onSave={async (input) => {
+          await saveRecipe(database, input, editing?.id)
+          closeEditor()
+        }}
+      />
+    )
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-end">
         <Button
           size="touch"
-          onClick={() => setEditing("new")}
+          onClick={() => openEditor()}
           disabled={!menus.length || !inventory.length}
         >
           <Plus /> Tambah recipe
         </Button>
       </div>
-      <LiveNotice message={notice} />
       <LiveNotice message={error} tone="error" />
       {loading ? (
         <p className="text-sm text-muted-foreground">Membuka recipe lokal…</p>
@@ -144,7 +180,7 @@ export function RecipesScreen() {
                 <Button
                   variant="outline"
                   size="icon-sm"
-                  onClick={() => setEditing(recipe)}
+                  onClick={() => openEditor(recipe)}
                   aria-label={`Edit ${recipe.menuName}`}
                 >
                   <Pencil />
@@ -159,48 +195,23 @@ export function RecipesScreen() {
           />
         </>
       )}
-      <RecipeDialog
-        key={editing === "new" ? "new" : (editing?.id ?? "closed")}
-        open={editing !== null}
-        recipe={editing === "new" ? undefined : (editing ?? undefined)}
-        recipes={recipes}
-        menus={menus}
-        inventory={inventory}
-        onOpenChange={(open) => {
-          if (!open) setEditing(null)
-        }}
-        onSave={async (input) => {
-          await saveRecipe(
-            database,
-            input,
-            editing && editing !== "new" ? editing.id : undefined
-          )
-          setNotice(
-            `Recipe ${menus.find((menu) => menu.id === input.menuProductId)?.name ?? "menu"} tersimpan.`
-          )
-          setEditing(null)
-          await refresh()
-        }}
-      />
     </div>
   )
 }
 
-function RecipeDialog({
-  open,
+function RecipeEditorPage({
   recipe,
   recipes,
   menus,
   inventory,
-  onOpenChange,
+  onCancel,
   onSave,
 }: {
-  open: boolean
   recipe?: Recipe
   recipes: Recipe[]
   menus: ProductRecord[]
   inventory: InventoryItem[]
-  onOpenChange: (open: boolean) => void
+  onCancel: () => void
   onSave: (input: Parameters<typeof saveRecipe>[1]) => Promise<void>
 }) {
   const availableMenus = menus.filter(
@@ -280,177 +291,167 @@ function RecipeDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle className="sr-only">
-              {recipe ? "Edit recipe" : "Tambah recipe"}
-            </DialogTitle>
-          </DialogHeader>
-          <LiveNotice message={error} tone="error" />
-          <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
-            <div className="grid gap-2">
-              <Label htmlFor="recipe-menu">Menu</Label>
-              <select
-                id="recipe-menu"
-                className={selectClass}
-                value={menuProductId}
-                onChange={(event) => setMenuProductId(event.target.value)}
-                required
-              >
-                {availableMenus.map((menu) => (
-                  <option key={menu.id} value={menu.id}>
-                    {menu.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="recipe-version">Versi</Label>
-              <Input
-                id="recipe-version"
-                type="number"
-                min="1"
-                step="1"
-                value={version}
-                onChange={(event) => setVersion(event.target.value)}
-                required
-              />
-            </div>
-          </div>
-          <label className="flex min-h-11 items-center gap-3 border px-3">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(event) => setIsActive(event.target.checked)}
-            />
-            <span className="text-sm font-medium">Recipe aktif</span>
-          </label>
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between gap-2">
-              <Label>Ingredient inventory</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const next =
-                    inventory.find(
-                      (item) =>
-                        !lines.some((line) => line.inventoryItemId === item.id)
-                    ) ?? inventory[0]
-                  if (next)
-                    setLines((current) => {
-                      const updated = [
-                        ...current,
-                        {
-                          inventoryItemId: next.id,
-                          quantity: "",
-                          unit: next.baseUnit as RecipeUnit,
-                        },
-                      ]
-                      setIngredientPage(
-                        Math.ceil(updated.length / INGREDIENT_PAGE_SIZE)
-                      )
-                      return updated
-                    })
-                }}
-              >
-                <Plus /> Ingredient
-              </Button>
-            </div>
-            {visibleLines.map(({ line, index }) => (
-              <div
-                key={index}
-                className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border p-2"
-              >
-                <select
-                  aria-label={`Ingredient ${index + 1}`}
-                  className={selectClass}
-                  value={line.inventoryItemId}
-                  onChange={(event) => {
-                    const item = inventoryById.get(event.target.value)
-                    updateLine(index, {
-                      inventoryItemId: event.target.value,
-                      unit: (item?.baseUnit ?? "g") as RecipeUnit,
-                    })
-                  }}
-                >
-                  {inventory.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  disabled={lines.length === 1}
-                  onClick={() =>
-                    setLines((current) =>
-                      current.filter((_, position) => position !== index)
-                    )
-                  }
-                  aria-label={`Hapus ingredient ${index + 1}`}
-                >
-                  <Trash2 />
-                </Button>
-                <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-2">
-                  <Input
-                    aria-label={`Quantity ${index + 1}`}
-                    type="number"
-                    min="0.001"
-                    step="any"
-                    placeholder="Qty"
-                    value={line.quantity}
-                    onChange={(event) =>
-                      updateLine(index, { quantity: event.target.value })
-                    }
-                    required
-                  />
-                  <select
-                    aria-label={`Unit ${index + 1}`}
-                    className={selectClass}
-                    value={line.unit}
-                    onChange={(event) =>
-                      updateLine(index, {
-                        unit: event.target.value as RecipeUnit,
-                      })
-                    }
-                  >
-                    {RECIPE_UNITS.map((unit) => (
-                      <option key={unit}>{unit}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+    <form
+      onSubmit={submit}
+      className="mx-auto flex w-full max-w-3xl flex-col gap-4"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          <ChevronLeft /> Kembali
+        </Button>
+        <Button
+          type="submit"
+          disabled={busy || !menuProductId || lines.length === 0}
+        >
+          {busy ? "Menyimpan…" : "Simpan"}
+        </Button>
+      </div>
+      <LiveNotice message={error} tone="error" />
+      <div className="grid gap-4 sm:grid-cols-[1fr_8rem]">
+        <div className="grid gap-2">
+          <Label htmlFor="recipe-menu">Menu</Label>
+          <select
+            id="recipe-menu"
+            className={selectClass}
+            value={menuProductId}
+            onChange={(event) => setMenuProductId(event.target.value)}
+            required
+          >
+            {availableMenus.map((menu) => (
+              <option key={menu.id} value={menu.id}>
+                {menu.name}
+              </option>
             ))}
-            <Pagination
-              page={currentIngredientPage}
-              pageCount={ingredientPageCount}
-              onPage={setIngredientPage}
-            />
-          </div>
-          <DialogFooter>
+          </select>
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="recipe-version">Versi</Label>
+          <Input
+            id="recipe-version"
+            type="number"
+            min="1"
+            step="1"
+            value={version}
+            onChange={(event) => setVersion(event.target.value)}
+            required
+          />
+        </div>
+      </div>
+      <label className="flex min-h-11 items-center gap-3 border px-3">
+        <input
+          type="checkbox"
+          checked={isActive}
+          onChange={(event) => setIsActive(event.target.checked)}
+        />
+        <span className="text-sm font-medium">Recipe aktif</span>
+      </label>
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <Label>Ingredient inventory</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const next =
+                inventory.find(
+                  (item) =>
+                    !lines.some((line) => line.inventoryItemId === item.id)
+                ) ?? inventory[0]
+              if (next)
+                setLines((current) => {
+                  const updated = [
+                    ...current,
+                    {
+                      inventoryItemId: next.id,
+                      quantity: "",
+                      unit: next.baseUnit as RecipeUnit,
+                    },
+                  ]
+                  setIngredientPage(
+                    Math.ceil(updated.length / INGREDIENT_PAGE_SIZE)
+                  )
+                  return updated
+                })
+            }}
+          >
+            <Plus /> Ingredient
+          </Button>
+        </div>
+        {visibleLines.map(({ line, index }) => (
+          <div
+            key={index}
+            className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border p-2"
+          >
+            <select
+              aria-label={`Ingredient ${index + 1}`}
+              className={selectClass}
+              value={line.inventoryItemId}
+              onChange={(event) => {
+                const item = inventoryById.get(event.target.value)
+                updateLine(index, {
+                  inventoryItemId: event.target.value,
+                  unit: (item?.baseUnit ?? "g") as RecipeUnit,
+                })
+              }}
+            >
+              {inventory.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              size="icon"
+              disabled={lines.length === 1}
+              onClick={() =>
+                setLines((current) =>
+                  current.filter((_, position) => position !== index)
+                )
+              }
+              aria-label={`Hapus ingredient ${index + 1}`}
             >
-              Batal
+              <Trash2 />
             </Button>
-            <Button
-              type="submit"
-              disabled={busy || !menuProductId || lines.length === 0}
-            >
-              {busy ? "Menyimpan…" : "Simpan recipe"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <div className="grid grid-cols-[minmax(0,1fr)_6rem] gap-2">
+              <Input
+                aria-label={`Quantity ${index + 1}`}
+                type="number"
+                min="0.001"
+                step="any"
+                placeholder="Qty"
+                value={line.quantity}
+                onChange={(event) =>
+                  updateLine(index, { quantity: event.target.value })
+                }
+                required
+              />
+              <select
+                aria-label={`Unit ${index + 1}`}
+                className={selectClass}
+                value={line.unit}
+                onChange={(event) =>
+                  updateLine(index, {
+                    unit: event.target.value as RecipeUnit,
+                  })
+                }
+              >
+                {RECIPE_UNITS.map((unit) => (
+                  <option key={unit}>{unit}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        ))}
+        <Pagination
+          page={currentIngredientPage}
+          pageCount={ingredientPageCount}
+          onPage={setIngredientPage}
+        />
+      </div>
+    </form>
   )
 }
 

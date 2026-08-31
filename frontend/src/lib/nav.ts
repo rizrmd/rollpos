@@ -326,6 +326,9 @@ export function normalizePath(pathname: string): string {
 
 export function pageFromPath(pathname: string): AppPage | null {
   const normalized = normalizePath(pathname)
+  if (normalized === "/recipe/baru" || normalized === "/recipe/edit") {
+    return "recipes"
+  }
   const slug = normalized === "/" ? "" : normalized.slice(1)
   return PATH_ALIAS[slug] ?? null
 }

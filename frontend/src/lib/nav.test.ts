@@ -167,6 +167,11 @@ describe("path per screen", () => {
     expect(pageFromPath("/orang")).toBe("staff")
   })
 
+  test("route tambah dan edit recipe tetap berada di Recipe/SOP", () => {
+    expect(pageFromPath("/recipe/baru")).toBe("recipes")
+    expect(pageFromPath("/recipe/edit?id=recipe-1")).toBe("recipes")
+  })
+
   test("judul tab browser memakai label screen", () => {
     expect(pageTitle("menu")).toBe("Roll n Brew")
     expect(pageTitle("clock")).toBe("Absensi · Roll n Brew")
