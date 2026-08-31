@@ -5,11 +5,28 @@ import { LiveNotice } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { useDatabase } from "@/db/database-provider"
+import {
   loadKitchenOrders,
   startKitchenItem,
   type KitchenOrder,
+  type KitchenOrderItem,
 } from "@/db/kitchen"
-import { useDatabase } from "@/db/database-provider"
 import { cn } from "@/lib/utils"
 
 const number = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 3 })
@@ -26,7 +43,7 @@ export function KitchenScreen() {
   const database = useDatabase()
   const [orders, setOrders] = useState<KitchenOrder[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState("")
-  const [selectedItemId, setSelectedItemId] = useState("")
+  const [openItemId, setOpenItemId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -67,21 +84,21 @@ export function KitchenScreen() {
       orders.find((order) => order.id === selectedOrderId) ?? orders[0] ?? null,
     [orders, selectedOrderId]
   )
+  const openItem = useMemo(
+    () =>
+      orders
+        .flatMap((order) => order.items)
+        .find((item) => item.id === openItemId) ?? null,
+    [openItemId, orders]
+  )
 
-  const selectedItem =
-    selectedOrder?.items.find((item) => item.id === selectedItemId) ??
-    selectedOrder?.items[0] ??
-    null
-
-  async function start() {
-    if (!selectedItem || selectedItem.status === "started") return
+  async function start(item: KitchenOrderItem) {
+    if (item.status === "started") return
     setBusy(true)
     setError(null)
     try {
-      await startKitchenItem(database, selectedItem.id)
-      setNotice(
-        `${selectedItem.menuName} dimulai. Inventory recipe sudah dikonsumsi.`
-      )
+      await startKitchenItem(database, item.id)
+      setNotice(`${item.menuName} dimulai. Inventory recipe sudah dikonsumsi.`)
       await refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Menu gagal dimulai.")
@@ -91,39 +108,49 @@ export function KitchenScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex h-[calc(100svh-2rem)] min-h-[34rem] flex-col gap-3">
+      <header className="flex shrink-0 items-start justify-between gap-4 border-b pb-3">
         <div>
           <div className="flex items-center gap-2">
-            <ChefHat className="size-6" />
+            <ChefHat className="size-5" aria-hidden="true" />
             <h1 className="text-xl font-semibold">Kitchen View</h1>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Pilih order, buka menu, cek Recipe / SOP aktif, lalu START.
+            Pilih order dan buka menu untuk melihat Recipe / SOP aktif.
           </p>
         </div>
-        <Badge variant="outline">Order dummy · tersimpan lokal</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">Data lokal</Badge>
+          <Badge variant="secondary">{orders.length} order</Badge>
+        </div>
       </header>
 
-      <LiveNotice message={notice} />
-      <LiveNotice message={error} tone="error" />
+      <div className="shrink-0">
+        <LiveNotice message={notice} />
+        <LiveNotice message={error} tone="error" />
+      </div>
 
       {loading ? (
         <p className="text-sm text-muted-foreground">
           Membuka antrian dapur lokal…
         </p>
       ) : orders.length === 0 ? (
-        <p className="border border-dashed p-8 text-center text-sm text-muted-foreground">
+        <div className="grid flex-1 place-items-center border border-dashed text-sm text-muted-foreground">
           Belum ada order dapur.
-        </p>
+        </div>
       ) : (
-        <div className="grid min-h-[32rem] gap-4 lg:grid-cols-[17rem_1fr]">
-          <aside className="border bg-card p-3" aria-label="Antrian order">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h2 className="font-semibold">Antrian order</h2>
-              <Badge variant="secondary">{orders.length}</Badge>
+        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[16rem_minmax(0,1fr)]">
+          <section
+            className="min-h-0 overflow-auto border bg-card"
+            aria-label="Antrian order"
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-3 py-2">
+              <h2 className="text-sm font-semibold">Antrian order</h2>
+              <span className="text-xs text-muted-foreground">
+                Terlama dulu
+              </span>
             </div>
-            <ul className="grid gap-2">
+            <ul className="divide-y">
               {orders.map((order) => {
                 const started = order.items.filter(
                   (item) => item.status === "started"
@@ -133,26 +160,23 @@ export function KitchenScreen() {
                     <button
                       type="button"
                       className={cn(
-                        "w-full border p-3 text-left transition-colors hover:bg-muted",
+                        "w-full border-l-2 border-l-transparent px-3 py-3 text-left hover:bg-muted/60",
                         order.id === selectedOrder?.id &&
-                          "border-primary bg-primary/5"
+                          "border-l-primary bg-muted"
                       )}
-                      onClick={() => {
-                        setSelectedOrderId(order.id)
-                        setSelectedItemId(order.items[0]?.id ?? "")
-                      }}
+                      onClick={() => setSelectedOrderId(order.id)}
                     >
                       <span className="flex items-center justify-between gap-2">
-                        <strong>{order.orderNumber}</strong>
+                        <strong className="text-sm">{order.orderNumber}</strong>
                         <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Clock3 className="size-3.5" />{" "}
+                          <Clock3 className="size-3" />
                           {timeLabel(order.placedAt)}
                         </span>
                       </span>
-                      <span className="mt-1 block text-sm">
+                      <span className="mt-0.5 block truncate text-sm">
                         {order.customerName}
                       </span>
-                      <span className="mt-2 block text-xs text-muted-foreground">
+                      <span className="mt-1.5 block text-xs text-muted-foreground">
                         {started}/{order.items.length} menu dimulai
                       </span>
                     </button>
@@ -160,149 +184,195 @@ export function KitchenScreen() {
                 )
               })}
             </ul>
-          </aside>
+          </section>
 
-          {selectedOrder ? (
-            <section
-              className="flex min-w-0 flex-col gap-4"
-              aria-label="Detail order"
-            >
-              <div className="border bg-card p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <ReceiptText className="size-5" />
-                    <h2 className="font-semibold">
-                      {selectedOrder.orderNumber} · {selectedOrder.customerName}
-                    </h2>
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    Masuk {timeLabel(selectedOrder.placedAt)}
-                  </span>
-                </div>
-                <div
-                  className="mt-3 flex flex-wrap gap-2"
-                  aria-label="Pilih menu order"
-                >
-                  {selectedOrder.items.map((item) => (
-                    <Button
-                      key={item.id}
-                      type="button"
-                      variant={
-                        item.id === selectedItem?.id ? "default" : "outline"
-                      }
-                      size="touch"
-                      onClick={() => setSelectedItemId(item.id)}
-                    >
-                      {item.status === "started" ? <Check /> : null}
-                      {item.quantity}× {item.menuName}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              {selectedItem ? (
-                <article className="flex flex-1 flex-col border bg-card p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
-                    <div>
-                      <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-                        Menu dipilih
-                      </p>
-                      <h3 className="mt-1 text-2xl font-semibold">
-                        {selectedItem.menuName}
-                      </h3>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Quantity order:{" "}
-                        <strong className="text-foreground">
-                          {selectedItem.quantity}
-                        </strong>
+          <section
+            className="min-h-0 overflow-auto border bg-card"
+            aria-label="Menu dalam order"
+          >
+            {selectedOrder ? (
+              <>
+                <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-card px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ReceiptText className="size-4 shrink-0" />
+                    <div className="min-w-0">
+                      <h2 className="truncate text-sm font-semibold">
+                        {selectedOrder.orderNumber} ·{" "}
+                        {selectedOrder.customerName}
+                      </h2>
+                      <p className="text-xs text-muted-foreground">
+                        Masuk pukul {timeLabel(selectedOrder.placedAt)}
                       </p>
                     </div>
-                    {selectedItem.status === "started" ? (
-                      <Badge variant="secondary">
-                        <Check /> Sudah START
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">Menunggu</Badge>
-                    )}
                   </div>
-
-                  {selectedItem.recipe ? (
-                    <div className="flex flex-1 flex-col">
-                      <div className="flex flex-wrap items-center justify-between gap-2 py-4">
-                        <div>
-                          <h4 className="font-semibold">Recipe / SOP aktif</h4>
-                          <p className="text-sm text-muted-foreground">
-                            Versi {selectedItem.recipe.version} · takaran per
-                            porsi
-                          </p>
-                        </div>
-                        <Badge>Aktif</Badge>
-                      </div>
-                      <ul className="divide-y border-y">
-                        {selectedItem.recipe.ingredients.map((ingredient) => (
-                          <li
-                            key={ingredient.id}
-                            className="grid grid-cols-[1fr_auto] gap-4 py-3"
-                          >
-                            <span>{ingredient.inventoryItemName}</span>
-                            <span className="text-right tabular-nums">
-                              <strong>
-                                {number.format(ingredient.quantity)}{" "}
-                                {ingredient.unit}
-                              </strong>
-                              {selectedItem.quantity > 1 ? (
-                                <small className="block text-muted-foreground">
-                                  Total{" "}
-                                  {number.format(
-                                    ingredient.quantity * selectedItem.quantity
-                                  )}{" "}
-                                  {ingredient.unit}
-                                </small>
-                              ) : null}
+                  <Badge variant="outline">
+                    {selectedOrder.items.length} menu
+                  </Badge>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Menu</TableHead>
+                      <TableHead className="w-24 text-center">Qty</TableHead>
+                      <TableHead className="w-36">Recipe / SOP</TableHead>
+                      <TableHead className="w-32">Status</TableHead>
+                      <TableHead className="w-28 text-right">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedOrder.items.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">
+                          {item.menuName}
+                        </TableCell>
+                        <TableCell className="text-center font-semibold tabular-nums">
+                          {item.quantity}
+                        </TableCell>
+                        <TableCell>
+                          {item.recipe ? (
+                            <span className="text-sm">
+                              Aktif · v{item.recipe.version}
                             </span>
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="mt-4 text-xs text-muted-foreground">
-                        START mengonsumsi inventory sesuai total quantity order.
-                      </p>
-                      <Button
-                        type="button"
-                        size="touch"
-                        className="mt-5 w-full sm:ml-auto sm:w-48"
-                        disabled={busy || selectedItem.status === "started"}
-                        onClick={() => void start()}
-                      >
-                        {selectedItem.status === "started" ? (
-                          <Check />
-                        ) : (
-                          <Play />
-                        )}
-                        {selectedItem.status === "started"
-                          ? "DIMULAI"
-                          : busy
-                            ? "MEMULAI…"
-                            : "START"}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="flex flex-1 items-center justify-center p-8 text-center">
-                      <div>
-                        <p className="font-medium">
-                          Recipe / SOP aktif belum tersedia
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Aktifkan recipe menu ini sebelum memulai pengerjaan.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </article>
-              ) : null}
-            </section>
-          ) : null}
+                          ) : (
+                            <span className="text-sm text-destructive">
+                              Tidak tersedia
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              item.status === "started"
+                                ? "secondary"
+                                : "outline"
+                            }
+                          >
+                            {item.status === "started" ? <Check /> : <Clock3 />}
+                            {item.status === "started" ? "Dimulai" : "Menunggu"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setOpenItemId(item.id)}
+                          >
+                            Buka
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </>
+            ) : null}
+          </section>
         </div>
       )}
+
+      <RecipeDetailDialog
+        item={openItem}
+        busy={busy}
+        onOpenChange={(open) => {
+          if (!open) setOpenItemId(null)
+        }}
+        onStart={start}
+      />
     </div>
+  )
+}
+
+function RecipeDetailDialog({
+  item,
+  busy,
+  onOpenChange,
+  onStart,
+}: {
+  item: KitchenOrderItem | null
+  busy: boolean
+  onOpenChange: (open: boolean) => void
+  onStart: (item: KitchenOrderItem) => Promise<void>
+}) {
+  return (
+    <Dialog open={Boolean(item)} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xl" showCloseButton>
+        {item ? (
+          <>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                {item.menuName}
+                <Badge variant="outline">Qty {item.quantity}</Badge>
+              </DialogTitle>
+              <DialogDescription>
+                Recipe / SOP aktif dan total kebutuhan untuk order ini.
+              </DialogDescription>
+            </DialogHeader>
+
+            {item.recipe ? (
+              <div className="border">
+                <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium">Recipe / SOP aktif</p>
+                    <p className="text-xs text-muted-foreground">
+                      Versi {item.recipe.version} · takaran per porsi
+                    </p>
+                  </div>
+                  <Badge>Aktif</Badge>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Ingredient</TableHead>
+                      <TableHead className="text-right">Per porsi</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {item.recipe.ingredients.map((ingredient) => (
+                      <TableRow key={ingredient.id}>
+                        <TableCell className="font-medium">
+                          {ingredient.inventoryItemName}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {number.format(ingredient.quantity)} {ingredient.unit}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {number.format(ingredient.quantity * item.quantity)}{" "}
+                          {ingredient.unit}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="border border-destructive/40 bg-destructive/5 p-4 text-sm">
+                Recipe / SOP aktif belum tersedia. Aktifkan recipe menu ini
+                sebelum memulai pengerjaan.
+              </div>
+            )}
+
+            <DialogFooter className="items-center sm:justify-between">
+              <p className="text-left text-xs text-muted-foreground">
+                START mengonsumsi inventory sesuai total quantity.
+              </p>
+              <Button
+                type="button"
+                disabled={busy || item.status === "started" || !item.recipe}
+                onClick={() => void onStart(item)}
+              >
+                {item.status === "started" ? <Check /> : <Play />}
+                {item.status === "started"
+                  ? "SUDAH DIMULAI"
+                  : busy
+                    ? "MEMULAI…"
+                    : "START"}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : null}
+      </DialogContent>
+    </Dialog>
   )
 }
