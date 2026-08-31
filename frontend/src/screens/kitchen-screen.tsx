@@ -1,17 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Check, ChefHat, Clock3, Play, ReceiptText } from "lucide-react"
+import { Check, Clock3, Play, ReceiptText } from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -43,7 +35,7 @@ export function KitchenScreen() {
   const database = useDatabase()
   const [orders, setOrders] = useState<KitchenOrder[]>([])
   const [selectedOrderId, setSelectedOrderId] = useState("")
-  const [openItemId, setOpenItemId] = useState<string | null>(null)
+  const [selectedItemId, setSelectedItemId] = useState("")
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,13 +76,10 @@ export function KitchenScreen() {
       orders.find((order) => order.id === selectedOrderId) ?? orders[0] ?? null,
     [orders, selectedOrderId]
   )
-  const openItem = useMemo(
-    () =>
-      orders
-        .flatMap((order) => order.items)
-        .find((item) => item.id === openItemId) ?? null,
-    [openItemId, orders]
-  )
+  const selectedItem =
+    selectedOrder?.items.find((item) => item.id === selectedItemId) ??
+    selectedOrder?.items[0] ??
+    null
 
   async function start(item: KitchenOrderItem) {
     if (item.status === "started") return
@@ -109,22 +98,6 @@ export function KitchenScreen() {
 
   return (
     <div className="flex h-[calc(100svh-2rem)] min-h-[34rem] flex-col gap-3">
-      <header className="flex shrink-0 items-start justify-between gap-4 border-b pb-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <ChefHat className="size-5" aria-hidden="true" />
-            <h1 className="text-xl font-semibold">Kitchen View</h1>
-          </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Pilih order dan buka menu untuk melihat Recipe / SOP aktif.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline">Data lokal</Badge>
-          <Badge variant="secondary">{orders.length} order</Badge>
-        </div>
-      </header>
-
       <div className="shrink-0">
         <LiveNotice message={notice} />
         <LiveNotice message={error} tone="error" />
@@ -164,7 +137,10 @@ export function KitchenScreen() {
                         order.id === selectedOrder?.id &&
                           "border-l-primary bg-muted"
                       )}
-                      onClick={() => setSelectedOrderId(order.id)}
+                      onClick={() => {
+                        setSelectedOrderId(order.id)
+                        setSelectedItemId(order.items[0]?.id ?? "")
+                      }}
                     >
                       <span className="flex items-center justify-between gap-2">
                         <strong className="text-sm">{order.orderNumber}</strong>
@@ -187,7 +163,7 @@ export function KitchenScreen() {
           </section>
 
           <section
-            className="min-h-0 overflow-auto border bg-card"
+            className="flex min-h-0 flex-col border bg-card"
             aria-label="Menu dalam order"
           >
             {selectedOrder ? (
@@ -209,170 +185,181 @@ export function KitchenScreen() {
                     {selectedOrder.items.length} menu
                   </Badge>
                 </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Menu</TableHead>
-                      <TableHead className="w-24 text-center">Qty</TableHead>
-                      <TableHead className="w-36">Recipe / SOP</TableHead>
-                      <TableHead className="w-32">Status</TableHead>
-                      <TableHead className="w-28 text-right">Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedOrder.items.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">
-                          {item.menuName}
-                        </TableCell>
-                        <TableCell className="text-center font-semibold tabular-nums">
-                          {item.quantity}
-                        </TableCell>
-                        <TableCell>
-                          {item.recipe ? (
-                            <span className="text-sm">
-                              Aktif · v{item.recipe.version}
-                            </span>
-                          ) : (
-                            <span className="text-sm text-destructive">
-                              Tidak tersedia
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              item.status === "started"
-                                ? "secondary"
-                                : "outline"
-                            }
-                          >
-                            {item.status === "started" ? <Check /> : <Clock3 />}
-                            {item.status === "started" ? "Dimulai" : "Menunggu"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setOpenItemId(item.id)}
-                          >
-                            Buka
-                          </Button>
-                        </TableCell>
+                <div className="shrink-0 overflow-auto border-b">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Menu</TableHead>
+                        <TableHead className="w-24 text-center">Qty</TableHead>
+                        <TableHead className="w-36">Recipe / SOP</TableHead>
+                        <TableHead className="w-32">Status</TableHead>
+                        <TableHead className="w-28 text-right">
+                          Detail
+                        </TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedOrder.items.map((item) => (
+                        <TableRow
+                          key={item.id}
+                          className={cn(
+                            "cursor-pointer",
+                            item.id === selectedItem?.id && "bg-muted/70"
+                          )}
+                          onClick={() => setSelectedItemId(item.id)}
+                        >
+                          <TableCell className="font-medium">
+                            {item.menuName}
+                          </TableCell>
+                          <TableCell className="text-center font-semibold tabular-nums">
+                            {item.quantity}
+                          </TableCell>
+                          <TableCell>
+                            {item.recipe ? (
+                              <span className="text-sm">
+                                Aktif · v{item.recipe.version}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-destructive">
+                                Tidak tersedia
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                item.status === "started"
+                                  ? "secondary"
+                                  : "outline"
+                              }
+                            >
+                              {item.status === "started" ? (
+                                <Check />
+                              ) : (
+                                <Clock3 />
+                              )}
+                              {item.status === "started"
+                                ? "Dimulai"
+                                : "Menunggu"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedItemId(item.id)}
+                            >
+                              Pilih
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <RecipeDetail item={selectedItem} busy={busy} onStart={start} />
               </>
             ) : null}
           </section>
         </div>
       )}
-
-      <RecipeDetailDialog
-        item={openItem}
-        busy={busy}
-        onOpenChange={(open) => {
-          if (!open) setOpenItemId(null)
-        }}
-        onStart={start}
-      />
     </div>
   )
 }
 
-function RecipeDetailDialog({
+function RecipeDetail({
   item,
   busy,
-  onOpenChange,
   onStart,
 }: {
   item: KitchenOrderItem | null
   busy: boolean
-  onOpenChange: (open: boolean) => void
   onStart: (item: KitchenOrderItem) => Promise<void>
 }) {
+  if (!item) return null
+
   return (
-    <Dialog open={Boolean(item)} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl" showCloseButton>
-        {item ? (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                {item.menuName}
-                <Badge variant="outline">Qty {item.quantity}</Badge>
-              </DialogTitle>
-              <DialogDescription>
-                Recipe / SOP aktif dan total kebutuhan untuk order ini.
-              </DialogDescription>
-            </DialogHeader>
+    <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold">{item.menuName}</h3>
+              <Badge variant="outline">Qty {item.quantity}</Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Recipe / SOP aktif dan total kebutuhan untuk order ini.
+            </p>
+          </div>
+          <Badge variant={item.status === "started" ? "secondary" : "outline"}>
+            {item.status === "started" ? <Check /> : <Clock3 />}
+            {item.status === "started" ? "Dimulai" : "Menunggu"}
+          </Badge>
+        </div>
 
-            {item.recipe ? (
-              <div className="border">
-                <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
-                  <div>
-                    <p className="text-sm font-medium">Recipe / SOP aktif</p>
-                    <p className="text-xs text-muted-foreground">
-                      Versi {item.recipe.version} · takaran per porsi
-                    </p>
-                  </div>
-                  <Badge>Aktif</Badge>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Ingredient</TableHead>
-                      <TableHead className="text-right">Per porsi</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {item.recipe.ingredients.map((ingredient) => (
-                      <TableRow key={ingredient.id}>
-                        <TableCell className="font-medium">
-                          {ingredient.inventoryItemName}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {number.format(ingredient.quantity)} {ingredient.unit}
-                        </TableCell>
-                        <TableCell className="text-right font-semibold tabular-nums">
-                          {number.format(ingredient.quantity * item.quantity)}{" "}
-                          {ingredient.unit}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+        {item.recipe ? (
+          <div className="border">
+            <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
+              <div>
+                <p className="text-sm font-medium">Recipe / SOP aktif</p>
+                <p className="text-xs text-muted-foreground">
+                  Versi {item.recipe.version} · takaran per porsi
+                </p>
               </div>
-            ) : (
-              <div className="border border-destructive/40 bg-destructive/5 p-4 text-sm">
-                Recipe / SOP aktif belum tersedia. Aktifkan recipe menu ini
-                sebelum memulai pengerjaan.
-              </div>
-            )}
+              <Badge>Aktif</Badge>
+            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Ingredient</TableHead>
+                  <TableHead className="text-right">Per porsi</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {item.recipe.ingredients.map((ingredient) => (
+                  <TableRow key={ingredient.id}>
+                    <TableCell className="font-medium">
+                      {ingredient.inventoryItemName}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {number.format(ingredient.quantity)} {ingredient.unit}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">
+                      {number.format(ingredient.quantity * item.quantity)}{" "}
+                      {ingredient.unit}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <div className="border border-destructive/40 bg-destructive/5 p-4 text-sm">
+            Recipe / SOP aktif belum tersedia. Aktifkan recipe menu ini sebelum
+            memulai pengerjaan.
+          </div>
+        )}
 
-            <DialogFooter className="items-center sm:justify-between">
-              <p className="text-left text-xs text-muted-foreground">
-                START mengonsumsi inventory sesuai total quantity.
-              </p>
-              <Button
-                type="button"
-                disabled={busy || item.status === "started" || !item.recipe}
-                onClick={() => void onStart(item)}
-              >
-                {item.status === "started" ? <Check /> : <Play />}
-                {item.status === "started"
-                  ? "SUDAH DIMULAI"
-                  : busy
-                    ? "MEMULAI…"
-                    : "START"}
-              </Button>
-            </DialogFooter>
-          </>
-        ) : null}
-      </DialogContent>
-    </Dialog>
+        <div className="mt-3 flex items-center justify-between gap-4">
+          <p className="text-xs text-muted-foreground">
+            START mengonsumsi inventory sesuai total quantity.
+          </p>
+          <Button
+            type="button"
+            disabled={busy || item.status === "started" || !item.recipe}
+            onClick={() => void onStart(item)}
+          >
+            {item.status === "started" ? <Check /> : <Play />}
+            {item.status === "started"
+              ? "SUDAH DIMULAI"
+              : busy
+                ? "MEMULAI…"
+                : "START"}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
