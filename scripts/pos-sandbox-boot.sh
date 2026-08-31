@@ -22,7 +22,8 @@ if [ ! -d "${REPO}/.git" ]; then
 else
   git -C "${REPO}" fetch --prune origin
   git -C "${REPO}" checkout main
-  git -C "${REPO}" pull --ff-only origin main
+  git -C "${REPO}" fetch origin main
+  git -C "${REPO}" merge --ff-only FETCH_HEAD
 fi
 
 cd "${REPO}/frontend"
