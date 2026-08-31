@@ -5,16 +5,10 @@ import {
   useState,
   type FormEvent,
 } from "react"
-import {
-  BookOpen,
-  ChevronLeft,
-  ChevronRight,
-  Pencil,
-  Plus,
-  Trash2,
-} from "lucide-react"
+import { BookOpen, ChevronLeft, Pencil, Plus, Trash2 } from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
+import { Pagination } from "@/components/pagination"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -452,47 +446,5 @@ function RecipeEditorPage({
         />
       </div>
     </form>
-  )
-}
-
-function Pagination({
-  page,
-  pageCount,
-  onPage,
-}: {
-  page: number
-  pageCount: number
-  onPage: (page: number) => void
-}) {
-  if (pageCount <= 1) return null
-  return (
-    <div
-      className="flex items-center justify-end gap-2"
-      aria-label="Pagination"
-    >
-      <Button
-        type="button"
-        variant="outline"
-        size="icon-sm"
-        disabled={page <= 1}
-        onClick={() => onPage(page - 1)}
-        aria-label="Halaman sebelumnya"
-      >
-        <ChevronLeft />
-      </Button>
-      <span className="text-xs text-muted-foreground tabular-nums">
-        {page} / {pageCount}
-      </span>
-      <Button
-        type="button"
-        variant="outline"
-        size="icon-sm"
-        disabled={page >= pageCount}
-        onClick={() => onPage(page + 1)}
-        aria-label="Halaman berikutnya"
-      >
-        <ChevronRight />
-      </Button>
-    </div>
   )
 }

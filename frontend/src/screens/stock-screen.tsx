@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { ChevronDown, ChevronRight, PackagePlus, RefreshCw } from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
+import { Pagination } from "@/components/pagination"
 import {
   loadInventory,
   loadInventoryLots,
@@ -63,7 +64,11 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
   const [notice, setNotice] = useState<string | null>(null)
   const [receiving, setReceiving] = useState(false)
   const [selected, setSelected] = useState<InventoryItem | null>(null)
+  const [page, setPage] = useState(1)
   const store = database.store
+  const pageCount = Math.max(1, Math.ceil(items.length / 6))
+  const currentPage = Math.min(page, pageCount)
+  const visibleItems = items.slice((currentPage - 1) * 6, currentPage * 6)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -93,13 +98,7 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-semibold">Stok</h1>
-          <p className="text-sm text-muted-foreground">
-            Saldo dihitung dari ledger lokal pada perangkat ini.
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -138,7 +137,7 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
             <span>Minimum</span>
             <span>Status</span>
           </div>
-          {items.map((item) => {
+          {visibleItems.map((item) => {
             const status = stockStatus(item)
             const open = selected?.id === item.id
             return (
@@ -188,6 +187,14 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
           })}
         </div>
       )}
+      <Pagination
+        page={currentPage}
+        pageCount={pageCount}
+        onPage={(nextPage) => {
+          setPage(nextPage)
+          setSelected(null)
+        }}
+      />
       <ReceiveDialog
         open={receiving}
         items={items}

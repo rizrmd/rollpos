@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Check, Clock3, Play, ReceiptText } from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
+import { Pagination } from "@/components/pagination"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -40,6 +41,14 @@ export function KitchenScreen() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [orderPage, setOrderPage] = useState(1)
+  const [itemPage, setItemPage] = useState(1)
+  const orderPageCount = Math.max(1, Math.ceil(orders.length / 4))
+  const currentOrderPage = Math.min(orderPage, orderPageCount)
+  const visibleOrders = orders.slice(
+    (currentOrderPage - 1) * 4,
+    currentOrderPage * 4
+  )
 
   const refresh = useCallback(async () => {
     try {
@@ -80,6 +89,15 @@ export function KitchenScreen() {
     selectedOrder?.items.find((item) => item.id === selectedItemId) ??
     selectedOrder?.items[0] ??
     null
+  const itemPageCount = Math.max(
+    1,
+    Math.ceil((selectedOrder?.items.length ?? 0) / 4)
+  )
+  const currentItemPage = Math.min(itemPage, itemPageCount)
+  const visibleItems = (selectedOrder?.items ?? []).slice(
+    (currentItemPage - 1) * 4,
+    currentItemPage * 4
+  )
 
   async function start(item: KitchenOrderItem) {
     if (item.status === "started") return
@@ -97,7 +115,7 @@ export function KitchenScreen() {
   }
 
   return (
-    <div className="flex h-[calc(100svh-2rem)] min-h-[34rem] flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="shrink-0">
         <LiveNotice message={notice} />
         <LiveNotice message={error} tone="error" />
@@ -114,7 +132,7 @@ export function KitchenScreen() {
       ) : (
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[16rem_minmax(0,1fr)]">
           <section
-            className="min-h-0 overflow-auto border bg-card"
+            className="flex min-h-0 flex-col border bg-card"
             aria-label="Antrian order"
           >
             <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-card px-3 py-2">
@@ -123,8 +141,8 @@ export function KitchenScreen() {
                 Terlama dulu
               </span>
             </div>
-            <ul className="divide-y">
-              {orders.map((order) => {
+            <ul className="min-h-0 flex-1 divide-y">
+              {visibleOrders.map((order) => {
                 const started = order.items.filter(
                   (item) => item.status === "started"
                 ).length
@@ -140,6 +158,7 @@ export function KitchenScreen() {
                       onClick={() => {
                         setSelectedOrderId(order.id)
                         setSelectedItemId(order.items[0]?.id ?? "")
+                        setItemPage(1)
                       }}
                     >
                       <span className="flex items-center justify-between gap-2">
@@ -160,6 +179,19 @@ export function KitchenScreen() {
                 )
               })}
             </ul>
+            <div className="border-t p-2">
+              <Pagination
+                page={currentOrderPage}
+                pageCount={orderPageCount}
+                onPage={(nextPage) => {
+                  setOrderPage(nextPage)
+                  const nextOrder = orders[(nextPage - 1) * 4]
+                  setSelectedOrderId(nextOrder?.id ?? "")
+                  setSelectedItemId(nextOrder?.items[0]?.id ?? "")
+                  setItemPage(1)
+                }}
+              />
+            </div>
           </section>
 
           <section
@@ -185,7 +217,7 @@ export function KitchenScreen() {
                     {selectedOrder.items.length} menu
                   </Badge>
                 </div>
-                <div className="shrink-0 overflow-auto border-b">
+                <div className="shrink-0 border-b">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -199,7 +231,7 @@ export function KitchenScreen() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {selectedOrder.items.map((item) => (
+                      {visibleItems.map((item) => (
                         <TableRow
                           key={item.id}
                           className={cn(
@@ -257,6 +289,18 @@ export function KitchenScreen() {
                       ))}
                     </TableBody>
                   </Table>
+                  <div className="border-t p-2">
+                    <Pagination
+                      page={currentItemPage}
+                      pageCount={itemPageCount}
+                      onPage={(nextPage) => {
+                        setItemPage(nextPage)
+                        setSelectedItemId(
+                          selectedOrder.items[(nextPage - 1) * 4]?.id ?? ""
+                        )
+                      }}
+                    />
+                  </div>
                 </div>
                 <RecipeDetail item={selectedItem} busy={busy} onStart={start} />
               </>
@@ -280,7 +324,7 @@ function RecipeDetail({
   if (!item) return null
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto p-4">
+    <div className="min-h-0 flex-1 p-4">
       <div className="mx-auto max-w-3xl">
         <div className="mb-3 flex items-start justify-between gap-4">
           <div>
