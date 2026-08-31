@@ -28,4 +28,11 @@ fi
 cd "${REPO}/frontend"
 bun install --frozen-lockfile
 bun run build
-exec bun x --bun vite preview --host 0.0.0.0 --port 3000 --strictPort
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "DATABASE_URL wajib tersedia untuk inventory API" >&2
+  exit 1
+fi
+bun run db:migrate
+bun run db:seed
+export NODE_ENV=production PORT=3000
+exec bun run start

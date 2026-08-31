@@ -122,7 +122,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Stok",
         hint: "Persediaan bahan dan produk",
         icon: Boxes,
-        ready: false,
+        ready: true,
         access: "manage",
         plan: [
           "Stok awal dan penyesuaian",
