@@ -278,12 +278,17 @@ export async function startKitchenItem(
     lotsByInventory.set(inventoryItemId, current)
   }
   for (const lots of lotsByInventory.values()) {
-    lots.sort(
-      (a, b) =>
+    lots.sort((a, b) => {
+      const aExpiry = cellStr(a, "expiryDate")
+      const bExpiry = cellStr(b, "expiryDate")
+      return (
+        (aExpiry ? 0 : 1) - (bExpiry ? 0 : 1) ||
+        aExpiry.localeCompare(bExpiry) ||
         cellStr(a, "receivedAt").localeCompare(cellStr(b, "receivedAt")) ||
         cellNum(a, "createdAt") - cellNum(b, "createdAt") ||
         a.id.localeCompare(b.id)
-    )
+      )
+    })
   }
 
   const allocations: Array<{

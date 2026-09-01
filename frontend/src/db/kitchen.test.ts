@@ -111,28 +111,30 @@ describe("Kitchen View lokal", () => {
     )
   })
 
-  test("START membagi konsumsi ke lot berikutnya dan mengurangi saldo tiap lot", async () => {
+  test("START memakai FEFO dan membagi konsumsi ke lot expiry berikutnya", async () => {
     const database = await fixture()
     stockAllIngredients(database)
     const strawberry = loadInventory(database).find(
       (item) => item.name === "Strawberry"
     )!
-    const firstLotId = receiveInventory(database, {
-      inventoryItemId: strawberry.id,
-      quantity: 0.1,
-      unit: "kg",
-      receivedDate: "2026-08-01",
-      lotCode: "LOT-A",
-      containerCode: "A.1",
-      actorStaffId: "staff-1",
-    })
-    const secondLotId = receiveInventory(database, {
+    const laterExpiryLotId = receiveInventory(database, {
       inventoryItemId: strawberry.id,
       quantity: 0.3,
       unit: "kg",
-      receivedDate: "2026-08-02",
-      lotCode: "LOT-B",
+      receivedDate: "2026-08-01",
+      expiryDate: "2026-09-20",
+      lotCode: "LOT-LATER-EXPIRY",
       containerCode: "A.2",
+      actorStaffId: "staff-1",
+    })
+    const nearestExpiryLotId = receiveInventory(database, {
+      inventoryItemId: strawberry.id,
+      quantity: 0.1,
+      unit: "kg",
+      receivedDate: "2026-08-02",
+      expiryDate: "2026-09-10",
+      lotCode: "LOT-NEAREST-EXPIRY",
+      containerCode: "A.1",
       actorStaffId: "staff-1",
     })
     const [order] = await loadKitchenOrders(database)
@@ -150,14 +152,14 @@ describe("Kitchen View lokal", () => {
     )
     expect(strawberryConsumption).toEqual([
       expect.objectContaining({
-        inventoryLotId: firstLotId,
-        lotCode: "LOT-A",
+        inventoryLotId: nearestExpiryLotId,
+        lotCode: "LOT-NEAREST-EXPIRY",
         containerCode: "A.1",
         quantity: -0.1,
       }),
       expect.objectContaining({
-        inventoryLotId: secondLotId,
-        lotCode: "LOT-B",
+        inventoryLotId: laterExpiryLotId,
+        lotCode: "LOT-LATER-EXPIRY",
         containerCode: "A.2",
         quantity: -0.3,
       }),
@@ -165,8 +167,8 @@ describe("Kitchen View lokal", () => {
     const lots = new Map(
       listRows(database, TABLES.inventoryLots).map((lot) => [lot.id, lot])
     )
-    expect(lots.get(firstLotId)?.remainingQuantity).toBe(0)
-    expect(lots.get(secondLotId)?.remainingQuantity).toBe(0)
+    expect(lots.get(nearestExpiryLotId)?.remainingQuantity).toBe(0)
+    expect(lots.get(laterExpiryLotId)?.remainingQuantity).toBe(0)
 
     await startKitchenItem(database, item.id)
     expect(
