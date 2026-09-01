@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  expiryStatus,
   stockStatus,
   type InventoryItem,
   type InventoryLot,
@@ -218,6 +219,7 @@ function LotDetail({
   item: InventoryItem
 }) {
   const lots: InventoryLot[] = loadInventoryLots(database, item.id)
+  const currentDate = todayJakarta()
   return (
     <div className="bg-muted/30 px-4 py-3 sm:pl-10">
       <p className="mb-2 text-sm font-medium">
@@ -229,20 +231,37 @@ function LotDetail({
         </p>
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2">
-          {lots.map((lot) => (
-            <li key={lot.id} className="border bg-background p-3 text-sm">
-              <div className="flex justify-between gap-2">
-                <strong>{lot.containerCode || "Tanpa container"}</strong>
-                <span>
-                  {quantity(lot.remainingQuantity)} {lot.baseUnit}
-                </span>
-              </div>
-              <p className="text-muted-foreground">Lot {lot.lotCode || "—"}</p>
-              <p className="text-muted-foreground">
-                Expiry: {dateLabel(lot.expiryDate)}
-              </p>
-            </li>
-          ))}
+          {lots.map((lot) => {
+            const status = expiryStatus(lot.expiryDate, currentDate)
+            return (
+              <li key={lot.id} className="border bg-background p-3 text-sm">
+                <div className="flex justify-between gap-2">
+                  <strong>{lot.containerCode || "Tanpa container"}</strong>
+                  <span>
+                    {quantity(lot.remainingQuantity)} {lot.baseUnit}
+                  </span>
+                </div>
+                <p className="text-muted-foreground">
+                  Lot {lot.lotCode || "—"}
+                </p>
+                <p className="text-muted-foreground">
+                  Expiry: {dateLabel(lot.expiryDate)}
+                </p>
+                <Badge
+                  className="mt-2"
+                  variant={
+                    status === "EXPIRED"
+                      ? "destructive"
+                      : status === "EXPIRING SOON"
+                        ? "outline"
+                        : "secondary"
+                  }
+                >
+                  {status}
+                </Badge>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

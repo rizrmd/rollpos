@@ -22,6 +22,28 @@ export type InventoryLot = {
 }
 
 export type StockStatus = "OK" | "LOW" | "OUT OF STOCK"
+export type ExpiryStatus = "EXPIRED" | "EXPIRING SOON" | "OK" | "NO EXPIRY"
+
+const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000
+
+function utcDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number)
+  return Date.UTC(year, month - 1, day)
+}
+
+export function expiryStatus(
+  expiryDate: string | null,
+  currentDate: string
+): ExpiryStatus {
+  if (!expiryDate) return "NO EXPIRY"
+
+  const daysUntilExpiry =
+    (utcDate(expiryDate) - utcDate(currentDate)) / DAY_IN_MILLISECONDS
+
+  if (daysUntilExpiry < 0) return "EXPIRED"
+  if (daysUntilExpiry <= 7) return "EXPIRING SOON"
+  return "OK"
+}
 
 export function stockStatus(
   item: Pick<InventoryItem, "balance" | "minimumStock">
