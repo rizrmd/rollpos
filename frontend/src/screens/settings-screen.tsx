@@ -1,15 +1,10 @@
 import type { Database } from "@/db/database"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
 import { LiveNotice } from "@/components/page-header"
+import { Pagination } from "@/components/pagination"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import {
   saveOutletSettings,
@@ -26,8 +21,17 @@ import {
   type SlotRecord,
   type StaffRecord,
 } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 const fieldClass = "min-h-12"
+
+type OutletTab = "operasional" | "aturan" | "shift"
+
+function getInitialTab(): OutletTab {
+  const urlParam = new URLSearchParams(window.location.search).get("tab")
+  if (urlParam === "aturan" || urlParam === "shift") return urlParam
+  return "operasional"
+}
 
 export function SettingsScreen({
   database,
@@ -42,50 +46,83 @@ export function SettingsScreen({
   slots: SlotRecord[]
   requirements: RoleRequirementRecord[]
 }) {
+  const [tab, setTab] = useState<OutletTab>(getInitialTab)
   const [form, setForm] = useState(formFrom(settings))
   const [notice, setNotice] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [selectedSlotId, setSelectedSlotId] = useState<string>("")
 
   useEffect(() => {
     setForm(formFrom(settings))
   }, [settings])
 
-  return (
-    <div className="grid gap-4">
-      <LiveNotice message={notice} />
-      <Card>
-        <CardHeader>
-          <CardTitle>Jadwal operasional outlet</CardTitle>
-          <CardDescription>
-            Atur jam outlet beroperasi dan periode jadwal staf.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-5">
-          <section className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <h3 className="text-sm font-medium">Jam operasional harian</h3>
-              <p className="text-sm text-muted-foreground">
-                Jam outlet mulai melayani hingga selesai beroperasi.
-              </p>
-            </div>
-            <Field
-              label="Outlet buka pukul"
-              value={form.open}
-              onChange={(open) => setForm({ ...form, open })}
-            />
-            <Field
-              label="Outlet tutup pukul"
-              value={form.close}
-              onChange={(close) => setForm({ ...form, close })}
-            />
-          </section>
+  useEffect(() => {
+    const onPop = () => {
+      const urlParam = new URLSearchParams(window.location.search).get("tab")
+      if (urlParam === "aturan" || urlParam === "shift" || urlParam === "operasional") {
+        setTab(urlParam as OutletTab)
+      }
+    }
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [])
 
-          <section className="grid gap-3 border-t pt-5 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <h3 className="text-sm font-medium">Periode jadwal staf</h3>
-              <p className="text-sm text-muted-foreground">
-                Pilih hari dimulainya jadwal mingguan yang diatur manager.
-              </p>
-            </div>
+  function changeTab(next: OutletTab) {
+    setTab(next)
+    const url = new URL(window.location.href)
+    url.searchParams.set("tab", next)
+    window.history.replaceState(null, "", url.pathname + url.search)
+  }
+
+  const selectedSlot = useMemo(() => {
+    if (slots.length === 0) return null
+    return slots.find((s) => s.id === selectedSlotId) ?? slots[0]
+  }, [slots, selectedSlotId])
+
+  const currentSlotIndex = useMemo(() => {
+    if (!selectedSlot) return 0
+    const idx = slots.findIndex((s) => s.id === selectedSlot.id)
+    return idx >= 0 ? idx : 0
+  }, [slots, selectedSlot])
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-3 gap-2">
+        <TabButton
+          active={tab === "operasional"}
+          label="Operasional"
+          onClick={() => changeTab("operasional")}
+        />
+        <TabButton
+          active={tab === "aturan"}
+          label="Aturan Kerja"
+          onClick={() => changeTab("aturan")}
+        />
+        <TabButton
+          active={tab === "shift"}
+          label="Shift"
+          count={`${slots.length} shift`}
+          onClick={() => changeTab("shift")}
+        />
+      </div>
+
+      <LiveNotice message={notice} />
+
+      {tab === "operasional" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Outlet buka pukul"
+            value={form.open}
+            placeholder="07:00"
+            onChange={(open) => setForm({ ...form, open })}
+          />
+          <Field
+            label="Outlet tutup pukul"
+            value={form.close}
+            placeholder="22:00"
+            onChange={(close) => setForm({ ...form, close })}
+          />
+          <div className="sm:col-span-2">
             <SelectField
               label="Minggu jadwal dimulai pada"
               value={form.weekStartsOn}
@@ -95,15 +132,36 @@ export function SettingsScreen({
                 label: name,
               }))}
             />
-          </section>
-        </CardContent>
-      </Card>
+          </div>
+          <Button
+            type="button"
+            size="touch"
+            className="sm:col-span-2"
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true)
+              try {
+                await saveOutletSettings(database, actor, {
+                  outletId: settings?.outletId,
+                  openMinutes: parseMinutes(form.open),
+                  closeMinutes: parseMinutes(form.close),
+                  weekStartsOn: Number(form.weekStartsOn),
+                })
+                setNotice("Pengaturan operasional tersimpan.")
+              } catch (err) {
+                setNotice(err instanceof Error ? err.message : String(err))
+              } finally {
+                setSaving(false)
+              }
+            }}
+          >
+            {saving ? "Menyimpan…" : "Simpan operasional"}
+          </Button>
+        </div>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Aturan adil</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
+      {tab === "aturan" && (
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field
             label="Maks hari kerja beruntun"
             value={form.maxConsecutive}
@@ -125,12 +183,10 @@ export function SettingsScreen({
             onChange={(skew) => setForm({ ...form, skew })}
           />
           <label className="flex min-h-12 items-center gap-3 text-sm sm:col-span-2">
-            <input
-              type="checkbox"
-              className="size-5"
+            <Checkbox
               checked={form.weekend}
-              onChange={(event) =>
-                setForm({ ...form, weekend: event.target.checked })
+              onCheckedChange={(checked) =>
+                setForm({ ...form, weekend: Boolean(checked) })
               }
             />
             Giliran weekend adil
@@ -139,69 +195,105 @@ export function SettingsScreen({
             type="button"
             size="touch"
             className="sm:col-span-2"
+            disabled={saving}
             onClick={async () => {
-              await saveOutletSettings(database, actor, {
-                outletId: settings?.outletId,
-                openMinutes: parseMinutes(form.open),
-                closeMinutes: parseMinutes(form.close),
-                weekStartsOn: Number(form.weekStartsOn),
-                preferenceDeadlineWeekday: Number(form.deadlineDay),
-                preferenceDeadlineMinutes: parseMinutes(form.deadlineTime),
-                maxConsecutiveWorkDays: Number(form.maxConsecutive),
-                targetDaysOffPerWeek: Number(form.targetOff),
-                graceLateMinutes: Number(form.grace),
-                hoursSkewPercent: Number(form.skew),
-                weekendFairnessEnabled: form.weekend,
-              })
-              setNotice("Pengaturan tersimpan.")
+              setSaving(true)
+              try {
+                await saveOutletSettings(database, actor, {
+                  outletId: settings?.outletId,
+                  maxConsecutiveWorkDays: Number(form.maxConsecutive),
+                  targetDaysOffPerWeek: Number(form.targetOff),
+                  graceLateMinutes: Number(form.grace),
+                  hoursSkewPercent: Number(form.skew),
+                  weekendFairnessEnabled: form.weekend,
+                })
+                setNotice("Aturan kerja tersimpan.")
+              } catch (err) {
+                setNotice(err instanceof Error ? err.message : String(err))
+              } finally {
+                setSaving(false)
+              }
             }}
           >
-            Simpan pengaturan
+            {saving ? "Menyimpan…" : "Simpan aturan"}
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Shift harian</CardTitle>
-          <CardDescription>
-            Jumlah baris aktif = jumlah shift dalam sehari.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {slots.map((slot) => (
+      {tab === "shift" && (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-2">
+              {slots.map((slot, index) => (
+                <button
+                  key={slot.id}
+                  type="button"
+                  onClick={() => setSelectedSlotId(slot.id)}
+                  aria-pressed={selectedSlot?.id === slot.id}
+                  className={cn(
+                    "min-h-10 border px-3 text-sm transition-colors",
+                    "hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                    selectedSlot?.id === slot.id
+                      ? "border-foreground bg-foreground text-background font-medium"
+                      : "border-border bg-background text-foreground"
+                  )}
+                >
+                  {slot.name || `Shift ${index + 1}`}
+                </button>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-10"
+                onClick={async () => {
+                  try {
+                    const newId = await saveSlot(database, actor, {
+                      name: `Shift ${slots.length + 1}`,
+                      startMinutes: settings?.openMinutes ?? 7 * 60,
+                      endMinutes: settings?.closeMinutes ?? 22 * 60,
+                      sortOrder: slots.length + 1,
+                      minStaffCount: 1,
+                      isActive: true,
+                    })
+                    setSelectedSlotId(newId)
+                    setNotice("Slot baru berhasil dibuat.")
+                  } catch (err) {
+                    setNotice(err instanceof Error ? err.message : String(err))
+                  }
+                }}
+              >
+                + Tambah slot
+              </Button>
+            </div>
+
+            <Pagination
+              page={currentSlotIndex + 1}
+              pageCount={slots.length}
+              onPage={(p) => setSelectedSlotId(slots[p - 1]?.id ?? "")}
+            />
+          </div>
+
+          {selectedSlot ? (
             <SlotEditor
-              key={slot.id}
-              slot={slot}
+              key={selectedSlot.id}
+              slot={selectedSlot}
               requirements={requirements.filter(
-                (row) => row.templateId === slot.id
+                (row) => row.templateId === selectedSlot.id
               )}
               onSave={async (next, roles) => {
                 await saveSlot(database, actor, next)
-                await saveRoleRequirements(database, actor, slot.id, roles)
+                await saveRoleRequirements(database, actor, selectedSlot.id, roles)
                 setNotice(`${next.name} tersimpan.`)
               }}
             />
-          ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="touch"
-            onClick={() =>
-              void saveSlot(database, actor, {
-                name: "Shift baru",
-                startMinutes: settings?.openMinutes ?? 0,
-                endMinutes: settings?.closeMinutes ?? 0,
-                sortOrder: slots.length + 1,
-                minStaffCount: 1,
-                isActive: true,
-              })
-            }
-          >
-            Tambah slot
-          </Button>
-        </CardContent>
-      </Card>
+          ) : (
+            <div className="border bg-card p-6 text-center text-sm text-muted-foreground">
+              Belum ada slot shift. Klik "+ Tambah slot" untuk membuat shift.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -224,7 +316,7 @@ function SlotEditor({
       isActive: boolean
     },
     roles: { role: FloorRole; minCount: number }[]
-  ) => void
+  ) => Promise<void>
 }) {
   const [name, setName] = useState(slot.name)
   const [start, setStart] = useState(formatMinutes(slot.startMinutes))
@@ -236,17 +328,36 @@ function SlotEditor({
     for (const row of requirements) next[row.role] = String(row.minCount)
     return next
   })
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setName(slot.name)
+    setStart(formatMinutes(slot.startMinutes))
+    setEnd(formatMinutes(slot.endMinutes))
+    setMinStaff(String(slot.minStaffCount))
+    setActive(slot.isActive)
+    const next = { kasir: "0", barista: "0", kitchen: "0" }
+    for (const row of requirements) next[row.role] = String(row.minCount)
+    setRoles(next)
+  }, [slot, requirements])
 
   return (
-    <fieldset className="grid gap-3 rounded-xl border p-4">
-      <legend className="px-1 text-sm font-medium">{slot.name}</legend>
-      <Field
-        id={`${slot.id}-nama`}
-        label="Nama"
-        value={name}
-        onChange={setName}
-      />
-      <div className="grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-4 border bg-card p-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field
+          id={`${slot.id}-nama`}
+          label="Nama shift"
+          value={name}
+          onChange={setName}
+        />
+        <Field
+          id={`${slot.id}-min`}
+          label="Min total staff"
+          value={minStaff}
+          onChange={setMinStaff}
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field
           id={`${slot.id}-mulai`}
           label="Mulai"
@@ -258,12 +369,6 @@ function SlotEditor({
           label="Selesai"
           value={end}
           onChange={setEnd}
-        />
-        <Field
-          id={`${slot.id}-min`}
-          label="Min staff"
-          value={minStaff}
-          onChange={setMinStaff}
         />
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -278,38 +383,72 @@ function SlotEditor({
         ))}
       </div>
       <label className="flex min-h-12 items-center gap-3 text-sm">
-        <input
-          type="checkbox"
-          className="size-5"
+        <Checkbox
           checked={active}
-          onChange={(event) => setActive(event.target.checked)}
+          onCheckedChange={(checked) => setActive(Boolean(checked))}
         />
-        Slot aktif
+        Shift aktif
       </label>
       <Button
         type="button"
         size="touch"
-        onClick={() =>
-          onSave(
-            {
-              id: slot.id,
-              name,
-              startMinutes: parseMinutes(start),
-              endMinutes: parseMinutes(end),
-              sortOrder: slot.sortOrder,
-              minStaffCount: Number(minStaff),
-              isActive: active,
-            },
-            FLOOR_ROLES.map((role) => ({
-              role,
-              minCount: Number(roles[role]) || 0,
-            }))
-          )
-        }
+        disabled={saving}
+        onClick={async () => {
+          setSaving(true)
+          try {
+            await onSave(
+              {
+                id: slot.id,
+                name,
+                startMinutes: parseMinutes(start),
+                endMinutes: parseMinutes(end),
+                sortOrder: slot.sortOrder,
+                minStaffCount: Number(minStaff) || 0,
+                isActive: active,
+              },
+              FLOOR_ROLES.map((role) => ({
+                role,
+                minCount: Number(roles[role]) || 0,
+              }))
+            )
+          } finally {
+            setSaving(false)
+          }
+        }}
       >
-        Simpan slot
+        {saving ? "Menyimpan…" : "Simpan shift"}
       </Button>
-    </fieldset>
+    </div>
+  )
+}
+
+function TabButton({
+  active,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  count?: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex min-h-14 flex-col items-start justify-center border px-4 py-2 text-left transition-colors",
+        "hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+        active
+          ? "border-foreground bg-card font-medium"
+          : "border-border bg-background text-muted-foreground"
+      )}
+    >
+      <span className="text-base font-medium text-foreground">{label}</span>
+      {count ? <span className="text-xs text-muted-foreground">{count}</span> : null}
+    </button>
   )
 }
 
@@ -335,11 +474,13 @@ function Field({
   value,
   onChange,
   id: idProp,
+  placeholder,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   id?: string
+  placeholder?: string
 }) {
   const id = idProp ?? label.replace(/\s+/g, "-").toLowerCase()
   return (
@@ -349,6 +490,7 @@ function Field({
         id={id}
         className={fieldClass}
         value={value}
+        placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
@@ -385,3 +527,4 @@ function SelectField({
     </label>
   )
 }
+
