@@ -24,6 +24,20 @@ export type InventoryLot = {
 export type StockStatus = "OK" | "LOW" | "OUT OF STOCK"
 export type ExpiryStatus = "EXPIRED" | "EXPIRING SOON" | "OK" | "NO EXPIRY"
 
+export const WASTE_REASONS = [
+  "Expired",
+  "Damaged",
+  "Spillage",
+  "Production Error",
+  "Other",
+] as const
+
+export type WasteReason = (typeof WASTE_REASONS)[number]
+
+export function isWasteReason(value: string): value is WasteReason {
+  return (WASTE_REASONS as readonly string[]).includes(value)
+}
+
 const DAY_IN_MILLISECONDS = 24 * 60 * 60 * 1000
 
 function utcDate(value: string) {

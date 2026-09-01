@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react"
-import { ChevronDown, ChevronRight, PackagePlus, RefreshCw } from "lucide-react"
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  PackagePlus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
 import { Pagination } from "@/components/pagination"
 import {
   loadInventory,
   loadInventoryLots,
+  recordInventoryWaste,
   receiveInventory,
   seedInventoryIfEmpty,
 } from "@/db/inventory"
@@ -27,6 +35,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   expiryStatus,
   stockStatus,
+  WASTE_REASONS,
   type InventoryItem,
   type InventoryLot,
 } from "@/lib/inventory"
@@ -65,6 +74,7 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
   const [notice, setNotice] = useState<string | null>(null)
   const [receiving, setReceiving] = useState(false)
   const [selected, setSelected] = useState<InventoryItem | null>(null)
+  const [wasteLot, setWasteLot] = useState<InventoryLot | null>(null)
   const [page, setPage] = useState(1)
   const store = database.store
   const pageCount = Math.max(1, Math.ceil(items.length / 6))
@@ -96,6 +106,24 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
       store.delListener(listenerId)
     }
   }, [load, store])
+
+  if (wasteLot) {
+    const wasteItem = items.find((item) => item.id === wasteLot.inventoryItemId)
+    return (
+      <WastePage
+        database={database}
+        actor={actor}
+        item={wasteItem}
+        initialLot={wasteLot}
+        onBack={() => setWasteLot(null)}
+        onSaved={async (name) => {
+          setWasteLot(null)
+          setNotice(`Waste ${name} berhasil dicatat dan saldo lot diperbarui.`)
+          await load()
+        }}
+      />
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -182,7 +210,13 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
                     {status}
                   </Badge>
                 </button>
-                {open ? <LotDetail database={database} item={item} /> : null}
+                {open ? (
+                  <LotDetail
+                    database={database}
+                    item={item}
+                    onWaste={setWasteLot}
+                  />
+                ) : null}
               </div>
             )
           })}
@@ -214,9 +248,11 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
 function LotDetail({
   database,
   item,
+  onWaste,
 }: {
   database: Database
   item: InventoryItem
+  onWaste: (lot: InventoryLot) => void
 }) {
   const lots: InventoryLot[] = loadInventoryLots(database, item.id)
   const currentDate = todayJakarta()
@@ -259,11 +295,137 @@ function LotDetail({
                 >
                   {status}
                 </Badge>
+                <Button
+                  className="mt-2 w-full"
+                  variant="outline"
+                  size="sm"
+                  disabled={lot.remainingQuantity <= 0}
+                  onClick={() => onWaste(lot)}
+                >
+                  <Trash2 /> Catat waste
+                </Button>
               </li>
             )
           })}
         </ul>
       )}
+    </div>
+  )
+}
+
+function WastePage({
+  database,
+  actor,
+  item,
+  initialLot,
+  onBack,
+  onSaved,
+}: {
+  database: Database
+  actor: StaffRecord
+  item: InventoryItem | undefined
+  initialLot: InventoryLot
+  onBack: () => void
+  onSaved: (name: string) => Promise<void>
+}) {
+  const lots = loadInventoryLots(database, initialLot.inventoryItemId).filter(
+    (lot) => lot.remainingQuantity > 0
+  )
+  const [lotId, setLotId] = useState(initialLot.id)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const lot = lots.find((candidate) => candidate.id === lotId) ?? lots[0]
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setBusy(true)
+    setError(null)
+    const form = new FormData(event.currentTarget)
+    try {
+      recordInventoryWaste(database, {
+        inventoryLotId: lot?.id ?? "",
+        quantity: Number(form.get("quantity")),
+        reason: String(form.get("reason")) as (typeof WASTE_REASONS)[number],
+        actorStaffId: actor.id,
+      })
+      await onSaved(item?.name ?? "inventory")
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex min-h-[calc(100svh-8rem)] flex-col gap-4">
+      <div>
+        <Button variant="outline" size="touch" onClick={onBack}>
+          <ArrowLeft /> Kembali
+        </Button>
+      </div>
+      <form
+        className="grid flex-1 content-center gap-4 border bg-card p-4 sm:grid-cols-2 sm:p-6"
+        onSubmit={submit}
+      >
+        <div className="grid gap-1 sm:col-span-2">
+          <Label htmlFor="waste-lot">Lot / Container *</Label>
+          <select
+            id="waste-lot"
+            className="min-h-11 border bg-background px-3"
+            value={lot?.id ?? ""}
+            onChange={(event) => setLotId(event.target.value)}
+            required
+          >
+            {lots.map((row) => (
+              <option value={row.id} key={row.id}>
+                {row.lotCode || "Tanpa lot"} ·{" "}
+                {row.containerCode || "Tanpa container"} ·{" "}
+                {quantity(row.remainingQuantity)} {row.baseUnit}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="grid gap-1">
+          <Label htmlFor="waste-quantity">Quantity waste *</Label>
+          <Input
+            id="waste-quantity"
+            name="quantity"
+            type="number"
+            min="0.001"
+            max={lot?.remainingQuantity}
+            step="0.001"
+            required
+          />
+          <span className="text-xs text-muted-foreground">
+            Saldo lot: {quantity(lot?.remainingQuantity ?? 0)} {lot?.baseUnit}
+          </span>
+        </div>
+        <div className="grid gap-1">
+          <Label htmlFor="waste-reason">Alasan *</Label>
+          <select
+            id="waste-reason"
+            name="reason"
+            className="min-h-10 border bg-background px-3"
+            defaultValue={WASTE_REASONS[0]}
+            required
+          >
+            {WASTE_REASONS.map((reason) => (
+              <option value={reason} key={reason}>
+                {reason}
+              </option>
+            ))}
+          </select>
+        </div>
+        <LiveNotice message={error} tone="error" />
+        <div className="flex justify-end gap-2 sm:col-span-2">
+          <Button type="button" variant="outline" onClick={onBack}>
+            Batal
+          </Button>
+          <Button type="submit" disabled={busy || !lot}>
+            {busy ? "Menyimpan..." : "Simpan waste"}
+          </Button>
+        </div>
+      </form>
     </div>
   )
 }

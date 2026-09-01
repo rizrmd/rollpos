@@ -4,6 +4,7 @@ import { createRollposDatabase, listRows, TABLES } from "./database"
 import {
   loadInventory,
   loadInventoryLots,
+  recordInventoryWaste,
   receiveInventory,
   seedInventoryIfEmpty,
 } from "./inventory"
@@ -81,5 +82,72 @@ describe("inventory offline", () => {
     ).toThrow("Expiry tidak boleh sebelum")
     expect(listRows(database, TABLES.inventoryLots)).toHaveLength(0)
     expect(listRows(database, TABLES.inventoryStockMovements)).toHaveLength(0)
+  })
+
+  test("waste mengurangi saldo lot dan membuat movement dengan actor", async () => {
+    const { database, strawberry } = await setup()
+    const lotId = receiveInventory(database, {
+      inventoryItemId: strawberry.id,
+      quantity: 2,
+      unit: "kg",
+      receivedDate: "2026-09-01",
+      lotCode: "LOT-WASTE-01",
+      containerCode: "BIN-A1",
+      actorStaffId: "receiver-1",
+    })
+
+    const movementId = recordInventoryWaste(database, {
+      inventoryLotId: lotId,
+      quantity: 0.75,
+      reason: "Spillage",
+      actorStaffId: "staff-operator",
+    })
+
+    expect(
+      loadInventoryLots(database, strawberry.id)[0]?.remainingQuantity
+    ).toBe(1.25)
+    expect(
+      loadInventory(database).find((item) => item.id === strawberry.id)?.balance
+    ).toBe(1.25)
+    expect(
+      listRows(database, TABLES.inventoryStockMovements).find(
+        (movement) => movement.id === movementId
+      )
+    ).toMatchObject({
+      inventoryLotId: lotId,
+      lotCode: "LOT-WASTE-01",
+      containerCode: "BIN-A1",
+      movementType: "WASTE",
+      quantity: -0.75,
+      reason: "Spillage",
+      actorStaffId: "staff-operator",
+    })
+  })
+
+  test("waste melebihi saldo lot ditolak tanpa perubahan", async () => {
+    const { database, strawberry } = await setup()
+    const lotId = receiveInventory(database, {
+      inventoryItemId: strawberry.id,
+      quantity: 1,
+      unit: "kg",
+      receivedDate: "2026-09-01",
+      actorStaffId: "receiver-1",
+    })
+    const movementsBefore = listRows(database, TABLES.inventoryStockMovements)
+
+    expect(() =>
+      recordInventoryWaste(database, {
+        inventoryLotId: lotId,
+        quantity: 1.001,
+        reason: "Damaged",
+        actorStaffId: "staff-operator",
+      })
+    ).toThrow("tidak boleh melebihi saldo lot")
+    expect(
+      loadInventoryLots(database, strawberry.id)[0]?.remainingQuantity
+    ).toBe(1)
+    expect(listRows(database, TABLES.inventoryStockMovements)).toEqual(
+      movementsBefore
+    )
   })
 })

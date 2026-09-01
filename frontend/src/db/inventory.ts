@@ -5,10 +5,16 @@ import {
   cellStr,
   listRows,
   transact,
+  updateRow,
   type Database,
   TABLES,
 } from "./database"
-import type { InventoryItem, InventoryLot } from "@/lib/inventory"
+import {
+  isWasteReason,
+  type InventoryItem,
+  type InventoryLot,
+  type WasteReason,
+} from "@/lib/inventory"
 
 const INVENTORY_SEED = [
   ["Strawberry", "INV-STRAWBERRY", "kg", 2],
@@ -28,6 +34,13 @@ export type ReceiveInventoryInput = {
   lotCode?: string | null
   containerCode?: string | null
   notes?: string | null
+  actorStaffId: string
+}
+
+export type RecordWasteInput = {
+  inventoryLotId: string
+  quantity: number
+  reason: WasteReason
   actorStaffId: string
 }
 
@@ -154,4 +167,46 @@ export function receiveInventory(
     })
   })
   return lotId
+}
+
+export function recordInventoryWaste(
+  database: Database,
+  input: RecordWasteInput
+): string {
+  const lot = database.store.getRow(TABLES.inventoryLots, input.inventoryLotId)
+  if (!database.store.hasRow(TABLES.inventoryLots, input.inventoryLotId))
+    throw new Error("Lot inventory tidak ditemukan.")
+  if (!Number.isFinite(input.quantity) || input.quantity <= 0)
+    throw new Error("Quantity waste harus lebih dari 0.")
+  if (!isWasteReason(input.reason)) throw new Error("Alasan waste tidak valid.")
+  if (!input.actorStaffId.trim())
+    throw new Error("Staff pencatat wajib tersedia.")
+
+  const remainingQuantity = cellNum(lot, "remainingQuantity")
+  if (input.quantity > remainingQuantity)
+    throw new Error("Quantity waste tidak boleh melebihi saldo lot.")
+
+  const now = Date.now()
+  let movementId = ""
+  transact(database, () => {
+    movementId = addRow(database, TABLES.inventoryStockMovements, {
+      inventoryItemId: cellStr(lot, "inventoryItemId"),
+      inventoryLotId: input.inventoryLotId,
+      lotCode: cellStr(lot, "lotCode"),
+      containerCode: cellStr(lot, "containerCode"),
+      movementType: "WASTE",
+      quantity: -input.quantity,
+      unit: cellStr(lot, "baseUnit"),
+      referenceType: "INVENTORY_WASTE",
+      referenceId: input.inventoryLotId,
+      reason: input.reason,
+      actorStaffId: input.actorStaffId,
+      createdAt: now,
+    })
+    updateRow(database, TABLES.inventoryLots, input.inventoryLotId, {
+      remainingQuantity: remainingQuantity - input.quantity,
+      updatedAt: now,
+    })
+  })
+  return movementId
 }
