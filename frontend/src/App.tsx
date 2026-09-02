@@ -167,7 +167,7 @@ export function App() {
   const content = !staffing.ready ? (
     <p className="text-sm text-muted-foreground">Membuka database lokal…</p>
   ) : page === "kasir" ? (
-    <CashierScreen />
+    <CashierScreen actor={actor} />
   ) : page === "clock" ? (
     <ClockScreen
       database={staffing.database}

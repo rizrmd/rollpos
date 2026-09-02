@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useState } from "react"
-import { Minus, Plus, ShoppingBasket, Trash2 } from "lucide-react"
+import {
+  ArrowLeft,
+  Banknote,
+  Minus,
+  Plus,
+  ShoppingBasket,
+  Trash2,
+} from "lucide-react"
 
 import { LiveNotice } from "@/components/page-header"
 import { Pagination } from "@/components/pagination"
 import { Button } from "@/components/ui/button"
-import { createOpenOrder } from "@/db/orders"
+import { Input } from "@/components/ui/input"
+import {
+  createOpenOrder,
+  loadOrders,
+  payOrderCash,
+  type PosOrder,
+} from "@/db/orders"
 import { useProducts } from "@/hooks/use-products"
 import {
   addCartItem,
@@ -16,13 +29,13 @@ import {
 } from "@/lib/cart"
 import { sortCatalog, sortMenuCategories } from "@/lib/catalog"
 import { formatRupiah } from "@/lib/format"
-import type { ProductRecord } from "@/lib/types"
+import type { ProductRecord, StaffRecord } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const MENU_PAGE_SIZE = 8
 const CART_PAGE_SIZE = 4
 
-export function CashierScreen() {
+export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
   const { database, products, categories, ready, error } = useProducts()
   const [category, setCategory] = useState("all")
   const [menuPage, setMenuPage] = useState(1)
@@ -31,6 +44,7 @@ export function CashierScreen() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const [checkoutSuccess, setCheckoutSuccess] = useState<string | null>(null)
   const [isCheckingOut, setIsCheckingOut] = useState(false)
+  const [mode, setMode] = useState<"sale" | "payment">("sale")
 
   const activeMenus = useMemo(
     () =>
@@ -104,6 +118,16 @@ export function CashierScreen() {
     } finally {
       setIsCheckingOut(false)
     }
+  }
+
+  if (mode === "payment") {
+    return (
+      <CashPayment
+        database={database}
+        actor={actor}
+        onBack={() => setMode("sale")}
+      />
+    )
   }
 
   return (
@@ -186,9 +210,19 @@ export function CashierScreen() {
           <span className="flex items-center gap-2 text-sm font-semibold">
             <ShoppingBasket className="size-4" /> Cart
           </span>
-          <span className="text-xs text-muted-foreground">
-            {cartQuantity(cart)} item
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {cartQuantity(cart)} item
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setMode("payment")}
+            >
+              <Banknote /> Bayar order
+            </Button>
+          </div>
         </div>
         {cart.length === 0 ? (
           <div className="grid flex-1 place-items-center px-4 text-center text-sm text-muted-foreground">
@@ -277,6 +311,231 @@ export function CashierScreen() {
             {isCheckingOut ? "Membuat order…" : "Buat order"}
           </Button>
         </div>
+      </section>
+    </div>
+  )
+}
+
+const ORDER_PAGE_SIZE = 5
+
+function CashPayment({
+  database,
+  actor,
+  onBack,
+}: {
+  database: ReturnType<typeof useProducts>["database"]
+  actor: StaffRecord | null
+  onBack: () => void
+}) {
+  const [orders, setOrders] = useState<PosOrder[]>([])
+  const [selectedId, setSelectedId] = useState("")
+  const [amountText, setAmountText] = useState("")
+  const [page, setPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [paying, setPaying] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function refresh() {
+    setLoading(true)
+    try {
+      const next = (await loadOrders(database)).filter(
+        (order) => order.status === "OPEN"
+      )
+      setOrders(next)
+      setSelectedId((current) =>
+        next.some((order) => order.id === current)
+          ? current
+          : (next[0]?.id ?? "")
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membuka order.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void refresh()
+  }, [database])
+
+  const pageCount = Math.max(1, Math.ceil(orders.length / ORDER_PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const visibleOrders = orders.slice(
+    (currentPage - 1) * ORDER_PAGE_SIZE,
+    currentPage * ORDER_PAGE_SIZE
+  )
+  const selected = orders.find((order) => order.id === selectedId)
+  const amount = Number(amountText || 0)
+  const change = selected ? Math.max(0, amount - selected.total) : 0
+  const enough = Boolean(
+    selected && Number.isFinite(amount) && amount >= selected.total
+  )
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount)
+  }, [page, pageCount])
+
+  function selectOrder(order: PosOrder) {
+    setSelectedId(order.id)
+    setAmountText("")
+    setNotice(null)
+    setError(null)
+  }
+
+  async function confirmPayment() {
+    if (!selected || !actor || !enough || paying) return
+    setPaying(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const payment = await payOrderCash(database, {
+        orderId: selected.id,
+        amount,
+        actorStaffId: actor.id,
+      })
+      setNotice(
+        `${selected.orderNumber} lunas. Kembalian ${formatRupiah(payment.change)}.`
+      )
+      setAmountText("")
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Pembayaran gagal.")
+      await refresh()
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  return (
+    <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[minmax(18rem,0.85fr)_minmax(22rem,1.15fr)]">
+      <section
+        className="flex min-h-0 flex-col border bg-card"
+        aria-label="Order terbuka"
+      >
+        <div className="flex shrink-0 items-center justify-between border-b p-3">
+          <Button type="button" variant="outline" size="sm" onClick={onBack}>
+            <ArrowLeft /> Kembali
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {orders.length} OPEN
+          </span>
+        </div>
+        {loading ? (
+          <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
+            Membuka order lokal…
+          </div>
+        ) : visibleOrders.length === 0 ? (
+          <div className="grid flex-1 place-items-center px-4 text-center text-sm text-muted-foreground">
+            Tidak ada order yang menunggu pembayaran.
+          </div>
+        ) : (
+          <div className="grid min-h-0 flex-1 auto-rows-fr gap-2 p-3">
+            {visibleOrders.map((order) => (
+              <button
+                key={order.id}
+                type="button"
+                className={cn(
+                  "flex items-center justify-between border px-3 py-2 text-left hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                  selectedId === order.id && "border-foreground bg-muted/50"
+                )}
+                onClick={() => selectOrder(order)}
+              >
+                <span>
+                  <strong className="block text-sm">{order.orderNumber}</strong>
+                  <span className="text-xs text-muted-foreground">
+                    {order.items.reduce((sum, item) => sum + item.quantity, 0)}{" "}
+                    item
+                  </span>
+                </span>
+                <strong className="text-sm tabular-nums">
+                  {formatRupiah(order.total)}
+                </strong>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="shrink-0 border-t p-2">
+          <Pagination
+            page={currentPage}
+            pageCount={pageCount}
+            onPage={setPage}
+          />
+        </div>
+      </section>
+
+      <section
+        className="flex min-h-0 flex-col border bg-card p-4"
+        aria-label="Pembayaran tunai"
+      >
+        {selected ? (
+          <div className="flex h-full min-h-0 flex-col justify-between gap-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b pb-3 text-sm">
+                <span>{selected.orderNumber}</span>
+                <span className="font-semibold tabular-nums">
+                  Total {formatRupiah(selected.total)}
+                </span>
+              </div>
+              <label className="block space-y-2 text-sm font-medium">
+                <span>Uang diterima</span>
+                <Input
+                  inputMode="numeric"
+                  value={amountText}
+                  placeholder="0"
+                  onChange={(event) =>
+                    setAmountText(event.target.value.replace(/\D/g, ""))
+                  }
+                  autoFocus
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[selected.total, 50_000, 100_000]
+                  .filter(
+                    (value, index, values) =>
+                      values.indexOf(value) === index && value >= selected.total
+                  )
+                  .map((value) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAmountText(String(value))}
+                    >
+                      {formatRupiah(value)}
+                    </Button>
+                  ))}
+              </div>
+            </div>
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-center justify-between text-lg font-semibold tabular-nums">
+                <span>Kembalian</span>
+                <span>{formatRupiah(change)}</span>
+              </div>
+              <LiveNotice message={error} tone="error" />
+              <LiveNotice message={notice} />
+              {!actor ? (
+                <LiveNotice
+                  message="Buka akses staff untuk mengonfirmasi pembayaran."
+                  tone="error"
+                />
+              ) : null}
+              <Button
+                type="button"
+                className="w-full"
+                disabled={!enough || !actor || paying}
+                onClick={() => void confirmPayment()}
+              >
+                {paying ? "Menyimpan pembayaran…" : "Konfirmasi tunai"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid h-full place-items-center text-sm text-muted-foreground">
+            Pilih order OPEN.
+          </div>
+        )}
       </section>
     </div>
   )
