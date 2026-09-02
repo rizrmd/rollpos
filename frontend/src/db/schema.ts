@@ -27,6 +27,8 @@ export const TABLES = {
   recipeIngredients: "recipeIngredients",
   kitchenOrders: "kitchenOrders",
   kitchenOrderItems: "kitchenOrderItems",
+  orders: "orders",
+  orderItems: "orderItems",
 } as const
 
 export type TableName = (typeof TABLES)[keyof typeof TABLES]
@@ -251,5 +253,23 @@ export const tablesSchema = {
     sortOrder: amount,
     createdAt: amount,
     updatedAt: amount,
+  },
+  orders: {
+    orderNumber: text,
+    status: { type: "string", default: "OPEN" },
+    subtotal: amount,
+    total: amount,
+    createdAt: amount,
+    updatedAt: amount,
+  },
+  orderItems: {
+    orderId: text,
+    menuProductId: text,
+    name: text,
+    quantity: amount,
+    price: amount,
+    subtotal: amount,
+    sortOrder: amount,
+    createdAt: amount,
   },
 } as const satisfies TablesSchema

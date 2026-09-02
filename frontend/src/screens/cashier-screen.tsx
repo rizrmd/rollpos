@@ -4,6 +4,7 @@ import { Minus, Plus, ShoppingBasket, Trash2 } from "lucide-react"
 import { LiveNotice } from "@/components/page-header"
 import { Pagination } from "@/components/pagination"
 import { Button } from "@/components/ui/button"
+import { createOpenOrder } from "@/db/orders"
 import { useProducts } from "@/hooks/use-products"
 import {
   addCartItem,
@@ -22,11 +23,14 @@ const MENU_PAGE_SIZE = 8
 const CART_PAGE_SIZE = 4
 
 export function CashierScreen() {
-  const { products, categories, ready, error } = useProducts()
+  const { database, products, categories, ready, error } = useProducts()
   const [category, setCategory] = useState("all")
   const [menuPage, setMenuPage] = useState(1)
   const [cartPage, setCartPage] = useState(1)
   const [cart, setCart] = useState<CartItem[]>([])
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [checkoutSuccess, setCheckoutSuccess] = useState<string | null>(null)
+  const [isCheckingOut, setIsCheckingOut] = useState(false)
 
   const activeMenus = useMemo(
     () =>
@@ -73,6 +77,33 @@ export function CashierScreen() {
 
   function add(product: ProductRecord) {
     setCart((items) => addCartItem(items, product))
+  }
+
+  async function checkout() {
+    if (cart.length === 0 || isCheckingOut) return
+    setIsCheckingOut(true)
+    setCheckoutError(null)
+    setCheckoutSuccess(null)
+    try {
+      const order = await createOpenOrder(
+        database,
+        cart.map((item) => ({
+          menuProductId: item.product.id,
+          name: item.product.name,
+          quantity: item.quantity,
+          price: item.product.price,
+        }))
+      )
+      setCart([])
+      setCartPage(1)
+      setCheckoutSuccess(`Order ${order.orderNumber} dibuat.`)
+    } catch (err) {
+      setCheckoutError(
+        err instanceof Error ? err.message : "Gagal membuat order."
+      )
+    } finally {
+      setIsCheckingOut(false)
+    }
   }
 
   return (
@@ -235,6 +266,16 @@ export function CashierScreen() {
             <span>Total</span>
             <span>{formatRupiah(subtotal)}</span>
           </div>
+          <LiveNotice message={checkoutError} tone="error" />
+          <LiveNotice message={checkoutSuccess} />
+          <Button
+            type="button"
+            className="w-full"
+            disabled={cart.length === 0 || isCheckingOut}
+            onClick={() => void checkout()}
+          >
+            {isCheckingOut ? "Membuat order…" : "Buat order"}
+          </Button>
         </div>
       </section>
     </div>
