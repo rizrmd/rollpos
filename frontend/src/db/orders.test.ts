@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
 import { createRollposDatabase, listRows, TABLES } from "./database"
-import { createOpenOrder, loadOrders, payOrderCash } from "./orders"
+import {
+  createOpenOrder,
+  loadOrders,
+  payOrderCash,
+  payOrderNonCash,
+} from "./orders"
 
 describe("order kasir lokal", () => {
   test("membuat order OPEN beserta snapshot item dan nominalnya", async () => {
@@ -112,6 +117,66 @@ describe("order kasir lokal", () => {
       payOrderCash(database, {
         orderId: order.id,
         amount: 25_000,
+        actorStaffId: "staff-kasir",
+      })
+    ).rejects.toThrow("sudah dibayar")
+    expect(listRows(database, TABLES.payments)).toHaveLength(1)
+  })
+
+  for (const method of ["QRIS", "CARD"] as const) {
+    test(`membayar order dengan ${method} sesuai total dan mencatat actor`, async () => {
+      const database = createRollposDatabase({ inMemory: true })
+      const order = await createOpenOrder(database, [
+        {
+          menuProductId: "latte",
+          name: "Cafe Latte",
+          quantity: 2,
+          price: 25_000,
+        },
+      ])
+
+      const payment = await payOrderNonCash(database, {
+        orderId: order.id,
+        method,
+        actorStaffId: "staff-kasir",
+        paidAt: 1_788_381_000_000,
+      })
+
+      expect(payment).toMatchObject({
+        method,
+        amount: 50_000,
+        change: 0,
+        actorStaffId: "staff-kasir",
+        paidAt: 1_788_381_000_000,
+      })
+      expect((await loadOrders(database))[0]).toMatchObject({
+        status: "PAID",
+        payment,
+      })
+      expect(listRows(database, TABLES.payments)).toHaveLength(1)
+    })
+  }
+
+  test("menolak pembayaran ulang non-tunai tanpa data parsial", async () => {
+    const database = createRollposDatabase({ inMemory: true })
+    const order = await createOpenOrder(database, [
+      {
+        menuProductId: "americano",
+        name: "Americano",
+        quantity: 1,
+        price: 20_000,
+      },
+    ])
+
+    await payOrderNonCash(database, {
+      orderId: order.id,
+      method: "QRIS",
+      actorStaffId: "staff-kasir",
+    })
+    await expect(
+      payOrderNonCash(database, {
+        orderId: order.id,
+        method: "CARD",
         actorStaffId: "staff-kasir",
       })
     ).rejects.toThrow("sudah dibayar")

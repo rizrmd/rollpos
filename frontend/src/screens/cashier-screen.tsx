@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react"
 import {
   ArrowLeft,
   Banknote,
+  CreditCard,
   Minus,
   Plus,
+  QrCode,
   ShoppingBasket,
   Trash2,
 } from "lucide-react"
@@ -16,6 +18,8 @@ import {
   createOpenOrder,
   loadOrders,
   payOrderCash,
+  payOrderNonCash,
+  type PaymentMethod,
   type PosOrder,
 } from "@/db/orders"
 import { useProducts } from "@/hooks/use-products"
@@ -330,6 +334,7 @@ function CashPayment({
   const [orders, setOrders] = useState<PosOrder[]>([])
   const [selectedId, setSelectedId] = useState("")
   const [amountText, setAmountText] = useState("")
+  const [method, setMethod] = useState<PaymentMethod>("CASH")
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [paying, setPaying] = useState(false)
@@ -369,7 +374,8 @@ function CashPayment({
   const amount = Number(amountText || 0)
   const change = selected ? Math.max(0, amount - selected.total) : 0
   const enough = Boolean(
-    selected && Number.isFinite(amount) && amount >= selected.total
+    selected &&
+    (method !== "CASH" || (Number.isFinite(amount) && amount >= selected.total))
   )
 
   useEffect(() => {
@@ -379,6 +385,7 @@ function CashPayment({
   function selectOrder(order: PosOrder) {
     setSelectedId(order.id)
     setAmountText("")
+    setMethod("CASH")
     setNotice(null)
     setError(null)
   }
@@ -389,13 +396,22 @@ function CashPayment({
     setError(null)
     setNotice(null)
     try {
-      const payment = await payOrderCash(database, {
-        orderId: selected.id,
-        amount,
-        actorStaffId: actor.id,
-      })
+      const payment =
+        method === "CASH"
+          ? await payOrderCash(database, {
+              orderId: selected.id,
+              amount,
+              actorStaffId: actor.id,
+            })
+          : await payOrderNonCash(database, {
+              orderId: selected.id,
+              method,
+              actorStaffId: actor.id,
+            })
       setNotice(
-        `${selected.orderNumber} lunas. Kembalian ${formatRupiah(payment.change)}.`
+        method === "CASH"
+          ? `${selected.orderNumber} lunas. Kembalian ${formatRupiah(payment.change)}.`
+          : `${selected.orderNumber} lunas dengan ${method}.`
       )
       setAmountText("")
       await refresh()
@@ -466,7 +482,7 @@ function CashPayment({
 
       <section
         className="flex min-h-0 flex-col border bg-card p-4"
-        aria-label="Pembayaran tunai"
+        aria-label="Pembayaran order"
       >
         {selected ? (
           <div className="flex h-full min-h-0 flex-col justify-between gap-4">
@@ -477,42 +493,75 @@ function CashPayment({
                   Total {formatRupiah(selected.total)}
                 </span>
               </div>
-              <label className="block space-y-2 text-sm font-medium">
-                <span>Uang diterima</span>
-                <Input
-                  inputMode="numeric"
-                  value={amountText}
-                  placeholder="0"
-                  onChange={(event) =>
-                    setAmountText(event.target.value.replace(/\D/g, ""))
-                  }
-                  autoFocus
+              <div
+                className="grid grid-cols-3 gap-2"
+                aria-label="Metode pembayaran"
+              >
+                <PaymentMethodButton
+                  method="CASH"
+                  selected={method}
+                  onSelect={setMethod}
                 />
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {[selected.total, 50_000, 100_000]
-                  .filter(
-                    (value, index, values) =>
-                      values.indexOf(value) === index && value >= selected.total
-                  )
-                  .map((value) => (
-                    <Button
-                      key={value}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setAmountText(String(value))}
-                    >
-                      {formatRupiah(value)}
-                    </Button>
-                  ))}
+                <PaymentMethodButton
+                  method="QRIS"
+                  selected={method}
+                  onSelect={setMethod}
+                />
+                <PaymentMethodButton
+                  method="CARD"
+                  selected={method}
+                  onSelect={setMethod}
+                />
               </div>
+              {method === "CASH" ? (
+                <>
+                  <label className="block space-y-2 text-sm font-medium">
+                    <span>Uang diterima</span>
+                    <Input
+                      inputMode="numeric"
+                      value={amountText}
+                      placeholder="0"
+                      onChange={(event) =>
+                        setAmountText(event.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[selected.total, 50_000, 100_000]
+                      .filter(
+                        (value, index, values) =>
+                          values.indexOf(value) === index &&
+                          value >= selected.total
+                      )
+                      .map((value) => (
+                        <Button
+                          key={value}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setAmountText(String(value))}
+                        >
+                          {formatRupiah(value)}
+                        </Button>
+                      ))}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-between border p-3 text-sm">
+                  <span>Nominal {method}</span>
+                  <strong className="tabular-nums">
+                    {formatRupiah(selected.total)}
+                  </strong>
+                </div>
+              )}
             </div>
             <div className="space-y-3 border-t pt-4">
-              <div className="flex items-center justify-between text-lg font-semibold tabular-nums">
-                <span>Kembalian</span>
-                <span>{formatRupiah(change)}</span>
-              </div>
+              {method === "CASH" ? (
+                <div className="flex items-center justify-between text-lg font-semibold tabular-nums">
+                  <span>Kembalian</span>
+                  <span>{formatRupiah(change)}</span>
+                </div>
+              ) : null}
               <LiveNotice message={error} tone="error" />
               <LiveNotice message={notice} />
               {!actor ? (
@@ -527,7 +576,9 @@ function CashPayment({
                 disabled={!enough || !actor || paying}
                 onClick={() => void confirmPayment()}
               >
-                {paying ? "Menyimpan pembayaran…" : "Konfirmasi tunai"}
+                {paying
+                  ? "Menyimpan pembayaran…"
+                  : `Konfirmasi ${method === "CARD" ? "kartu" : method.toLowerCase()}`}
               </Button>
             </div>
           </div>
@@ -538,6 +589,31 @@ function CashPayment({
         )}
       </section>
     </div>
+  )
+}
+
+function PaymentMethodButton({
+  method,
+  selected,
+  onSelect,
+}: {
+  method: PaymentMethod
+  selected: PaymentMethod
+  onSelect: (method: PaymentMethod) => void
+}) {
+  const Icon =
+    method === "CASH" ? Banknote : method === "QRIS" ? QrCode : CreditCard
+  const label =
+    method === "CASH" ? "Tunai" : method === "CARD" ? "Kartu" : "QRIS"
+  return (
+    <Button
+      type="button"
+      variant={selected === method ? "default" : "outline"}
+      className="h-auto flex-col py-3"
+      onClick={() => onSelect(method)}
+    >
+      <Icon /> {label}
+    </Button>
   )
 }
 

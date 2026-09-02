@@ -10,7 +10,8 @@ import {
 } from "./database"
 
 export type OrderStatus = "OPEN" | "PAID"
-export type PaymentMethod = "CASH"
+export type PaymentMethod = "CASH" | "QRIS" | "CARD"
+export type NonCashPaymentMethod = Exclude<PaymentMethod, "CASH">
 
 export type PosPayment = {
   id: string
@@ -203,6 +204,71 @@ export async function payOrderCash(
     method: "CASH",
     amount,
     change,
+    actorStaffId,
+    paidAt,
+  }
+}
+
+export async function payOrderNonCash(
+  database: Database,
+  input: {
+    orderId: string
+    method: NonCashPaymentMethod
+    actorStaffId: string
+    paidAt?: number
+  }
+): Promise<PosPayment> {
+  await database.ready
+  const orderId = input.orderId.trim()
+  const actorStaffId = input.actorStaffId.trim()
+  if (!orderId) throw new Error("Order wajib dipilih.")
+  if (!actorStaffId) throw new Error("Actor staff wajib tercatat.")
+  if (input.method !== "QRIS" && input.method !== "CARD") {
+    throw new Error("Metode pembayaran non-tunai tidak valid.")
+  }
+
+  const paidAt = input.paidAt ?? Date.now()
+  let paymentId = ""
+  let amount = 0
+
+  transact(database, () => {
+    const order = database.store.getRow(TABLES.orders, orderId)
+    if (!database.store.hasRow(TABLES.orders, orderId)) {
+      throw new Error("Order tidak ditemukan.")
+    }
+    if (cellStr(order, "status") !== "OPEN") {
+      throw new Error("Order ini sudah dibayar.")
+    }
+    if (
+      listRows(database, TABLES.payments).some(
+        (row) => cellStr(row, "orderId") === orderId
+      )
+    ) {
+      throw new Error("Order ini sudah memiliki pembayaran.")
+    }
+
+    amount = cellNum(order, "total")
+    paymentId = addRow(database, TABLES.payments, {
+      orderId,
+      method: input.method,
+      amount,
+      change: 0,
+      actorStaffId,
+      paidAt,
+      createdAt: paidAt,
+    })
+    updateRow(database, TABLES.orders, orderId, {
+      status: "PAID",
+      updatedAt: paidAt,
+    })
+  })
+
+  return {
+    id: paymentId,
+    orderId,
+    method: input.method,
+    amount,
+    change: 0,
     actorStaffId,
     paidAt,
   }
