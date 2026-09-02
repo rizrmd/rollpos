@@ -2,6 +2,7 @@ import {
   addRow,
   cellNum,
   cellStr,
+  deleteMatching,
   listRows,
   transact,
   updateRow,
@@ -24,6 +25,7 @@ export type KitchenOrderItem = {
 
 export type KitchenOrder = {
   id: string
+  sourceOrderId: string
   orderNumber: string
   customerName: string
   status: string
@@ -31,128 +33,80 @@ export type KitchenOrder = {
   items: KitchenOrderItem[]
 }
 
-const DEMO_ORDERS = [
-  {
-    orderNumber: "K-021",
-    customerName: "Meja 4",
-    minutesAgo: 8,
-    items: [{ sku: "RNB-JUS-STRAWBERRY", quantity: 2 }],
-  },
-  {
-    orderNumber: "K-022",
-    customerName: "Take away · Nanda",
-    minutesAgo: 3,
-    items: [{ sku: "RNB-JUS-STRAWBERRY", quantity: 1 }],
-  },
-] as const
-
-const DEMO_RECIPES: Record<
-  string,
-  Array<{ sku: string; quantity: number; unit: string }>
-> = {
-  "RNB-JUS-STRAWBERRY": [
-    { sku: "INV-STRAWBERRY", quantity: 200, unit: "g" },
-    { sku: "INV-GULA-CAIR", quantity: 20, unit: "ml" },
-    { sku: "INV-AIR", quantity: 180, unit: "ml" },
-    { sku: "INV-ES-BATU", quantity: 20, unit: "g" },
-  ],
-}
-
-export async function seedKitchenDemoIfEmpty(
+export async function syncPaidOrdersToKitchen(
   database: Database
 ): Promise<void> {
   await database.ready
-  if (listRows(database, TABLES.kitchenOrders).length > 0) return
-
-  const products = listRows(database, TABLES.products)
-  const inventory = listRows(database, TABLES.inventoryItems)
-  const recipes = listRows(database, TABLES.recipes)
-  const productsBySku = new Map(
-    products.map((row) => [cellStr(row, "sku"), row])
-  )
-  const inventoryBySku = new Map(
-    inventory.map((row) => [cellStr(row, "sku"), row])
-  )
-  const now = Date.now()
-
   transact(database, () => {
-    if (!productsBySku.has("RNB-JUS-STRAWBERRY")) {
-      const id = addRow(database, TABLES.products, {
-        name: "Jus Strawberry",
-        sku: "RNB-JUS-STRAWBERRY",
-        price: 25_000,
-        stock: 0,
-        kind: "menu",
-        category: "minuman",
-        unit: "porsi",
-        note: "Menu demo Kitchen View",
-        isActive: true,
-        lowStock: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      productsBySku.set("RNB-JUS-STRAWBERRY", {
-        id,
-        ...database.store.getRow(TABLES.products, id),
-      })
-    }
-    for (const [menuSku, lines] of Object.entries(DEMO_RECIPES)) {
-      const menu = productsBySku.get(menuSku)
-      if (!menu) continue
-      const existing = recipes.find(
-        (row) => cellStr(row, "menuProductId") === menu.id
+    const legacyOrderIds = listRows(database, TABLES.kitchenOrders)
+      .filter((order) => !cellStr(order, "sourceOrderId"))
+      .map((order) => order.id)
+    for (const kitchenOrderId of legacyOrderIds) {
+      deleteMatching(
+        database,
+        TABLES.kitchenOrderItems,
+        (item) => cellStr(item, "orderId") === kitchenOrderId
       )
-      if (existing) continue
-      const resolved = lines.flatMap((line) => {
-        const ingredient = inventoryBySku.get(line.sku)
-        return ingredient ? [{ ...line, inventoryItemId: ingredient.id }] : []
-      })
-      if (resolved.length !== lines.length) continue
-      const recipeId = addRow(database, TABLES.recipes, {
-        menuProductId: menu.id,
-        version: 1,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      })
-      resolved.forEach((line, index) => {
-        addRow(database, TABLES.recipeIngredients, {
-          recipeId,
-          inventoryItemId: line.inventoryItemId,
-          quantity: line.quantity,
-          unit: line.unit,
-          sortOrder: index,
-          createdAt: now,
-          updatedAt: now,
-        })
-      })
+      database.store.delRow(TABLES.kitchenOrders, kitchenOrderId)
     }
-
-    for (const order of DEMO_ORDERS) {
-      const orderId = addRow(database, TABLES.kitchenOrders, {
-        orderNumber: order.orderNumber,
-        customerName: order.customerName,
-        status: "queued",
-        placedAt: now - order.minutesAgo * 60_000,
-        createdAt: now,
-        updatedAt: now,
-      })
-      order.items.forEach((item, index) => {
-        const menu = productsBySku.get(item.sku)
-        if (!menu) return
-        addRow(database, TABLES.kitchenOrderItems, {
-          orderId,
-          menuProductId: menu.id,
-          quantity: item.quantity,
-          status: "queued",
-          startedAt: 0,
-          sortOrder: index,
-          createdAt: now,
-          updatedAt: now,
-        })
-      })
+    for (const order of listRows(database, TABLES.orders)) {
+      if (cellStr(order, "status") === "PAID") {
+        enqueuePaidOrder(
+          database,
+          order.id,
+          cellNum(order, "updatedAt") || cellNum(order, "createdAt")
+        )
+      }
     }
   })
+}
+
+/** Dipanggil di dalam transaksi pembayaran agar PAID dan antrean bersifat atomik. */
+export function enqueuePaidOrder(
+  database: Database,
+  sourceOrderId: string,
+  placedAt: number
+): string {
+  const source = database.store.getRow(TABLES.orders, sourceOrderId)
+  if (!database.store.hasRow(TABLES.orders, sourceOrderId)) {
+    throw new Error("Order Kasir tidak ditemukan.")
+  }
+  if (cellStr(source, "status") !== "PAID") {
+    throw new Error("Hanya order PAID yang dapat masuk Kitchen.")
+  }
+  const existing = listRows(database, TABLES.kitchenOrders).find(
+    (order) => cellStr(order, "sourceOrderId") === sourceOrderId
+  )
+  if (existing) return existing.id
+
+  const now = Date.now()
+  const kitchenOrderId = addRow(database, TABLES.kitchenOrders, {
+    sourceOrderId,
+    orderNumber: cellStr(source, "orderNumber"),
+    customerName: "Order Kasir",
+    status: "queued",
+    placedAt,
+    createdAt: now,
+    updatedAt: now,
+  })
+  listRows(database, TABLES.orderItems)
+    .filter((item) => cellStr(item, "orderId") === sourceOrderId)
+    .sort((a, b) => cellNum(a, "sortOrder") - cellNum(b, "sortOrder"))
+    .forEach((item, sortOrder) => {
+      addRow(database, TABLES.kitchenOrderItems, {
+        orderId: kitchenOrderId,
+        sourceOrderItemId: item.id,
+        menuProductId: cellStr(item, "menuProductId"),
+        menuName: cellStr(item, "name"),
+        quantity: cellNum(item, "quantity"),
+        status: "queued",
+        startedAt: 0,
+        sortOrder,
+        createdAt: now,
+        updatedAt: now,
+      })
+    })
+  return kitchenOrderId
 }
 
 export async function loadKitchenOrders(
@@ -176,6 +130,7 @@ export async function loadKitchenOrders(
   return listRows(database, TABLES.kitchenOrders)
     .map((order) => ({
       id: order.id,
+      sourceOrderId: cellStr(order, "sourceOrderId"),
       orderNumber: cellStr(order, "orderNumber"),
       customerName: cellStr(order, "customerName"),
       status: cellStr(order, "status"),
@@ -188,7 +143,10 @@ export async function loadKitchenOrders(
           return {
             id: item.id,
             menuProductId,
-            menuName: productNames.get(menuProductId) ?? "Menu tidak ditemukan",
+            menuName:
+              cellStr(item, "menuName") ||
+              productNames.get(menuProductId) ||
+              "Menu tidak ditemukan",
             quantity: cellNum(item, "quantity"),
             status: cellStr(item, "status") as KitchenItemStatus,
             startedAt: cellNum(item, "startedAt"),
@@ -211,6 +169,10 @@ export async function startKitchenItem(
   if (cellStr(row, "status") === "started") return
 
   const orderId = cellStr(row, "orderId")
+  const sourceOrderId = cellStr(
+    database.store.getRow(TABLES.kitchenOrders, orderId),
+    "sourceOrderId"
+  )
   const menuProductId = cellStr(row, "menuProductId")
   const quantity = cellNum(row, "quantity")
   if (!Number.isFinite(quantity) || quantity <= 0) {
@@ -333,7 +295,7 @@ export async function startKitchenItem(
         unit: allocation.unit,
         referenceType: "KITCHEN_ORDER_MENU",
         referenceId: `${orderId}:${menuProductId}`,
-        orderId,
+        orderId: sourceOrderId || orderId,
         menuProductId,
         kitchenOrderItemId: itemId,
         reason: `Kitchen START · recipe v${cellNum(recipe, "version")}`,

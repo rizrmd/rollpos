@@ -238,6 +238,7 @@ export const tablesSchema = {
     updatedAt: amount,
   },
   kitchenOrders: {
+    sourceOrderId: text,
     orderNumber: text,
     customerName: text,
     status: { type: "string", default: "queued" },
@@ -247,7 +248,9 @@ export const tablesSchema = {
   },
   kitchenOrderItems: {
     orderId: text,
+    sourceOrderItemId: text,
     menuProductId: text,
+    menuName: text,
     quantity: amount,
     status: { type: "string", default: "queued" },
     startedAt: amount,

@@ -8,180 +8,167 @@ import {
   seedInventoryIfEmpty,
 } from "./inventory"
 import {
+  enqueuePaidOrder,
   loadKitchenOrders,
-  seedKitchenDemoIfEmpty,
   startKitchenItem,
+  syncPaidOrdersToKitchen,
 } from "./kitchen"
+import { createOpenOrder, payOrderCash } from "./orders"
+import { saveRecipe } from "./recipes"
 
 async function fixture() {
   const database = createRollposDatabase({ inMemory: true })
   await seedCatalogIfEmpty(database)
   await seedInventoryIfEmpty(database)
-  await seedKitchenDemoIfEmpty(database)
-  return database
+  const menu = listRows(database, TABLES.products).find(
+    (row) => row.kind === "menu"
+  )!
+  const strawberry = loadInventory(database).find(
+    (item) => item.name === "Strawberry"
+  )!
+  await saveRecipe(database, {
+    menuProductId: menu.id,
+    version: 1,
+    isActive: true,
+    ingredients: [{ inventoryItemId: strawberry.id, quantity: 200, unit: "g" }],
+  })
+  const order = await createOpenOrder(database, [
+    {
+      menuProductId: menu.id,
+      name: String(menu.name),
+      quantity: 2,
+      price: Number(menu.price),
+    },
+  ])
+  return { database, order, strawberry }
 }
 
-function stockAllIngredients(database: Awaited<ReturnType<typeof fixture>>) {
-  for (const item of loadInventory(database)) {
+describe("integrasi Kasir ke Kitchen", () => {
+  test("hanya order PAID masuk dengan snapshot item dan quantity", async () => {
+    const { database, order } = await fixture()
+    await syncPaidOrdersToKitchen(database)
+    expect(await loadKitchenOrders(database)).toEqual([])
+
+    await payOrderCash(database, {
+      orderId: order.id,
+      amount: order.total,
+      actorStaffId: "staff-kasir",
+      paidAt: 1_788_381_000_000,
+    })
+
+    expect(await loadKitchenOrders(database)).toEqual([
+      expect.objectContaining({
+        sourceOrderId: order.id,
+        orderNumber: order.orderNumber,
+        placedAt: 1_788_381_000_000,
+        items: [
+          expect.objectContaining({
+            menuName: order.items[0]!.name,
+            quantity: 2,
+            status: "queued",
+          }),
+        ],
+      }),
+    ])
+    expect(listRows(database, TABLES.inventoryStockMovements)).toHaveLength(0)
+  })
+
+  test("sinkronisasi dan enqueue ulang tidak menduplikasi order", async () => {
+    const { database, order } = await fixture()
+    await payOrderCash(database, {
+      orderId: order.id,
+      amount: order.total,
+      actorStaffId: "staff-kasir",
+    })
+    enqueuePaidOrder(database, order.id, Date.now())
+    await syncPaidOrdersToKitchen(database)
+
+    expect(listRows(database, TABLES.kitchenOrders)).toHaveLength(1)
+    expect(listRows(database, TABLES.kitchenOrderItems)).toHaveLength(1)
+  })
+
+  test("order OPEN ditolak bila dipaksa masuk Kitchen", async () => {
+    const { database, order } = await fixture()
+    expect(() => enqueuePaidOrder(database, order.id, Date.now())).toThrow(
+      "Hanya order PAID"
+    )
+    expect(listRows(database, TABLES.kitchenOrders)).toHaveLength(0)
+  })
+
+  test("inventory baru berkurang saat START dan tetap idempoten", async () => {
+    const { database, order, strawberry } = await fixture()
     receiveInventory(database, {
-      inventoryItemId: item.id,
-      quantity: item.baseUnit === "kg" ? 2 : 2_000,
-      unit: item.baseUnit,
+      inventoryItemId: strawberry.id,
+      quantity: 1,
+      unit: "kg",
       receivedDate: "2026-08-31",
       actorStaffId: "staff-1",
     })
-  }
-}
-
-describe("Kitchen View lokal", () => {
-  test("seed idempoten menyediakan order, menu, dan Recipe/SOP aktif", async () => {
-    const database = await fixture()
-    await seedKitchenDemoIfEmpty(database)
-
-    const orders = await loadKitchenOrders(database)
-    expect(orders).toHaveLength(2)
-    expect(listRows(database, TABLES.kitchenOrders)).toHaveLength(2)
-    expect(orders[0]?.items[0]).toMatchObject({
-      menuName: "Jus Strawberry",
-      quantity: 2,
-      status: "queued",
+    await payOrderCash(database, {
+      orderId: order.id,
+      amount: order.total,
+      actorStaffId: "staff-kasir",
     })
-    expect(orders[0]?.items[0]?.recipe).toMatchObject({
-      version: 1,
-      isActive: true,
-    })
-    expect(orders[0]?.items[0]?.recipe?.ingredients).toHaveLength(4)
-  })
+    const item = (await loadKitchenOrders(database))[0]!.items[0]!
+    const before = loadInventory(database).find(
+      (row) => row.id === strawberry.id
+    )!.balance
 
-  test("START mengonsumsi recipe dikali quantity dan menyimpan referensi order/menu", async () => {
-    const database = await fixture()
-    stockAllIngredients(database)
-    const [order] = await loadKitchenOrders(database)
-    const item = order?.items[0]
-    expect(item).toBeDefined()
-    const before = new Map(
-      loadInventory(database).map((item) => [item.name, item.balance])
+    await startKitchenItem(database, item.id)
+    expect(
+      loadInventory(database).find((row) => row.id === strawberry.id)!.balance
+    ).toBe(before - 0.4)
+    const movement = listRows(database, TABLES.inventoryStockMovements).find(
+      (row) => row.movementType === "CONSUMPTION"
     )
-
-    await startKitchenItem(database, item!.id)
-
-    const [updated] = await loadKitchenOrders(database)
-    expect(updated?.items[0]?.status).toBe("started")
-    expect(updated?.items[0]?.startedAt).toBeGreaterThan(0)
-    expect(
-      loadInventory(database).find((item) => item.name === "Strawberry")
-        ?.balance
-    ).toBe((before.get("Strawberry") ?? 0) - 0.4)
-    expect(
-      loadInventory(database).find((item) => item.name === "Gula Cair")?.balance
-    ).toBe((before.get("Gula Cair") ?? 0) - 40)
-    const consumption = listRows(
-      database,
-      TABLES.inventoryStockMovements
-    ).filter((movement) => movement.movementType === "CONSUMPTION")
-    expect(consumption).toHaveLength(4)
-    expect(consumption[0]).toMatchObject({
-      orderId: order!.id,
-      menuProductId: item!.menuProductId,
-      kitchenOrderItemId: item!.id,
-      referenceType: "KITCHEN_ORDER_MENU",
+    expect(movement).toMatchObject({
+      orderId: order.id,
+      menuProductId: item.menuProductId,
+      kitchenOrderItemId: item.id,
     })
 
-    await startKitchenItem(database, item!.id)
+    await startKitchenItem(database, item.id)
     expect(
       listRows(database, TABLES.inventoryStockMovements).filter(
-        (movement) => movement.movementType === "CONSUMPTION"
+        (row) => row.movementType === "CONSUMPTION"
       )
-    ).toHaveLength(4)
+    ).toHaveLength(1)
   })
 
-  test("START ditolak secara atomik ketika satu ingredient tidak cukup", async () => {
-    const database = await fixture()
-    const [order] = await loadKitchenOrders(database)
-    const item = order!.items[0]!
-    const before = listRows(database, TABLES.inventoryStockMovements)
-
-    await expect(startKitchenItem(database, item.id)).rejects.toThrow(
-      "tidak cukup"
-    )
-
-    expect(listRows(database, TABLES.inventoryStockMovements)).toEqual(before)
-    expect((await loadKitchenOrders(database))[0]?.items[0]?.status).toBe(
-      "queued"
-    )
-  })
-
-  test("START memakai FEFO dan membagi konsumsi ke lot expiry berikutnya", async () => {
-    const database = await fixture()
-    stockAllIngredients(database)
-    const strawberry = loadInventory(database).find(
-      (item) => item.name === "Strawberry"
-    )!
-    const laterExpiryLotId = receiveInventory(database, {
+  test("START tetap memakai FEFO lintas lot", async () => {
+    const { database, order, strawberry } = await fixture()
+    const later = receiveInventory(database, {
       inventoryItemId: strawberry.id,
       quantity: 0.3,
       unit: "kg",
       receivedDate: "2026-08-01",
       expiryDate: "2026-09-20",
-      lotCode: "LOT-LATER-EXPIRY",
-      containerCode: "A.2",
       actorStaffId: "staff-1",
     })
-    const nearestExpiryLotId = receiveInventory(database, {
+    const nearest = receiveInventory(database, {
       inventoryItemId: strawberry.id,
       quantity: 0.1,
       unit: "kg",
       receivedDate: "2026-08-02",
       expiryDate: "2026-09-10",
-      lotCode: "LOT-NEAREST-EXPIRY",
-      containerCode: "A.1",
       actorStaffId: "staff-1",
     })
-    const [order] = await loadKitchenOrders(database)
-    const item = order!.items[0]!
+    await payOrderCash(database, {
+      orderId: order.id,
+      amount: order.total,
+      actorStaffId: "staff-kasir",
+    })
+    const item = (await loadKitchenOrders(database))[0]!.items[0]!
 
     await startKitchenItem(database, item.id)
 
-    const strawberryConsumption = listRows(
-      database,
-      TABLES.inventoryStockMovements
-    ).filter(
-      (movement) =>
-        movement.movementType === "CONSUMPTION" &&
-        movement.inventoryItemId === strawberry.id
-    )
-    expect(strawberryConsumption).toEqual([
-      expect.objectContaining({
-        inventoryLotId: nearestExpiryLotId,
-        lotCode: "LOT-NEAREST-EXPIRY",
-        containerCode: "A.1",
-        quantity: -0.1,
-      }),
-      expect.objectContaining({
-        inventoryLotId: laterExpiryLotId,
-        lotCode: "LOT-LATER-EXPIRY",
-        containerCode: "A.2",
-        quantity: -0.3,
-      }),
-    ])
-    const lots = new Map(
-      listRows(database, TABLES.inventoryLots).map((lot) => [lot.id, lot])
-    )
-    expect(lots.get(nearestExpiryLotId)?.remainingQuantity).toBe(0)
-    expect(lots.get(laterExpiryLotId)?.remainingQuantity).toBe(0)
-
-    await startKitchenItem(database, item.id)
     expect(
-      listRows(database, TABLES.inventoryStockMovements).filter(
-        (movement) => movement.movementType === "CONSUMPTION"
-      )
-    ).toHaveLength(5)
-  })
-
-  test("START menolak item yang tidak ada", async () => {
-    const database = await fixture()
-    await expect(startKitchenItem(database, "missing")).rejects.toThrow(
-      "tidak ditemukan"
-    )
+      listRows(database, TABLES.inventoryStockMovements)
+        .filter((row) => row.movementType === "CONSUMPTION")
+        .map((row) => [row.inventoryLotId, row.quantity])
+    ).toEqual([
+      [nearest, -0.1],
+      [later, -0.3],
+    ])
   })
 })

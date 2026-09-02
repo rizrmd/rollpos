@@ -8,6 +8,7 @@ import {
   TABLES,
   updateRow,
 } from "./database"
+import { enqueuePaidOrder } from "./kitchen"
 
 export type OrderStatus = "OPEN" | "PAID"
 export type PaymentMethod = "CASH" | "QRIS" | "CARD"
@@ -196,6 +197,7 @@ export async function payOrderCash(
       status: "PAID",
       updatedAt: paidAt,
     })
+    enqueuePaidOrder(database, orderId, paidAt)
   })
 
   return {
@@ -261,6 +263,7 @@ export async function payOrderNonCash(
       status: "PAID",
       updatedAt: paidAt,
     })
+    enqueuePaidOrder(database, orderId, paidAt)
   })
 
   return {
