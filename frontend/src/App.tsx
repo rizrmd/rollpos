@@ -26,6 +26,7 @@ import {
 } from "@/lib/pin-session"
 import { isStaffDeleted, type StaffRecord } from "@/lib/types"
 import { CatalogScreen } from "@/screens/catalog-screen"
+import { CashierScreen } from "@/screens/cashier-screen"
 import { ClockScreen } from "@/screens/clock-screen"
 import { ComingSoonScreen } from "@/screens/coming-soon-screen"
 import { MenuScreen } from "@/screens/menu-screen"
@@ -165,6 +166,8 @@ export function App() {
   const item = page === "menu" ? null : NAV_BY_ID[page]
   const content = !staffing.ready ? (
     <p className="text-sm text-muted-foreground">Membuka database lokal…</p>
+  ) : page === "kasir" ? (
+    <CashierScreen />
   ) : page === "clock" ? (
     <ClockScreen
       database={staffing.database}
@@ -347,9 +350,19 @@ export function App() {
           <main
             id="konten"
             tabIndex={-1}
-            className="min-h-0 flex-1 overflow-auto"
+            className={
+              page === "kasir"
+                ? "min-h-0 flex-1 overflow-hidden"
+                : "min-h-0 flex-1 overflow-auto"
+            }
           >
-            <div className="mx-auto w-full max-w-5xl px-4 py-4">
+            <div
+              className={
+                page === "kasir"
+                  ? "h-full w-full p-3 pt-16"
+                  : "mx-auto w-full max-w-5xl px-4 py-4"
+              }
+            >
               <LiveNotice message={notice ?? staffing.error} tone="error" />
               {content}
             </div>
@@ -400,7 +413,15 @@ export function App() {
           </Button>
         </div>
       )}
-      <main id="konten" tabIndex={-1} className="min-h-0 flex-1 overflow-auto">
+      <main
+        id="konten"
+        tabIndex={-1}
+        className={
+          page === "kasir"
+            ? "min-h-0 flex-1 overflow-hidden"
+            : "min-h-0 flex-1 overflow-auto"
+        }
+      >
         {page === "menu" ? (
           <MenuScreen
             actor={actor}
@@ -409,7 +430,13 @@ export function App() {
             onLock={lock}
           />
         ) : (
-          <div className="mx-auto w-full max-w-5xl px-4 py-4">
+          <div
+            className={
+              page === "kasir"
+                ? "h-full w-full p-3"
+                : "mx-auto w-full max-w-5xl px-4 py-4"
+            }
+          >
             <LiveNotice message={notice ?? staffing.error} tone="error" />
             {content}
           </div>

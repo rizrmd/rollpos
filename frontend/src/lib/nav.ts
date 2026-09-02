@@ -83,9 +83,9 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         id: "kasir",
         label: "Kasir",
-        hint: "Jual, terima bayar, buka laci",
+        hint: "Pilih menu dan susun cart",
         icon: ShoppingCart,
-        ready: false,
+        ready: true,
         access: "public",
         plan: [
           "Pilih menu dan jumlah",
