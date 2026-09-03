@@ -266,6 +266,7 @@ export const tablesSchema = {
     sourceOrderItemId: text,
     menuProductId: text,
     menuName: text,
+    modifiersSnapshot: text,
     quantity: amount,
     status: { type: "string", default: "queued" },
     startedAt: amount,

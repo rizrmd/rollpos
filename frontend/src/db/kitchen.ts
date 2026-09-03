@@ -13,11 +13,19 @@ import { loadRecipes, type Recipe } from "./recipes"
 
 export type KitchenItemStatus = "queued" | "started"
 
+export type KitchenOrderModifier = {
+  id: string
+  name: string
+  quantity: number
+  additionalPrice: number
+}
+
 export type KitchenOrderItem = {
   id: string
   menuProductId: string
   menuName: string
   quantity: number
+  modifiers: KitchenOrderModifier[]
   status: KitchenItemStatus
   startedAt: number
   recipe: Recipe | null
@@ -98,6 +106,7 @@ export function enqueuePaidOrder(
         sourceOrderItemId: item.id,
         menuProductId: cellStr(item, "menuProductId"),
         menuName: cellStr(item, "name"),
+        modifiersSnapshot: cellStr(item, "modifiersSnapshot"),
         quantity: cellNum(item, "quantity"),
         status: "queued",
         startedAt: 0,
@@ -140,6 +149,7 @@ export async function loadKitchenOrders(
         .sort((a, b) => cellNum(a, "sortOrder") - cellNum(b, "sortOrder"))
         .map((item) => {
           const menuProductId = cellStr(item, "menuProductId")
+          const quantity = cellNum(item, "quantity")
           return {
             id: item.id,
             menuProductId,
@@ -147,7 +157,11 @@ export async function loadKitchenOrders(
               cellStr(item, "menuName") ||
               productNames.get(menuProductId) ||
               "Menu tidak ditemukan",
-            quantity: cellNum(item, "quantity"),
+            quantity,
+            modifiers: parseModifierSnapshot(
+              cellStr(item, "modifiersSnapshot"),
+              quantity
+            ),
             status: cellStr(item, "status") as KitchenItemStatus,
             startedAt: cellNum(item, "startedAt"),
             recipe: activeRecipeByMenu.get(menuProductId) ?? null,
@@ -155,6 +169,39 @@ export async function loadKitchenOrders(
         }),
     }))
     .sort((a, b) => a.placedAt - b.placedAt)
+}
+
+function parseModifierSnapshot(
+  value: string,
+  quantity: number
+): KitchenOrderModifier[] {
+  if (!value) return []
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((modifier) => {
+      if (
+        typeof modifier !== "object" ||
+        modifier === null ||
+        typeof modifier.id !== "string" ||
+        typeof modifier.name !== "string" ||
+        typeof modifier.additionalPrice !== "number" ||
+        !Number.isFinite(modifier.additionalPrice)
+      ) {
+        return []
+      }
+      return [
+        {
+          id: modifier.id,
+          name: modifier.name,
+          quantity,
+          additionalPrice: modifier.additionalPrice,
+        },
+      ]
+    })
+  } catch {
+    return []
+  }
 }
 
 export async function startKitchenItem(

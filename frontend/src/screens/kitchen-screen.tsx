@@ -20,6 +20,7 @@ import {
   type KitchenOrder,
   type KitchenOrderItem,
 } from "@/db/kitchen"
+import { formatRupiah } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 const number = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 3 })
@@ -222,6 +223,7 @@ export function KitchenScreen() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Menu</TableHead>
+                        <TableHead>Modifier</TableHead>
                         <TableHead className="w-24 text-center">Qty</TableHead>
                         <TableHead className="w-36">Recipe / SOP</TableHead>
                         <TableHead className="w-32">Status</TableHead>
@@ -242,6 +244,22 @@ export function KitchenScreen() {
                         >
                           <TableCell className="font-medium">
                             {item.menuName}
+                          </TableCell>
+                          <TableCell>
+                            {item.modifiers.length > 0 ? (
+                              <div className="space-y-0.5 text-xs">
+                                {item.modifiers.map((modifier) => (
+                                  <p key={modifier.id}>
+                                    {modifier.name} · {modifier.quantity} ×{" "}
+                                    {formatRupiah(modifier.additionalPrice)}
+                                  </p>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                —
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell className="text-center font-semibold tabular-nums">
                             {item.quantity}
@@ -342,43 +360,83 @@ function RecipeDetail({
           </Badge>
         </div>
 
-        {item.recipe ? (
-          <div className="border">
-            <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
-              <div>
-                <p className="text-sm font-medium">Recipe / SOP aktif</p>
-                <p className="text-xs text-muted-foreground">
-                  Versi {item.recipe.version} · takaran per porsi
-                </p>
-              </div>
-              <Badge>Aktif</Badge>
+        {item.modifiers.length > 0 ? (
+          <div className="mb-3 border">
+            <div className="border-b bg-muted/40 px-3 py-2 text-sm font-medium">
+              Modifier order
             </div>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ingredient</TableHead>
-                  <TableHead className="text-right">Per porsi</TableHead>
+                  <TableHead>Modifier</TableHead>
+                  <TableHead className="text-center">Qty</TableHead>
+                  <TableHead className="text-right">Harga snapshot</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {item.recipe.ingredients.map((ingredient) => (
-                  <TableRow key={ingredient.id}>
+                {item.modifiers.map((modifier) => (
+                  <TableRow key={modifier.id}>
                     <TableCell className="font-medium">
-                      {ingredient.inventoryItemName}
+                      {modifier.name}
+                    </TableCell>
+                    <TableCell className="text-center tabular-nums">
+                      {modifier.quantity}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {number.format(ingredient.quantity)} {ingredient.unit}
+                      {formatRupiah(modifier.additionalPrice)}
                     </TableCell>
                     <TableCell className="text-right font-semibold tabular-nums">
-                      {number.format(ingredient.quantity * item.quantity)}{" "}
-                      {ingredient.unit}
+                      {formatRupiah(
+                        modifier.additionalPrice * modifier.quantity
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
+        ) : null}
+
+        {item.recipe ? (
+          <>
+            <div className="border">
+              <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">Recipe / SOP aktif</p>
+                  <p className="text-xs text-muted-foreground">
+                    Versi {item.recipe.version} · takaran per porsi
+                  </p>
+                </div>
+                <Badge>Aktif</Badge>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ingredient</TableHead>
+                    <TableHead className="text-right">Per porsi</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {item.recipe.ingredients.map((ingredient) => (
+                    <TableRow key={ingredient.id}>
+                      <TableCell className="font-medium">
+                        {ingredient.inventoryItemName}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {number.format(ingredient.quantity)} {ingredient.unit}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
+                        {number.format(ingredient.quantity * item.quantity)}{" "}
+                        {ingredient.unit}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         ) : (
           <div className="border border-destructive/40 bg-destructive/5 p-4 text-sm">
             Recipe / SOP aktif belum tersedia. Aktifkan recipe menu ini sebelum

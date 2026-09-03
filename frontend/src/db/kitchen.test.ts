@@ -39,6 +39,10 @@ async function fixture() {
       name: String(menu.name),
       quantity: 2,
       price: Number(menu.price),
+      modifiers: [
+        { id: "extra-shot", name: "Extra Shot", additionalPrice: 6_000 },
+        { id: "oat-milk", name: "Oat Milk", additionalPrice: 8_000 },
+      ],
     },
   ])
   await openDrawerSession(database, { actorStaffId: "staff-kasir" })
@@ -46,7 +50,7 @@ async function fixture() {
 }
 
 describe("integrasi Kasir ke Kitchen", () => {
-  test("hanya order PAID masuk dengan snapshot item dan quantity", async () => {
+  test("hanya order PAID masuk dengan snapshot item, modifier, dan quantity", async () => {
     const { database, order } = await fixture()
     await syncPaidOrdersToKitchen(database)
     expect(await loadKitchenOrders(database)).toEqual([])
@@ -68,11 +72,55 @@ describe("integrasi Kasir ke Kitchen", () => {
             menuName: order.items[0]!.name,
             quantity: 2,
             status: "queued",
+            modifiers: [
+              {
+                id: "extra-shot",
+                name: "Extra Shot",
+                quantity: 2,
+                additionalPrice: 6_000,
+              },
+              {
+                id: "oat-milk",
+                name: "Oat Milk",
+                quantity: 2,
+                additionalPrice: 8_000,
+              },
+            ],
           }),
         ],
       }),
     ])
     expect(listRows(database, TABLES.inventoryStockMovements)).toHaveLength(0)
+  })
+
+  test("Kitchen mempertahankan snapshot modifier saat master berubah", async () => {
+    const { database, order } = await fixture()
+    await payOrderCash(database, {
+      orderId: order.id,
+      amount: order.total,
+      actorStaffId: "staff-kasir",
+    })
+
+    const kitchenItem = listRows(database, TABLES.kitchenOrderItems)[0]!
+    expect(JSON.parse(String(kitchenItem.modifiersSnapshot))).toEqual(
+      order.items[0]!.modifiers
+    )
+    expect((await loadKitchenOrders(database))[0]!.items[0]!.modifiers).toEqual(
+      [
+        {
+          id: "extra-shot",
+          name: "Extra Shot",
+          quantity: 2,
+          additionalPrice: 6_000,
+        },
+        {
+          id: "oat-milk",
+          name: "Oat Milk",
+          quantity: 2,
+          additionalPrice: 8_000,
+        },
+      ]
+    )
   })
 
   test("sinkronisasi dan enqueue ulang tidak menduplikasi order", async () => {
