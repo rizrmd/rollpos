@@ -7,7 +7,7 @@ import {
   payOrderCash,
   payOrderNonCash,
 } from "./orders"
-import { openDrawerSession } from "./drawers"
+import { closeDrawerSession, openDrawerSession } from "./drawers"
 
 describe("order kasir lokal", () => {
   test("membuat order OPEN beserta snapshot item dan nominalnya", async () => {
@@ -145,6 +145,35 @@ describe("order kasir lokal", () => {
       })
     ).rejects.toThrow("sudah dibayar")
     expect(listRows(database, TABLES.payments)).toHaveLength(1)
+  })
+
+  test("menolak pembayaran tunai baru setelah sesi laci ditutup", async () => {
+    const database = createRollposDatabase({ inMemory: true })
+    const order = await createOpenOrder(database, [
+      {
+        menuProductId: "americano",
+        name: "Americano",
+        quantity: 1,
+        price: 20_000,
+      },
+    ])
+    const drawer = await openDrawerSession(database, {
+      actorStaffId: "staff-kasir",
+    })
+    await closeDrawerSession(database, {
+      sessionId: drawer.id,
+      actualCash: 0,
+    })
+
+    await expect(
+      payOrderCash(database, {
+        orderId: order.id,
+        amount: 20_000,
+        actorStaffId: "staff-kasir",
+      })
+    ).rejects.toThrow("Buka laci")
+    expect((await loadOrders(database))[0].status).toBe("OPEN")
+    expect(listRows(database, TABLES.payments)).toHaveLength(0)
   })
 
   for (const method of ["QRIS", "CARD"] as const) {

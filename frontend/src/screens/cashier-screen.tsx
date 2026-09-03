@@ -24,6 +24,8 @@ import {
   type PosOrder,
 } from "@/db/orders"
 import {
+  closeDrawerSession,
+  getDrawerExpectedCash,
   loadOpenDrawerSession,
   openDrawerSession,
   type DrawerSession,
@@ -495,6 +497,10 @@ function CashPayment({
   const [error, setError] = useState<string | null>(null)
   const [drawer, setDrawer] = useState<DrawerSession | undefined>()
   const [openingDrawer, setOpeningDrawer] = useState(false)
+  const [closingDrawer, setClosingDrawer] = useState(false)
+  const [expectedCash, setExpectedCash] = useState(0)
+  const [cashCountText, setCashCountText] = useState("")
+  const [savingClosing, setSavingClosing] = useState(false)
 
   async function refresh() {
     setLoading(true)
@@ -607,6 +613,48 @@ function CashPayment({
     }
   }
 
+  async function prepareClosing() {
+    if (!drawer || closingDrawer) return
+    setError(null)
+    setNotice(null)
+    try {
+      setExpectedCash(await getDrawerExpectedCash(database, drawer.id))
+      setCashCountText("")
+      setClosingDrawer(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membaca saldo laci.")
+    }
+  }
+
+  async function confirmClosing() {
+    if (!drawer || savingClosing || cashCountText === "") return
+    setSavingClosing(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const closed = await closeDrawerSession(database, {
+        sessionId: drawer.id,
+        actualCash: Number(cashCountText),
+      })
+      setDrawer(undefined)
+      setClosingDrawer(false)
+      setCashCountText("")
+      setNotice(
+        `Laci ditutup. Selisih ${formatRupiah(closed.discrepancy ?? 0)}.`
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menutup laci.")
+      setDrawer(
+        actor ? await loadOpenDrawerSession(database, actor.id) : undefined
+      )
+    } finally {
+      setSavingClosing(false)
+    }
+  }
+
+  const actualCash = Number(cashCountText || 0)
+  const discrepancy = actualCash - expectedCash
+
   return (
     <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[minmax(18rem,0.85fr)_minmax(22rem,1.15fr)]">
       <section
@@ -625,11 +673,11 @@ function CashPayment({
               type="button"
               variant={drawer ? "secondary" : "outline"}
               size="sm"
-              disabled={!actor || openingDrawer || Boolean(drawer)}
-              onClick={() => void openDrawer()}
+              disabled={!actor || openingDrawer || savingClosing}
+              onClick={() => void (drawer ? prepareClosing() : openDrawer())}
             >
               <BriefcaseBusiness />
-              {drawer ? "Laci OPEN" : openingDrawer ? "Membuka…" : "Buka Laci"}
+              {drawer ? "Tutup Laci" : openingDrawer ? "Membuka…" : "Buka Laci"}
             </Button>
           </div>
         </div>
@@ -680,7 +728,77 @@ function CashPayment({
         className="flex min-h-0 flex-col border bg-card p-4"
         aria-label="Pembayaran order"
       >
-        {selected ? (
+        {closingDrawer && drawer ? (
+          <div className="flex h-full min-h-0 flex-col justify-between gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="border p-3">
+                <span className="block text-xs text-muted-foreground">
+                  Expected cash
+                </span>
+                <strong className="mt-1 block text-lg tabular-nums">
+                  {formatRupiah(expectedCash)}
+                </strong>
+              </div>
+              <div className="border p-3">
+                <span className="block text-xs text-muted-foreground">
+                  Actual cash
+                </span>
+                <strong className="mt-1 block text-lg tabular-nums">
+                  {formatRupiah(actualCash)}
+                </strong>
+              </div>
+              <label className="col-span-2 block space-y-2 text-sm font-medium">
+                <span>Cash count</span>
+                <Input
+                  autoFocus
+                  inputMode="numeric"
+                  value={cashCountText}
+                  placeholder="0"
+                  onChange={(event) =>
+                    setCashCountText(event.target.value.replace(/\D/g, ""))
+                  }
+                />
+              </label>
+              <div className="col-span-2 flex items-center justify-between border p-3">
+                <span className="text-sm text-muted-foreground">
+                  Discrepancy
+                </span>
+                <strong
+                  className={cn(
+                    "text-lg tabular-nums",
+                    discrepancy < 0 && "text-destructive"
+                  )}
+                >
+                  {discrepancy > 0 ? "+" : ""}
+                  {formatRupiah(discrepancy)}
+                </strong>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 border-t pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={savingClosing}
+                onClick={() => {
+                  setClosingDrawer(false)
+                  setCashCountText("")
+                }}
+              >
+                Batal
+              </Button>
+              <Button
+                type="button"
+                disabled={cashCountText === "" || savingClosing}
+                onClick={() => void confirmClosing()}
+              >
+                {savingClosing ? "Menyimpan…" : "Simpan closing"}
+              </Button>
+              <div className="col-span-2">
+                <LiveNotice message={error} tone="error" />
+              </div>
+            </div>
+          </div>
+        ) : selected ? (
           <div className="flex h-full min-h-0 flex-col justify-between gap-4">
             <div className="space-y-3">
               <div className="flex items-center justify-between border-b pb-3 text-sm">

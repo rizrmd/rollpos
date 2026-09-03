@@ -185,6 +185,16 @@ export async function payOrderCash(
   let change = 0
 
   transact(database, () => {
+    const currentDrawer = database.store.getRow(
+      TABLES.drawerSessions,
+      drawerSession.id
+    )
+    if (
+      !database.store.hasRow(TABLES.drawerSessions, drawerSession.id) ||
+      cellStr(currentDrawer, "status") !== "OPEN"
+    ) {
+      throw new Error("Sesi laci sudah ditutup. Buka sesi baru.")
+    }
     const order = database.store.getRow(TABLES.orders, orderId)
     if (!database.store.hasRow(TABLES.orders, orderId)) {
       throw new Error("Order tidak ditemukan.")

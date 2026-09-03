@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test"
 
 import { createRollposDatabase, listRows, TABLES } from "./database"
-import { loadOpenDrawerSession, openDrawerSession } from "./drawers"
+import {
+  closeDrawerSession,
+  getDrawerExpectedCash,
+  loadOpenDrawerSession,
+  openDrawerSession,
+} from "./drawers"
+import { createOpenOrder, payOrderCash } from "./orders"
 
 describe("sesi laci kasir lokal", () => {
   test("membuka dan memuat sesi OPEN untuk actor staff", async () => {
@@ -38,5 +44,78 @@ describe("sesi laci kasir lokal", () => {
     await openDrawerSession(database, { actorStaffId: "staff-b" })
 
     expect(listRows(database, TABLES.drawerSessions)).toHaveLength(2)
+  })
+
+  test("menutup sesi dengan expected, actual, dan discrepancy tersimpan", async () => {
+    const database = createRollposDatabase({ inMemory: true })
+    const drawer = await openDrawerSession(database, {
+      actorStaffId: "staff-kasir",
+      openedAt: 1_788_381_000_000,
+    })
+    const order = await createOpenOrder(database, [
+      {
+        menuProductId: "latte",
+        name: "Cafe Latte",
+        quantity: 2,
+        price: 25_000,
+      },
+    ])
+    await payOrderCash(database, {
+      orderId: order.id,
+      amount: 60_000,
+      actorStaffId: "staff-kasir",
+    })
+
+    await expect(getDrawerExpectedCash(database, drawer.id)).resolves.toBe(
+      50_000
+    )
+    const closed = await closeDrawerSession(database, {
+      sessionId: drawer.id,
+      actualCash: 49_000,
+      closedAt: 1_788_381_600_000,
+    })
+
+    expect(closed).toEqual({
+      ...drawer,
+      status: "CLOSED",
+      expectedCash: 50_000,
+      actualCash: 49_000,
+      discrepancy: -1_000,
+      closedAt: 1_788_381_600_000,
+    })
+    await expect(
+      loadOpenDrawerSession(database, "staff-kasir")
+    ).resolves.toBeUndefined()
+    expect(listRows(database, TABLES.drawerSessions)[0]).toMatchObject({
+      status: "CLOSED",
+      expectedCash: 50_000,
+      actualCash: 49_000,
+      discrepancy: -1_000,
+      closedAt: 1_788_381_600_000,
+    })
+  })
+
+  test("menolak cash count invalid dan penutupan berulang", async () => {
+    const database = createRollposDatabase({ inMemory: true })
+    const drawer = await openDrawerSession(database, {
+      actorStaffId: "staff-kasir",
+    })
+
+    await expect(
+      closeDrawerSession(database, {
+        sessionId: drawer.id,
+        actualCash: -1,
+      })
+    ).rejects.toThrow("Cash count tidak valid")
+    await closeDrawerSession(database, {
+      sessionId: drawer.id,
+      actualCash: 0,
+    })
+    await expect(
+      closeDrawerSession(database, {
+        sessionId: drawer.id,
+        actualCash: 0,
+      })
+    ).rejects.toThrow("sudah ditutup")
   })
 })
