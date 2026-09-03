@@ -9,6 +9,7 @@ import {
   updateRow,
 } from "./database"
 import { enqueuePaidOrder } from "./kitchen"
+import { loadOpenDrawerSession } from "./drawers"
 
 export type OrderStatus = "OPEN" | "PAID"
 export type PaymentMethod = "CASH" | "QRIS" | "CARD"
@@ -17,6 +18,7 @@ export type NonCashPaymentMethod = Exclude<PaymentMethod, "CASH">
 export type PosPayment = {
   id: string
   orderId: string
+  drawerSessionId?: string
   method: PaymentMethod
   amount: number
   change: number
@@ -131,6 +133,7 @@ export async function loadOrders(database: Database): Promise<PosOrder[]> {
           ? {
               id: payment.id,
               orderId: order.id,
+              drawerSessionId: cellStr(payment, "drawerSessionId") || undefined,
               method: cellStr(payment, "method") as PaymentMethod,
               amount: cellNum(payment, "amount"),
               change: cellNum(payment, "change"),
@@ -163,6 +166,10 @@ export async function payOrderCash(
   }
 
   const paidAt = input.paidAt ?? Date.now()
+  const drawerSession = await loadOpenDrawerSession(database, actorStaffId)
+  if (!drawerSession) {
+    throw new Error("Buka laci sebelum menerima pembayaran tunai.")
+  }
   let paymentId = ""
   let change = 0
 
@@ -186,6 +193,7 @@ export async function payOrderCash(
     change = amount - total
     paymentId = addRow(database, TABLES.payments, {
       orderId,
+      drawerSessionId: drawerSession.id,
       method: "CASH",
       amount,
       change,
@@ -203,6 +211,7 @@ export async function payOrderCash(
   return {
     id: paymentId,
     orderId,
+    drawerSessionId: drawerSession.id,
     method: "CASH",
     amount,
     change,

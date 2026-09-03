@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import { seedCatalogIfEmpty } from "./catalog"
 import { createRollposDatabase, listRows, TABLES } from "./database"
+import { openDrawerSession } from "./drawers"
 import {
   loadInventory,
   receiveInventory,
@@ -40,6 +41,7 @@ async function fixture() {
       price: Number(menu.price),
     },
   ])
+  await openDrawerSession(database, { actorStaffId: "staff-kasir" })
   return { database, order, strawberry }
 }
 

@@ -7,6 +7,7 @@ import {
   payOrderCash,
   payOrderNonCash,
 } from "./orders"
+import { openDrawerSession } from "./drawers"
 
 describe("order kasir lokal", () => {
   test("membuat order OPEN beserta snapshot item dan nominalnya", async () => {
@@ -25,7 +26,6 @@ describe("order kasir lokal", () => {
         price: 18_000,
       },
     ])
-
     expect(order).toMatchObject({
       status: "OPEN",
       subtotal: 54_000,
@@ -65,6 +65,9 @@ describe("order kasir lokal", () => {
         price: 25_000,
       },
     ])
+    const drawer = await openDrawerSession(database, {
+      actorStaffId: "staff-kasir",
+    })
 
     const payment = await payOrderCash(database, {
       orderId: order.id,
@@ -78,6 +81,7 @@ describe("order kasir lokal", () => {
       amount: 60_000,
       change: 10_000,
       actorStaffId: "staff-kasir",
+      drawerSessionId: drawer.id,
       paidAt: 1_788_381_000_000,
     })
     expect((await loadOrders(database))[0]).toMatchObject({
@@ -97,6 +101,15 @@ describe("order kasir lokal", () => {
         price: 25_000,
       },
     ])
+
+    await expect(
+      payOrderCash(database, {
+        orderId: order.id,
+        amount: 25_000,
+        actorStaffId: "staff-kasir",
+      })
+    ).rejects.toThrow("Buka laci")
+    await openDrawerSession(database, { actorStaffId: "staff-kasir" })
 
     await expect(
       payOrderCash(database, {

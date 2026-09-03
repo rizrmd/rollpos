@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import {
   ArrowLeft,
   Banknote,
+  BriefcaseBusiness,
   CreditCard,
   Minus,
   Plus,
@@ -22,6 +23,11 @@ import {
   type PaymentMethod,
   type PosOrder,
 } from "@/db/orders"
+import {
+  loadOpenDrawerSession,
+  openDrawerSession,
+  type DrawerSession,
+} from "@/db/drawers"
 import { useProducts } from "@/hooks/use-products"
 import {
   addCartItem,
@@ -340,6 +346,8 @@ function CashPayment({
   const [paying, setPaying] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [drawer, setDrawer] = useState<DrawerSession | undefined>()
+  const [openingDrawer, setOpeningDrawer] = useState(false)
 
   async function refresh() {
     setLoading(true)
@@ -363,6 +371,16 @@ function CashPayment({
   useEffect(() => {
     void refresh()
   }, [database])
+
+  useEffect(() => {
+    let active = true
+    void loadOpenDrawerSession(database, actor?.id ?? "").then((session) => {
+      if (active) setDrawer(session)
+    })
+    return () => {
+      active = false
+    }
+  }, [actor?.id, database])
 
   const pageCount = Math.max(1, Math.ceil(orders.length / ORDER_PAGE_SIZE))
   const currentPage = Math.min(page, pageCount)
@@ -423,6 +441,25 @@ function CashPayment({
     }
   }
 
+  async function openDrawer() {
+    if (!actor || openingDrawer || drawer) return
+    setOpeningDrawer(true)
+    setError(null)
+    setNotice(null)
+    try {
+      const session = await openDrawerSession(database, {
+        actorStaffId: actor.id,
+      })
+      setDrawer(session)
+      setNotice(`Laci ${actor.nickname || actor.name} dibuka.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membuka laci.")
+      setDrawer(await loadOpenDrawerSession(database, actor.id))
+    } finally {
+      setOpeningDrawer(false)
+    }
+  }
+
   return (
     <div className="grid h-full min-h-0 gap-3 lg:grid-cols-[minmax(18rem,0.85fr)_minmax(22rem,1.15fr)]">
       <section
@@ -433,9 +470,21 @@ function CashPayment({
           <Button type="button" variant="outline" size="sm" onClick={onBack}>
             <ArrowLeft /> Kembali
           </Button>
-          <span className="text-xs text-muted-foreground">
-            {orders.length} OPEN
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">
+              {orders.length} OPEN
+            </span>
+            <Button
+              type="button"
+              variant={drawer ? "secondary" : "outline"}
+              size="sm"
+              disabled={!actor || openingDrawer || Boolean(drawer)}
+              onClick={() => void openDrawer()}
+            >
+              <BriefcaseBusiness />
+              {drawer ? "Laci OPEN" : openingDrawer ? "Membuka…" : "Buka Laci"}
+            </Button>
+          </div>
         </div>
         {loading ? (
           <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
@@ -570,10 +619,18 @@ function CashPayment({
                   tone="error"
                 />
               ) : null}
+              {actor && method === "CASH" && !drawer ? (
+                <LiveNotice
+                  message="Buka laci sebelum menerima pembayaran tunai."
+                  tone="error"
+                />
+              ) : null}
               <Button
                 type="button"
                 className="w-full"
-                disabled={!enough || !actor || paying}
+                disabled={
+                  !enough || !actor || paying || (method === "CASH" && !drawer)
+                }
                 onClick={() => void confirmPayment()}
               >
                 {paying

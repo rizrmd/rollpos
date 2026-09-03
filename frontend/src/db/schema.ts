@@ -29,6 +29,7 @@ export const TABLES = {
   kitchenOrderItems: "kitchenOrderItems",
   orders: "orders",
   orderItems: "orderItems",
+  drawerSessions: "drawerSessions",
   payments: "payments",
 } as const
 
@@ -276,8 +277,16 @@ export const tablesSchema = {
     sortOrder: amount,
     createdAt: amount,
   },
+  drawerSessions: {
+    actorStaffId: text,
+    openedAt: amount,
+    status: { type: "string", default: "OPEN" },
+    createdAt: amount,
+    updatedAt: amount,
+  },
   payments: {
     orderId: text,
+    drawerSessionId: text,
     method: { type: "string", default: "CASH" },
     amount: amount,
     change: amount,
