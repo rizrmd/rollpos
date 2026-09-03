@@ -18,6 +18,9 @@ describe("order kasir lokal", () => {
         name: "Espresso",
         quantity: 2,
         price: 18_000,
+        modifiers: [
+          { id: "extra-shot", name: "Extra Shot", additionalPrice: 6_000 },
+        ],
       },
       {
         menuProductId: "croissant",
@@ -31,7 +34,15 @@ describe("order kasir lokal", () => {
       subtotal: 54_000,
       total: 54_000,
       items: [
-        { name: "Espresso", quantity: 2, price: 18_000, subtotal: 36_000 },
+        {
+          name: "Espresso",
+          quantity: 2,
+          price: 18_000,
+          subtotal: 36_000,
+          modifiers: [
+            { id: "extra-shot", name: "Extra Shot", additionalPrice: 6_000 },
+          ],
+        },
         {
           name: "Butter Croissant",
           quantity: 1,

@@ -28,10 +28,12 @@ import {
   openDrawerSession,
   type DrawerSession,
 } from "@/db/drawers"
+import { loadMenuModifiers, loadModifiers } from "@/db/modifiers"
 import { useProducts } from "@/hooks/use-products"
 import {
   addCartItem,
   cartQuantity,
+  cartItemUnitPrice,
   cartSubtotal,
   removeCartItem,
   setCartItemQuantity,
@@ -39,11 +41,17 @@ import {
 } from "@/lib/cart"
 import { sortCatalog, sortMenuCategories } from "@/lib/catalog"
 import { formatRupiah } from "@/lib/format"
-import type { ProductRecord, StaffRecord } from "@/lib/types"
+import type {
+  MenuModifierRecord,
+  ModifierRecord,
+  ProductRecord,
+  StaffRecord,
+} from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 const MENU_PAGE_SIZE = 8
 const CART_PAGE_SIZE = 4
+const MODIFIER_PAGE_SIZE = 8
 
 export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
   const { database, products, categories, ready, error } = useProducts()
@@ -55,6 +63,11 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
   const [checkoutSuccess, setCheckoutSuccess] = useState<string | null>(null)
   const [isCheckingOut, setIsCheckingOut] = useState(false)
   const [mode, setMode] = useState<"sale" | "payment">("sale")
+  const [modifiers, setModifiers] = useState<ModifierRecord[]>([])
+  const [menuModifiers, setMenuModifiers] = useState<MenuModifierRecord[]>([])
+  const [selectedMenu, setSelectedMenu] = useState<ProductRecord | null>(null)
+  const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([])
+  const [modifierPage, setModifierPage] = useState(1)
 
   const activeMenus = useMemo(
     () =>
@@ -90,6 +103,25 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
     currentCartPage * CART_PAGE_SIZE
   )
   const subtotal = cartSubtotal(cart)
+  const availableModifiers = useMemo(() => {
+    if (!selectedMenu) return []
+    const linkedIds = new Set(
+      menuModifiers
+        .filter((link) => link.menuProductId === selectedMenu.id)
+        .map((link) => link.modifierId)
+    )
+    return modifiers.filter(
+      (modifier) => modifier.isActive && linkedIds.has(modifier.id)
+    )
+  }, [menuModifiers, modifiers, selectedMenu])
+  const modifierPageCount = Math.max(
+    1,
+    Math.ceil(availableModifiers.length / MODIFIER_PAGE_SIZE)
+  )
+  const visibleModifiers = availableModifiers.slice(
+    (modifierPage - 1) * MODIFIER_PAGE_SIZE,
+    modifierPage * MODIFIER_PAGE_SIZE
+  )
 
   useEffect(() => {
     setMenuPage(1)
@@ -99,8 +131,55 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
     if (cartPage > cartPageCount) setCartPage(cartPageCount)
   }, [cartPage, cartPageCount])
 
-  function add(product: ProductRecord) {
-    setCart((items) => addCartItem(items, product))
+  useEffect(() => {
+    if (!ready) return
+    let active = true
+    void Promise.all([loadModifiers(database), loadMenuModifiers(database)])
+      .then(([nextModifiers, nextLinks]) => {
+        if (!active) return
+        setModifiers(nextModifiers)
+        setMenuModifiers(nextLinks)
+      })
+      .catch((err) => {
+        if (active) {
+          setCheckoutError(
+            err instanceof Error ? err.message : "Gagal membuka modifier."
+          )
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [database, ready])
+
+  function chooseMenu(product: ProductRecord) {
+    const linkedIds = new Set(
+      menuModifiers
+        .filter((link) => link.menuProductId === product.id)
+        .map((link) => link.modifierId)
+    )
+    if (!modifiers.some((item) => item.isActive && linkedIds.has(item.id))) {
+      setCart((items) => addCartItem(items, product))
+      return
+    }
+    setSelectedMenu(product)
+    setSelectedModifierIds([])
+    setModifierPage(1)
+  }
+
+  function addSelectedMenu() {
+    if (!selectedMenu) return
+    const selected = availableModifiers.filter((modifier) =>
+      selectedModifierIds.includes(modifier.id)
+    )
+    setCart((items) => addCartItem(items, selectedMenu, selected))
+    setSelectedMenu(null)
+    setSelectedModifierIds([])
+    setModifierPage(1)
+  }
+
+  function addExisting(item: CartItem) {
+    setCart((items) => addCartItem(items, item.product, item.modifiers))
   }
 
   async function checkout() {
@@ -115,7 +194,8 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
           menuProductId: item.product.id,
           name: item.product.name,
           quantity: item.quantity,
-          price: item.product.price,
+          price: cartItemUnitPrice(item),
+          modifiers: item.modifiers,
         }))
       )
       setCart([])
@@ -167,6 +247,68 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
           <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
             Membuka katalog lokal…
           </div>
+        ) : selectedMenu ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex shrink-0 items-center justify-between border-b p-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedMenu(null)}
+              >
+                <ArrowLeft /> Kembali
+              </Button>
+              <strong className="text-sm">{selectedMenu.name}</strong>
+              <span className="text-sm font-medium tabular-nums">
+                {formatRupiah(
+                  selectedMenu.price +
+                    availableModifiers
+                      .filter((item) => selectedModifierIds.includes(item.id))
+                      .reduce((sum, item) => sum + item.additionalPrice, 0)
+                )}
+              </span>
+            </div>
+            <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 p-3 sm:grid-cols-3 xl:grid-cols-4">
+              {visibleModifiers.map((modifier) => {
+                const selected = selectedModifierIds.includes(modifier.id)
+                return (
+                  <button
+                    key={modifier.id}
+                    type="button"
+                    aria-pressed={selected}
+                    className={cn(
+                      "flex min-h-0 flex-col justify-between border p-3 text-left transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                      selected && "border-foreground bg-muted/50"
+                    )}
+                    onClick={() =>
+                      setSelectedModifierIds((ids) =>
+                        selected
+                          ? ids.filter((id) => id !== modifier.id)
+                          : [...ids, modifier.id]
+                      )
+                    }
+                  >
+                    <strong className="text-sm leading-tight">
+                      {modifier.name}
+                    </strong>
+                    <span className="mt-2 text-sm tabular-nums">
+                      +{formatRupiah(modifier.additionalPrice)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="grid shrink-0 grid-cols-[1fr_auto] gap-2 border-t p-2">
+              <Pagination
+                page={modifierPage}
+                pageCount={modifierPageCount}
+                onPage={setModifierPage}
+              />
+              <Button type="button" onClick={addSelectedMenu}>
+                <Plus /> Tambah
+              </Button>
+            </div>
+          </div>
         ) : visibleMenus.length === 0 ? (
           <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
             Belum ada menu aktif.
@@ -174,9 +316,9 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 p-3 sm:grid-cols-3 xl:grid-cols-4">
             {visibleMenus.map((product) => {
-              const quantity =
-                cart.find((item) => item.product.id === product.id)?.quantity ??
-                0
+              const quantity = cart
+                .filter((item) => item.product.id === product.id)
+                .reduce((sum, item) => sum + item.quantity, 0)
               return (
                 <button
                   key={product.id}
@@ -185,7 +327,7 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
                     "relative flex min-h-0 flex-col justify-between border p-3 text-left transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
                     quantity > 0 && "border-foreground bg-muted/50"
                   )}
-                  onClick={() => add(product)}
+                  onClick={() => chooseMenu(product)}
                 >
                   {quantity > 0 ? (
                     <span className="absolute top-2 right-2 grid size-6 place-items-center bg-foreground text-xs font-semibold text-background">
@@ -203,13 +345,15 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
             })}
           </div>
         )}
-        <div className="shrink-0 border-t p-2">
-          <Pagination
-            page={currentMenuPage}
-            pageCount={menuPageCount}
-            onPage={setMenuPage}
-          />
-        </div>
+        {!selectedMenu ? (
+          <div className="shrink-0 border-t p-2">
+            <Pagination
+              page={currentMenuPage}
+              pageCount={menuPageCount}
+              onPage={setMenuPage}
+            />
+          </div>
+        ) : null}
       </section>
 
       <section
@@ -241,13 +385,20 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
         ) : (
           <ul className="min-h-0 flex-1 divide-y">
             {visibleCart.map((item) => (
-              <li key={item.product.id} className="flex items-center gap-2 p-3">
+              <li key={item.id} className="flex items-center gap-2 p-3">
                 <div className="min-w-0 flex-1">
                   <strong className="block truncate text-sm">
                     {item.product.name}
                   </strong>
+                  {item.modifiers.length > 0 ? (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {item.modifiers
+                        .map((modifier) => modifier.name)
+                        .join(", ")}
+                    </span>
+                  ) : null}
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatRupiah(item.product.price * item.quantity)}
+                    {formatRupiah(cartItemUnitPrice(item) * item.quantity)}
                   </span>
                 </div>
                 <Button
@@ -257,11 +408,7 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
                   aria-label={`Kurangi ${item.product.name}`}
                   onClick={() =>
                     setCart((items) =>
-                      setCartItemQuantity(
-                        items,
-                        item.product.id,
-                        item.quantity - 1
-                      )
+                      setCartItemQuantity(items, item.id, item.quantity - 1)
                     )
                   }
                 >
@@ -275,7 +422,7 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
                   variant="outline"
                   size="icon-sm"
                   aria-label={`Tambah ${item.product.name}`}
-                  onClick={() => add(item.product)}
+                  onClick={() => addExisting(item)}
                 >
                   <Plus />
                 </Button>
@@ -285,7 +432,7 @@ export function CashierScreen({ actor }: { actor: StaffRecord | null }) {
                   size="icon-sm"
                   aria-label={`Hapus ${item.product.name}`}
                   onClick={() =>
-                    setCart((items) => removeCartItem(items, item.product.id))
+                    setCart((items) => removeCartItem(items, item.id))
                   }
                 >
                   <Trash2 />

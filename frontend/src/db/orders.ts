@@ -31,6 +31,13 @@ export type OrderItemInput = {
   name: string
   quantity: number
   price: number
+  modifiers?: OrderModifierSnapshot[]
+}
+
+export type OrderModifierSnapshot = {
+  id: string
+  name: string
+  additionalPrice: number
 }
 
 export type PosOrderItem = OrderItemInput & {
@@ -81,6 +88,7 @@ export async function createOpenOrder(
         orderId,
         menuProductId: item.menuProductId,
         name: item.name,
+        modifiersSnapshot: JSON.stringify(item.modifiers),
         quantity: item.quantity,
         price: item.price,
         subtotal: lineSubtotal,
@@ -125,6 +133,9 @@ export async function loadOrders(database: Database): Promise<PosOrder[]> {
             id: line.id,
             menuProductId: cellStr(line, "menuProductId"),
             name: cellStr(line, "name"),
+            modifiers: parseModifierSnapshot(
+              cellStr(line, "modifiersSnapshot")
+            ),
             quantity: cellNum(line, "quantity"),
             price: cellNum(line, "price"),
             subtotal: cellNum(line, "subtotal"),
@@ -297,7 +308,39 @@ function normalizeItem(item: OrderItemInput): OrderItemInput {
   }
   if (!Number.isFinite(price) || price < 0)
     throw new Error("Harga item tidak valid.")
-  return { menuProductId, name, quantity, price }
+  const modifiers = (item.modifiers ?? []).map((modifier) => {
+    const id = modifier.id.trim()
+    const modifierName = modifier.name.trim()
+    const additionalPrice = Number(modifier.additionalPrice)
+    if (
+      !id ||
+      !modifierName ||
+      !Number.isFinite(additionalPrice) ||
+      additionalPrice < 0
+    ) {
+      throw new Error("Snapshot modifier tidak valid.")
+    }
+    return { id, name: modifierName, additionalPrice }
+  })
+  return { menuProductId, name, quantity, price, modifiers }
+}
+
+function parseModifierSnapshot(value: string): OrderModifierSnapshot[] {
+  if (!value) return []
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (modifier): modifier is OrderModifierSnapshot =>
+        typeof modifier === "object" &&
+        modifier !== null &&
+        typeof modifier.id === "string" &&
+        typeof modifier.name === "string" &&
+        typeof modifier.additionalPrice === "number"
+    )
+  } catch {
+    return []
+  }
 }
 
 function makeOrderNumber(database: Database, now: number): string {

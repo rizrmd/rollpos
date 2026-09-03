@@ -2,12 +2,13 @@ import { describe, expect, test } from "bun:test"
 
 import {
   addCartItem,
+  cartItemUnitPrice,
   cartQuantity,
   cartSubtotal,
   removeCartItem,
   setCartItemQuantity,
 } from "@/lib/cart"
-import type { ProductRecord } from "@/lib/types"
+import type { ModifierRecord, ProductRecord } from "@/lib/types"
 
 const americano: ProductRecord = {
   id: "americano",
@@ -25,6 +26,15 @@ const americano: ProductRecord = {
   updatedAt: 1,
 }
 
+const extraShot: ModifierRecord = {
+  id: "extra-shot",
+  name: "Extra Shot",
+  additionalPrice: 6_000,
+  isActive: true,
+  createdAt: 1,
+  updatedAt: 1,
+}
+
 describe("cart", () => {
   test("menambah menu baru dan quantity menu yang sama", () => {
     const first = addCartItem([], americano)
@@ -38,11 +48,32 @@ describe("cart", () => {
 
   test("mengubah quantity dan menghapus item ketika quantity nol", () => {
     const cart = addCartItem([], americano)
-    expect(setCartItemQuantity(cart, americano.id, 3)[0]?.quantity).toBe(3)
-    expect(setCartItemQuantity(cart, americano.id, 0)).toEqual([])
+    expect(setCartItemQuantity(cart, cart[0]!.id, 3)[0]?.quantity).toBe(3)
+    expect(setCartItemQuantity(cart, cart[0]!.id, 0)).toEqual([])
   })
 
   test("menghapus item berdasarkan product id", () => {
-    expect(removeCartItem(addCartItem([], americano), americano.id)).toEqual([])
+    const cart = addCartItem([], americano)
+    expect(removeCartItem(cart, cart[0]!.id)).toEqual([])
+  })
+
+  test("memisahkan kombinasi modifier dan menyimpan snapshot harga", () => {
+    const withoutModifier = addCartItem([], americano)
+    const cart = addCartItem(withoutModifier, americano, [extraShot])
+
+    expect(cart).toHaveLength(2)
+    expect(cart[1]?.modifiers).toEqual([
+      { id: "extra-shot", name: "Extra Shot", additionalPrice: 6_000 },
+    ])
+    expect(cartItemUnitPrice(cart[1]!)).toBe(28_000)
+    expect(cartSubtotal(cart)).toBe(50_000)
+
+    extraShot.name = "Double Shot"
+    extraShot.additionalPrice = 10_000
+    expect(cart[1]?.modifiers[0]).toEqual({
+      id: "extra-shot",
+      name: "Extra Shot",
+      additionalPrice: 6_000,
+    })
   })
 })

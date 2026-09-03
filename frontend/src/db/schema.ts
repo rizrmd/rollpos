@@ -285,6 +285,7 @@ export const tablesSchema = {
     orderId: text,
     menuProductId: text,
     name: text,
+    modifiersSnapshot: text,
     quantity: amount,
     price: amount,
     subtotal: amount,
