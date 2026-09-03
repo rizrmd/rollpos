@@ -24,6 +24,13 @@ import {
   type ProductInput,
   type RecipeLineInput,
 } from "@/db/catalog"
+import {
+  createModifier,
+  deleteModifier,
+  setMenuModifiers,
+  updateModifier,
+  type ModifierInput,
+} from "@/db/modifiers"
 import { useProducts } from "@/hooks/use-products"
 import {
   categoryLabel,
@@ -42,6 +49,8 @@ import { canManageProducts } from "@/lib/permissions"
 import {
   INGREDIENT_UNITS,
   type MenuCategoryRecord,
+  type MenuModifierRecord,
+  type ModifierRecord,
   type ProductKind,
   type ProductRecord,
   type RecipeLineRecord,
@@ -54,14 +63,25 @@ type MenuFilter = "all" | string
 type IngredientFilter = "all" | "low"
 
 export function CatalogScreen({ actor }: { actor: StaffRecord }) {
-  const { database, products, recipes, categories, ready, error } = useProducts()
+  const {
+    database,
+    products,
+    recipes,
+    categories,
+    modifiers,
+    menuModifiers,
+    ready,
+    error,
+  } = useProducts()
   const canWrite = canManageProducts(actor.roles)
   const [tab, setTab] = useState<CatalogTab>("menu")
   const [query, setQuery] = useState("")
   const [menuFilter, setMenuFilter] = useState<MenuFilter>("all")
-  const [ingredientFilter, setIngredientFilter] = useState<IngredientFilter>("all")
+  const [ingredientFilter, setIngredientFilter] =
+    useState<IngredientFilter>("all")
   const [editing, setEditing] = useState<ProductRecord | "new" | null>(null)
   const [managingCategories, setManagingCategories] = useState(false)
+  const [managingModifiers, setManagingModifiers] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   const menus = useMemo(() => menusOf(products), [products])
@@ -154,6 +174,14 @@ export function CatalogScreen({ actor }: { actor: StaffRecord }) {
               + Kategori
             </FilterChip>
           ) : null}
+          {canWrite ? (
+            <FilterChip
+              active={false}
+              onClick={() => setManagingModifiers(true)}
+            >
+              + Modifier
+            </FilterChip>
+          ) : null}
         </ChipRow>
       ) : (
         <ChipRow>
@@ -205,29 +233,27 @@ export function CatalogScreen({ actor }: { actor: StaffRecord }) {
       )}
 
       <CatalogDialog
-        key={editing === "new" ? `new-${tab}` : editing?.id ?? "closed"}
+        key={editing === "new" ? `new-${tab}` : (editing?.id ?? "closed")}
         open={editing !== null}
-        kind={
-          editing === "new"
-            ? tab
-            : editing
-              ? editing.kind
-              : tab
-        }
+        kind={editing === "new" ? tab : editing ? editing.kind : tab}
         item={editing === "new" ? undefined : (editing ?? undefined)}
         products={products}
         recipes={recipes}
         categories={menuCategories}
+        modifiers={modifiers}
+        menuModifiers={menuModifiers}
         canWrite={canWrite}
         onOpenChange={(open) => {
           if (!open) setEditing(null)
         }}
-        onSave={async (input, lines) => {
-          const saved = editing && editing !== "new"
-            ? await updateProduct(database, actor, editing.id, input)
-            : await createProduct(database, actor, input)
+        onSave={async (input, lines, modifierIds) => {
+          const saved =
+            editing && editing !== "new"
+              ? await updateProduct(database, actor, editing.id, input)
+              : await createProduct(database, actor, input)
           if (saved.kind === "menu") {
             await setRecipe(database, actor, saved.id, lines)
+            await setMenuModifiers(database, actor, saved.id, modifierIds)
           }
           setNotice(
             saved.kind === "ingredient"
@@ -260,6 +286,25 @@ export function CatalogScreen({ actor }: { actor: StaffRecord }) {
           setNotice(`Kategori ${category.name} dihapus.`)
         }}
       />
+
+      <ModifierDialog
+        open={managingModifiers}
+        modifiers={modifiers}
+        menuModifiers={menuModifiers}
+        products={menus}
+        canWrite={canWrite}
+        onOpenChange={setManagingModifiers}
+        onSave={async (item, input) => {
+          const saved = item
+            ? await updateModifier(database, actor, item.id, input)
+            : await createModifier(database, actor, input)
+          setNotice(`Modifier ${saved.name} tersimpan.`)
+        }}
+        onDelete={async (item) => {
+          await deleteModifier(database, actor, item.id)
+          setNotice(`Modifier ${item.name} dihapus.`)
+        }}
+      />
     </div>
   )
 }
@@ -285,7 +330,9 @@ function TabButton({
       className={cn(
         "flex min-h-14 flex-col items-start justify-center border px-4 py-2 text-left transition-colors",
         "hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-        active ? "border-foreground bg-card" : "border-border bg-background text-muted-foreground"
+        active
+          ? "border-foreground bg-card"
+          : "border-border bg-background text-muted-foreground"
       )}
     >
       <span className="text-base font-medium text-foreground">{label}</span>
@@ -318,7 +365,9 @@ function FilterChip({
       className={cn(
         "min-h-10 border px-3 text-sm transition-colors",
         "hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-        active ? "border-foreground bg-foreground text-background" : "border-border"
+        active
+          ? "border-foreground bg-foreground text-background"
+          : "border-border"
       )}
     >
       {children}
@@ -429,6 +478,8 @@ function CatalogDialog({
   products,
   recipes,
   categories,
+  modifiers,
+  menuModifiers,
   canWrite,
   onOpenChange,
   onSave,
@@ -440,9 +491,15 @@ function CatalogDialog({
   products: ProductRecord[]
   recipes: RecipeLineRecord[]
   categories: MenuCategoryRecord[]
+  modifiers: ModifierRecord[]
+  menuModifiers: MenuModifierRecord[]
   canWrite: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (input: ProductInput, lines: RecipeLineInput[]) => Promise<void>
+  onSave: (
+    input: ProductInput,
+    lines: RecipeLineInput[],
+    modifierIds: string[]
+  ) => Promise<void>
   onDelete: (item: ProductRecord) => Promise<void>
 }) {
   const isMenu = kind === "menu"
@@ -450,7 +507,10 @@ function CatalogDialog({
   const initialLines = item
     ? recipes
         .filter((line) => line.productId === item.id)
-        .map((line) => ({ ingredientId: line.ingredientId, qty: String(line.qty) }))
+        .map((line) => ({
+          ingredientId: line.ingredientId,
+          qty: String(line.qty),
+        }))
     : []
 
   const [name, setName] = useState(item?.name ?? "")
@@ -463,14 +523,24 @@ function CatalogDialog({
   )
   const [newCategory, setNewCategory] = useState("")
   const [addingCategory, setAddingCategory] = useState(false)
-  const [price, setPrice] = useState(item && item.price ? String(item.price) : "")
+  const [price, setPrice] = useState(
+    item && item.price ? String(item.price) : ""
+  )
   const [stock, setStock] = useState(item ? String(item.stock || "") : "")
   const [unit, setUnit] = useState(item?.unit || (isMenu ? "porsi" : "g"))
-  const [lowStock, setLowStock] = useState(item && item.lowStock ? String(item.lowStock) : "")
+  const [lowStock, setLowStock] = useState(
+    item && item.lowStock ? String(item.lowStock) : ""
+  )
   const [note, setNote] = useState(item?.note ?? "")
   const [active, setActive] = useState(item?.isActive ?? true)
-  const [lines, setLines] = useState<Array<{ ingredientId: string; qty: string }>>(
-    initialLines
+  const [lines, setLines] =
+    useState<Array<{ ingredientId: string; qty: string }>>(initialLines)
+  const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>(
+    item
+      ? menuModifiers
+          .filter((link) => link.menuProductId === item.id)
+          .map((link) => link.modifierId)
+      : []
   )
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -510,7 +580,11 @@ function CatalogDialog({
         },
         lines
           .filter((line) => line.ingredientId && Number(line.qty) > 0)
-          .map((line) => ({ ingredientId: line.ingredientId, qty: Number(line.qty) }))
+          .map((line) => ({
+            ingredientId: line.ingredientId,
+            qty: Number(line.qty),
+          })),
+        isMenu ? selectedModifierIds : []
       )
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -531,11 +605,7 @@ function CatalogDialog({
       >
         <DialogHeader>
           <DialogTitle>
-            {item
-              ? item.name
-              : isMenu
-                ? "Menu baru"
-                : "Bahan baru"}
+            {item ? item.name : isMenu ? "Menu baru" : "Bahan baru"}
           </DialogTitle>
           <DialogDescription>
             {isMenu
@@ -543,7 +613,10 @@ function CatalogDialog({
               : "Bahan dipakai di resep menu. Stok di sini, penyesuaian harian menyusul di tab Stok."}
           </DialogDescription>
         </DialogHeader>
-        <form className="flex flex-col gap-3" onSubmit={(event) => void handleSubmit(event)}>
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(event) => void handleSubmit(event)}
+        >
           <Field
             id="catalog-name"
             label="Nama"
@@ -665,21 +738,30 @@ function CatalogDialog({
               <legend className="text-sm font-medium">Resep</legend>
               {ingredients.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Belum ada bahan. Tutup dialog ini, buka tab Bahan, lalu kembali untuk merakit resep.
+                  Belum ada bahan. Tutup dialog ini, buka tab Bahan, lalu
+                  kembali untuk merakit resep.
                 </p>
               ) : (
                 <>
                   {lines.map((line, index) => {
-                    const chosen = ingredients.find((row) => row.id === line.ingredientId)
+                    const chosen = ingredients.find(
+                      (row) => row.id === line.ingredientId
+                    )
                     return (
-                      <div key={`${line.ingredientId}-${index}`} className="grid grid-cols-[1fr_5.5rem_auto] gap-2">
+                      <div
+                        key={`${line.ingredientId}-${index}`}
+                        className="grid grid-cols-[1fr_5.5rem_auto] gap-2"
+                      >
                         <select
                           aria-label={`Bahan ${index + 1}`}
                           className="min-h-12 border border-input bg-transparent px-2.5 text-base"
                           value={line.ingredientId}
                           onChange={(event) => {
                             const next = [...lines]
-                            next[index] = { ...line, ingredientId: event.target.value }
+                            next[index] = {
+                              ...line,
+                              ingredientId: event.target.value,
+                            }
                             setLines(next)
                           }}
                         >
@@ -687,7 +769,10 @@ function CatalogDialog({
                             .filter(
                               (ingredient) =>
                                 ingredient.id === line.ingredientId ||
-                                !lines.some((other) => other.ingredientId === ingredient.id)
+                                !lines.some(
+                                  (other) =>
+                                    other.ingredientId === ingredient.id
+                                )
                             )
                             .map((ingredient) => (
                               <option key={ingredient.id} value={ingredient.id}>
@@ -712,7 +797,11 @@ function CatalogDialog({
                           size="touch"
                           aria-label="Hapus baris resep"
                           onClick={() =>
-                            setLines(lines.filter((_, lineIndex) => lineIndex !== index))
+                            setLines(
+                              lines.filter(
+                                (_, lineIndex) => lineIndex !== index
+                              )
+                            )
                           }
                         >
                           Hapus
@@ -725,7 +814,9 @@ function CatalogDialog({
                       Jumlah memakai satuan bahan
                       {lines[0]
                         ? ` (contoh ${
-                            ingredients.find((row) => row.id === lines[0]?.ingredientId)?.unit ?? "g"
+                            ingredients.find(
+                              (row) => row.id === lines[0]?.ingredientId
+                            )?.unit ?? "g"
                           })`
                         : ""}
                       .
@@ -757,6 +848,45 @@ function CatalogDialog({
             />
           )}
 
+          {isMenu ? (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium">Modifier</legend>
+              {modifiers.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Belum ada master modifier.
+                </p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {modifiers.map((modifier) => (
+                    <label
+                      key={modifier.id}
+                      className="flex min-h-12 items-center gap-2 border px-3 text-sm"
+                    >
+                      <Checkbox
+                        checked={selectedModifierIds.includes(modifier.id)}
+                        onCheckedChange={(checked) =>
+                          setSelectedModifierIds((current) =>
+                            checked
+                              ? [...current, modifier.id]
+                              : current.filter((id) => id !== modifier.id)
+                          )
+                        }
+                        disabled={!canWrite}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{modifier.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          +{formatRupiah(modifier.additionalPrice)}
+                          {modifier.isActive ? "" : " · nonaktif"}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </fieldset>
+          ) : null}
+
           <label className="flex min-h-12 items-center gap-2 text-sm">
             <Checkbox
               checked={active}
@@ -784,7 +914,9 @@ function CatalogDialog({
                         try {
                           await onDelete(item)
                         } catch (err) {
-                          setError(err instanceof Error ? err.message : String(err))
+                          setError(
+                            err instanceof Error ? err.message : String(err)
+                          )
                           setConfirmDelete(false)
                         } finally {
                           setBusy(false)
@@ -916,12 +1048,15 @@ function CategoryDialog({
         <DialogHeader>
           <DialogTitle>Kategori menu</DialogTitle>
           <DialogDescription>
-            Tambah kategori baru untuk filter dan form menu. Kategori yang masih dipakai tidak bisa dihapus.
+            Tambah kategori baru untuk filter dan form menu. Kategori yang masih
+            dipakai tidak bisa dihapus.
           </DialogDescription>
         </DialogHeader>
         <ul className="flex flex-col gap-2">
           {categories.map((category) => {
-            const used = products.filter((item) => item.category === category.slug).length
+            const used = products.filter(
+              (item) => item.category === category.slug
+            ).length
             return (
               <li
                 key={category.id}
@@ -946,7 +1081,9 @@ function CategoryDialog({
                         try {
                           await onDelete(category)
                         } catch (err) {
-                          setError(err instanceof Error ? err.message : String(err))
+                          setError(
+                            err instanceof Error ? err.message : String(err)
+                          )
                         } finally {
                           setBusy(false)
                         }
@@ -961,7 +1098,10 @@ function CategoryDialog({
           })}
         </ul>
         {canWrite ? (
-          <form className="flex flex-col gap-3" onSubmit={(event) => void handleCreate(event)}>
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(event) => void handleCreate(event)}
+          >
             <Field
               id="new-category-name"
               label="Kategori baru"
@@ -980,6 +1120,208 @@ function CategoryDialog({
         ) : (
           <DialogFooter showCloseButton />
         )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ModifierDialog({
+  open,
+  modifiers,
+  menuModifiers,
+  products,
+  canWrite,
+  onOpenChange,
+  onSave,
+  onDelete,
+}: {
+  open: boolean
+  modifiers: ModifierRecord[]
+  menuModifiers: MenuModifierRecord[]
+  products: ProductRecord[]
+  canWrite: boolean
+  onOpenChange: (open: boolean) => void
+  onSave: (item: ModifierRecord | null, input: ModifierInput) => Promise<void>
+  onDelete: (item: ModifierRecord) => Promise<void>
+}) {
+  const [editing, setEditing] = useState<ModifierRecord | null>(null)
+  const [name, setName] = useState("")
+  const [price, setPrice] = useState("")
+  const [active, setActive] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  function resetForm() {
+    setEditing(null)
+    setName("")
+    setPrice("")
+    setActive(true)
+    setError(null)
+  }
+
+  function edit(item: ModifierRecord) {
+    setEditing(item)
+    setName(item.name)
+    setPrice(String(item.additionalPrice))
+    setActive(item.isActive)
+    setError(null)
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!canWrite) return
+    setBusy(true)
+    setError(null)
+    try {
+      await onSave(editing, {
+        name,
+        additionalPrice: price.trim() === "" ? 0 : Number(price),
+        isActive: active,
+      })
+      resetForm()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) resetForm()
+        onOpenChange(next)
+      }}
+    >
+      <DialogContent className="sm:max-w-lg" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Master modifier</DialogTitle>
+          <DialogDescription>
+            Kelola pilihan tambahan, lalu kaitkan modifier saat mengubah menu.
+          </DialogDescription>
+        </DialogHeader>
+        {modifiers.length === 0 ? (
+          <p className="border px-3 py-4 text-sm text-muted-foreground">
+            Belum ada modifier.
+          </p>
+        ) : (
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {modifiers.map((item) => {
+              const linkedMenuIds = new Set(
+                menuModifiers
+                  .filter((link) => link.modifierId === item.id)
+                  .map((link) => link.menuProductId)
+              )
+              const used = products.filter((menu) =>
+                linkedMenuIds.has(menu.id)
+              ).length
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className="flex min-h-16 w-full items-center justify-between gap-2 border px-3 text-left hover:bg-muted"
+                    onClick={() => edit(item)}
+                  >
+                    <span>
+                      <span className="flex items-center gap-2 font-medium">
+                        {item.name}
+                        {!item.isActive ? (
+                          <Badge variant="outline">Nonaktif</Badge>
+                        ) : null}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {used} menu
+                      </span>
+                    </span>
+                    <span className="font-medium">
+                      +{formatRupiah(item.additionalPrice)}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        {canWrite ? (
+          <form
+            className="flex flex-col gap-3 border-t pt-3"
+            onSubmit={(event) => void handleSubmit(event)}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                id="modifier-name"
+                label="Nama"
+                value={name}
+                onChange={setName}
+                placeholder="Extra shot"
+                required
+              />
+              <Field
+                id="modifier-price"
+                label="Harga tambahan"
+                value={price}
+                onChange={setPrice}
+                placeholder="8000"
+                inputMode="numeric"
+                required
+              />
+            </div>
+            <label className="flex min-h-12 items-center gap-2 text-sm">
+              <Checkbox
+                checked={active}
+                onCheckedChange={(checked) => setActive(Boolean(checked))}
+              />
+              Aktif
+            </label>
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            <DialogFooter className="sm:justify-between">
+              {editing ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="touch"
+                  disabled={busy}
+                  onClick={() => {
+                    void (async () => {
+                      setBusy(true)
+                      setError(null)
+                      try {
+                        await onDelete(editing)
+                        resetForm()
+                      } catch (err) {
+                        setError(
+                          err instanceof Error ? err.message : String(err)
+                        )
+                      } finally {
+                        setBusy(false)
+                      }
+                    })()
+                  }}
+                >
+                  Hapus
+                </Button>
+              ) : (
+                <span />
+              )}
+              <div className="flex gap-2">
+                {editing ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="touch"
+                    onClick={resetForm}
+                  >
+                    Batal
+                  </Button>
+                ) : null}
+                <Button type="submit" size="touch" disabled={busy}>
+                  {busy ? "Menyimpan…" : editing ? "Simpan" : "Tambah"}
+                </Button>
+              </div>
+            </DialogFooter>
+          </form>
+        ) : null}
       </DialogContent>
     </Dialog>
   )

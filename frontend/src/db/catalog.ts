@@ -481,6 +481,11 @@ export async function deleteProduct(
       TABLES.recipeLines,
       (row) => cellStr(row, "productId") === product.id
     )
+    deleteMatching(
+      database,
+      TABLES.menuModifiers,
+      (row) => cellStr(row, "menuProductId") === product.id
+    )
     deleteRow(database, TABLES.products, product.id)
   })
 }

@@ -21,6 +21,8 @@ import type {
   DayOffRecord,
   DayOffSource,
   MenuCategoryRecord,
+  MenuModifierRecord,
+  ModifierRecord,
   OutletSettingsRecord,
   PreferenceRecord,
   ProductRecord,
@@ -161,6 +163,30 @@ export function toMenuCategory(
     sortOrder: cellNum(row, "sortOrder"),
     createdAt: cellNum(row, "createdAt"),
     updatedAt: cellNum(row, "updatedAt"),
+  }
+}
+
+export function toModifier(
+  row: ReturnType<typeof listRows>[number]
+): ModifierRecord {
+  return {
+    id: row.id,
+    name: cellStr(row, "name"),
+    additionalPrice: cellNum(row, "additionalPrice"),
+    isActive: !("isActive" in row) ? true : cellFlag(row, "isActive"),
+    createdAt: cellNum(row, "createdAt"),
+    updatedAt: cellNum(row, "updatedAt"),
+  }
+}
+
+export function toMenuModifier(
+  row: ReturnType<typeof listRows>[number]
+): MenuModifierRecord {
+  return {
+    id: row.id,
+    menuProductId: cellStr(row, "menuProductId"),
+    modifierId: cellStr(row, "modifierId"),
+    createdAt: cellNum(row, "createdAt"),
   }
 }
 
@@ -339,4 +365,20 @@ export async function loadRecipeLines(
 ): Promise<RecipeLineRecord[]> {
   await database.ready
   return listRows(database, TABLES.recipeLines).map(toRecipeLine)
+}
+
+export async function loadModifiers(
+  database: Database
+): Promise<ModifierRecord[]> {
+  await database.ready
+  return listRows(database, TABLES.modifiers)
+    .map(toModifier)
+    .sort((a, b) => a.name.localeCompare(b.name, "id"))
+}
+
+export async function loadMenuModifiers(
+  database: Database
+): Promise<MenuModifierRecord[]> {
+  await database.ready
+  return listRows(database, TABLES.menuModifiers).map(toMenuModifier)
 }

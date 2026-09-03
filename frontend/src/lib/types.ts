@@ -33,6 +33,22 @@ export type MenuCategoryRecord = {
   updatedAt: number
 }
 
+export type ModifierRecord = {
+  id: string
+  name: string
+  additionalPrice: number
+  isActive: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export type MenuModifierRecord = {
+  id: string
+  menuProductId: string
+  modifierId: string
+  createdAt: number
+}
+
 export const INGREDIENT_UNITS = ["g", "ml", "pcs", "kg", "l"] as const
 export type IngredientUnit = (typeof INGREDIENT_UNITS)[number]
 
