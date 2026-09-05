@@ -1,3 +1,5 @@
+import { expiryStatus } from "../lib/inventory"
+import { todayJakarta } from "../lib/time"
 import {
   persistentOperation,
   addRow,
@@ -280,8 +282,12 @@ export const startKitchenItem = persistentOperation(async function (
     })
   }
 
+  const currentDate = todayJakarta()
   const lotsByInventory = new Map<string, ReturnType<typeof listRows>>()
   for (const lot of listRows(database, TABLES.inventoryLots)) {
+    if (expiryStatus(cellStr(lot, "expiryDate"), currentDate) === "EXPIRED") {
+      continue
+    }
     const inventoryItemId = cellStr(lot, "inventoryItemId")
     const current = lotsByInventory.get(inventoryItemId) ?? []
     current.push(lot)
