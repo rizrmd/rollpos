@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react"
-import { ArrowLeft, ChevronRight } from "lucide-react"
+import { createPortal } from "react-dom"
+import { ArrowLeft, ChevronRight, Printer } from "lucide-react"
+import { ReceiptPrint } from "@/components/receipt-print"
+import "@/components/receipt-print.css"
 import { Button } from "@/components/ui/button"
 import { Pagination } from "@/components/pagination"
 import { useDatabase } from "@/db/database-provider"
@@ -11,13 +14,12 @@ import {
 } from "@/db/order-history"
 import { formatRupiah } from "@/lib/format"
 import { shouldHandleInAppClick } from "@/lib/nav"
+import {
+  paymentMethodNames as methodNames,
+  receiptLines,
+  receiptTime as time,
+} from "@/lib/receipt"
 
-const time = new Intl.DateTimeFormat("id-ID", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: "Asia/Jakarta",
-})
-const methodNames = { CASH: "Tunai", QRIS: "QRIS", CARD: "Kartu" }
 const readOrderId = () =>
   new URLSearchParams(window.location.search).get("order")
 
@@ -96,23 +98,7 @@ export function OrderHistoryScreen() {
 
   const selected = orders.find((order) => order.id === orderId)
   // Each modifier has its own paginated row, so even a large sale stays within the screen.
-  const lines =
-    selected?.items.flatMap((item) => [
-      {
-        id: item.id,
-        name: item.name,
-        description: `${item.quantity} × ${formatRupiah(item.price)}`,
-        amount: formatRupiah(item.subtotal),
-        modifier: false,
-      },
-      ...(item.modifiers ?? []).map((modifier, index) => ({
-        id: `${item.id}-m-${index}`,
-        name: modifier.name,
-        description: `Tambahan per item · ${item.name}`,
-        amount: formatRupiah(modifier.additionalPrice),
-        modifier: true,
-      })),
-    ]) ?? []
+  const lines = selected ? receiptLines(selected) : []
   const list = historyPage(orders, page, historyCapacity(height, 132))
   const detail = historyPage(lines, detailPage, historyCapacity(height, 72))
 
@@ -134,6 +120,9 @@ export function OrderHistoryScreen() {
       aria-label="Riwayat transaksi kasir"
       className="flex h-full min-h-0 flex-col gap-3 overflow-hidden"
     >
+      {selected
+        ? createPortal(<ReceiptPrint order={selected} />, document.body)
+        : null}
       {orderId ? (
         <div className="flex shrink-0 items-center gap-3">
           <Button
@@ -148,7 +137,16 @@ export function OrderHistoryScreen() {
             {selected?.orderNumber ?? "Order tidak ditemukan"}
           </span>
           {selected ? (
-            <span className="ml-auto rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+            <Button
+              variant="outline"
+              className="ml-auto shrink-0"
+              onClick={() => window.print()}
+            >
+              <Printer /> Cetak struk
+            </Button>
+          ) : null}
+          {selected ? (
+            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
               PAID
             </span>
           ) : null}
@@ -174,6 +172,7 @@ export function OrderHistoryScreen() {
                 : "Tidak tercatat"
             }
           />
+          <Field label="Subtotal" value={formatRupiah(selected.subtotal)} />
           <Field label="Total" value={formatRupiah(selected.total)} />
           {selected.payment ? (
             <>
