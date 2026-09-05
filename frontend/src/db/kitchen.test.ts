@@ -147,7 +147,7 @@ describe("integrasi Kasir ke Kitchen", () => {
 
   test("inventory baru berkurang saat START dan tetap idempoten", async () => {
     const { database, order, strawberry } = await fixture()
-    receiveInventory(database, {
+    await receiveInventory(database, {
       inventoryItemId: strawberry.id,
       quantity: 1,
       unit: "kg",
@@ -187,7 +187,7 @@ describe("integrasi Kasir ke Kitchen", () => {
 
   test("START tetap memakai FEFO lintas lot", async () => {
     const { database, order, strawberry } = await fixture()
-    const later = receiveInventory(database, {
+    const later = await receiveInventory(database, {
       inventoryItemId: strawberry.id,
       quantity: 0.3,
       unit: "kg",
@@ -195,7 +195,7 @@ describe("integrasi Kasir ke Kitchen", () => {
       expiryDate: "2026-09-20",
       actorStaffId: "staff-1",
     })
-    const nearest = receiveInventory(database, {
+    const nearest = await receiveInventory(database, {
       inventoryItemId: strawberry.id,
       quantity: 0.1,
       unit: "kg",

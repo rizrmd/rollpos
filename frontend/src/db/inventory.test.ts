@@ -27,7 +27,7 @@ describe("inventory offline", () => {
 
   test("receive membuat lot, movement, dan menaikkan saldo", async () => {
     const { database, strawberry } = await setup()
-    const lotId = receiveInventory(database, {
+    const lotId = await receiveInventory(database, {
       inventoryItemId: strawberry.id,
       quantity: 2,
       unit: "kg",
@@ -61,7 +61,7 @@ describe("inventory offline", () => {
 
   test("input invalid ditolak tanpa menulis lot atau movement", async () => {
     const { database, strawberry } = await setup()
-    expect(() =>
+    await expect(
       receiveInventory(database, {
         inventoryItemId: strawberry.id,
         quantity: 0,
@@ -69,8 +69,8 @@ describe("inventory offline", () => {
         receivedDate: "2026-09-01",
         actorStaffId: "staff-1",
       })
-    ).toThrow("Quantity harus lebih dari 0")
-    expect(() =>
+    ).rejects.toThrow("Quantity harus lebih dari 0")
+    await expect(
       receiveInventory(database, {
         inventoryItemId: strawberry.id,
         quantity: 2,
@@ -79,14 +79,14 @@ describe("inventory offline", () => {
         expiryDate: "2026-09-01",
         actorStaffId: "staff-1",
       })
-    ).toThrow("Expiry tidak boleh sebelum")
+    ).rejects.toThrow("Expiry tidak boleh sebelum")
     expect(listRows(database, TABLES.inventoryLots)).toHaveLength(0)
     expect(listRows(database, TABLES.inventoryStockMovements)).toHaveLength(0)
   })
 
   test("waste mengurangi saldo lot dan membuat movement dengan actor", async () => {
     const { database, strawberry } = await setup()
-    const lotId = receiveInventory(database, {
+    const lotId = await receiveInventory(database, {
       inventoryItemId: strawberry.id,
       quantity: 2,
       unit: "kg",
@@ -96,7 +96,7 @@ describe("inventory offline", () => {
       actorStaffId: "receiver-1",
     })
 
-    const movementId = recordInventoryWaste(database, {
+    const movementId = await recordInventoryWaste(database, {
       inventoryLotId: lotId,
       quantity: 0.75,
       reason: "Spillage",
@@ -126,7 +126,7 @@ describe("inventory offline", () => {
 
   test("waste melebihi saldo lot ditolak tanpa perubahan", async () => {
     const { database, strawberry } = await setup()
-    const lotId = receiveInventory(database, {
+    const lotId = await receiveInventory(database, {
       inventoryItemId: strawberry.id,
       quantity: 1,
       unit: "kg",
@@ -135,14 +135,14 @@ describe("inventory offline", () => {
     })
     const movementsBefore = listRows(database, TABLES.inventoryStockMovements)
 
-    expect(() =>
+    await expect(
       recordInventoryWaste(database, {
         inventoryLotId: lotId,
         quantity: 1.001,
         reason: "Damaged",
         actorStaffId: "staff-operator",
       })
-    ).toThrow("tidak boleh melebihi saldo lot")
+    ).rejects.toThrow("tidak boleh melebihi saldo lot")
     expect(
       loadInventoryLots(database, strawberry.id)[0]?.remainingQuantity
     ).toBe(1)

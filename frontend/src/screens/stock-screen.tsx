@@ -368,7 +368,7 @@ function WastePage({
     setError(null)
     const form = new FormData(event.currentTarget)
     try {
-      recordInventoryWaste(database, {
+      await recordInventoryWaste(database, {
         inventoryLotId: lot?.id ?? "",
         quantity: Number(form.get("quantity")),
         reason: String(form.get("reason")) as (typeof WASTE_REASONS)[number],
@@ -482,7 +482,7 @@ function ReceiveDialog({
     setError(null)
     const form = new FormData(event.currentTarget)
     try {
-      receiveInventory(database, {
+      await receiveInventory(database, {
         inventoryItemId: item?.id ?? "",
         quantity: Number(form.get("quantity")),
         unit: item?.baseUnit ?? "",

@@ -55,6 +55,9 @@ export function useProducts() {
       const listenerId = database.store.addTablesListener(() => refresh())
       unsubscribe = () => database.store.delListener(listenerId)
       refresh()
+    }).catch((cause: unknown) => {
+      if (cancelled) return
+      setError(cause instanceof Error ? cause.message : String(cause))
     })
 
     return () => {

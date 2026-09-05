@@ -1,4 +1,5 @@
 import {
+  persistentOperation,
   addRow,
   cellStr,
   listRows,
@@ -145,7 +146,7 @@ function insertSeedPerson(
 }
 
 /** Seed sekali per store. Tes yang mensimulasikan reload memakai `applyStaffingSeed`. */
-export async function applyStaffingSeed(database: Database): Promise<void> {
+export const applyStaffingSeed = persistentOperation(async function (database: Database): Promise<void> {
   await seedCatalogIfEmpty(database)
   await seedInventoryIfEmpty(database)
   await syncPaidOrdersToKitchen(database)
@@ -158,7 +159,7 @@ export async function applyStaffingSeed(database: Database): Promise<void> {
   }
   await backfillMissingSeedStaff(database, existing)
   await resetStaffPinsToSeed(database, listRows(database, TABLES.staffMembers))
-}
+})
 
 async function seedFresh(database: Database): Promise<void> {
   const now = Date.now()

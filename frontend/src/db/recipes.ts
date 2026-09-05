@@ -1,4 +1,5 @@
 import {
+  persistentOperation,
   addRow,
   cellFlag,
   cellNum,
@@ -134,7 +135,7 @@ function validateRecipe(
     )
 }
 
-export async function saveRecipe(
+export const saveRecipe = persistentOperation(async function (
   database: Database,
   input: SaveRecipeInput,
   recipeId?: string
@@ -181,4 +182,4 @@ export async function saveRecipe(
     })
   })
   return id
-}
+})

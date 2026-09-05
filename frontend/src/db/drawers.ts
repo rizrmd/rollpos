@@ -1,4 +1,5 @@
 import {
+  persistentOperation,
   addRow,
   cellNum,
   cellStr,
@@ -37,7 +38,7 @@ export async function loadOpenDrawerSession(
   return row ? drawerSessionFromRow(row) : undefined
 }
 
-export async function openDrawerSession(
+export const openDrawerSession = persistentOperation(async function (
   database: Database,
   input: { actorStaffId: string; openedAt?: number }
 ): Promise<DrawerSession> {
@@ -64,7 +65,7 @@ export async function openDrawerSession(
     })
   })
   return { id, actorStaffId, openedAt, status: "OPEN" }
-}
+})
 
 export async function getDrawerExpectedCash(
   database: Database,
@@ -88,7 +89,7 @@ export async function getDrawerExpectedCash(
     )
 }
 
-export async function closeDrawerSession(
+export const closeDrawerSession = persistentOperation(async function (
   database: Database,
   input: { sessionId: string; actualCash: number; closedAt?: number }
 ): Promise<DrawerSession> {
@@ -134,7 +135,7 @@ export async function closeDrawerSession(
   })
 
   return closed
-}
+})
 
 function drawerSessionFromRow(
   row: ReturnType<typeof listRows>[number]

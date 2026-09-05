@@ -1,5 +1,10 @@
 import { describe, expect, spyOn, test } from "bun:test"
-import { createRollposDatabase, listRows, TABLES } from "./database"
+import {
+  createRollposDatabase,
+  listRows,
+  persistentOperation,
+  TABLES,
+} from "./database"
 import {
   loadInventory,
   receiveInventory,
@@ -12,7 +17,7 @@ async function setup() {
   const database = createRollposDatabase({ inMemory: true })
   await seedInventoryIfEmpty(database)
   const item = loadInventory(database)[0]!
-  const lotId = receiveInventory(database, {
+  const lotId = await receiveInventory(database, {
     inventoryItemId: item.id,
     quantity: 10,
     unit: item.baseUnit,
@@ -45,7 +50,7 @@ describe("stock opname", () => {
           loadInventory(database).find((row) => row.id === item.id)?.balance
         ).toBe(physicalQuantity)
       })
-      const id = recordStockOpname(database, {
+      const id = await recordStockOpname(database, {
         inventoryLotId: lotId,
         systemQuantity: 10,
         physicalQuantity,
@@ -97,7 +102,7 @@ describe("stock opname", () => {
       { ...valid, systemQuantity: NaN },
     ]) {
       const before = database.store.getTables()
-      expect(() => recordStockOpname(database, input)).toThrow()
+      await expect(recordStockOpname(database, input)).rejects.toThrow()
       expect(database.store.getTables()).toEqual(before)
     }
   })
@@ -105,27 +110,28 @@ describe("stock opname", () => {
   test("kegagalan update lot me-rollback movement dan saldo", async () => {
     const { database, lotId } = await setup()
     const before = database.store.getTables()
-    const original = database.store.setPartialRow
-    const failure = spyOn(database.store, "setPartialRow").mockImplementation(
-      (...args) => {
-        original(...args)
-        throw new Error("Simulasi gagal tulis")
-      }
-    )
-    try {
-      expect(() =>
-        recordStockOpname(database, {
+    const failOpname = persistentOperation(async (draft) => {
+      const original = draft.store.setPartialRow
+      const failure = spyOn(draft.store, "setPartialRow").mockImplementation(
+        (...args) => {
+          original(...args)
+          throw new Error("Simulasi gagal tulis")
+        }
+      )
+      try {
+        await recordStockOpname(draft, {
           inventoryLotId: lotId,
           systemQuantity: 10,
           physicalQuantity: 3,
           actorStaffId: "counter",
         })
-      ).toThrow("Simulasi gagal tulis")
-      expect(database.store.getTables()).toEqual(before)
-    } finally {
-      failure.mockRestore()
-    }
-    recordStockOpname(database, {
+      } finally {
+        failure.mockRestore()
+      }
+    })
+    await expect(failOpname(database)).rejects.toThrow("Simulasi gagal tulis")
+    expect(database.store.getTables()).toEqual(before)
+    await recordStockOpname(database, {
       inventoryLotId: lotId,
       systemQuantity: 10,
       physicalQuantity: 3,
@@ -138,7 +144,7 @@ describe("stock opname", () => {
 
   test("waste menolak opname usang, lot kosong dapat ditambah kembali", async () => {
     const { database, lotId, item } = await setup()
-    recordInventoryWaste(database, {
+    await recordInventoryWaste(database, {
       inventoryLotId: lotId,
       quantity: 10,
       reason: "Damaged",
@@ -146,16 +152,16 @@ describe("stock opname", () => {
     })
     const before = database.store.getTables()
     const movements = listRows(database, TABLES.inventoryStockMovements)
-    expect(() =>
+    await expect(
       recordStockOpname(database, {
         inventoryLotId: lotId,
         systemQuantity: 10,
         physicalQuantity: 2,
         actorStaffId: "counter",
       })
-    ).toThrow("Saldo sistem berubah")
+    ).rejects.toThrow("Saldo sistem berubah")
     expect(database.store.getTables()).toEqual(before)
-    recordStockOpname(database, {
+    await recordStockOpname(database, {
       inventoryLotId: lotId,
       systemQuantity: 0,
       physicalQuantity: 2,

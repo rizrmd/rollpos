@@ -1,4 +1,5 @@
 import {
+  persistentOperation,
   addRow,
   cellNum,
   cellStr,
@@ -15,10 +16,10 @@ export type StockOpnameInput = {
   actorStaffId: string
 }
 
-export function recordStockOpname(
+export const recordStockOpname = persistentOperation(async function (
   database: Database,
   input: StockOpnameInput
-): string {
+): Promise<string> {
   let movementId = ""
   transact(database, () => {
     if (!database.store.hasRow(TABLES.inventoryLots, input.inventoryLotId))
@@ -62,4 +63,4 @@ export function recordStockOpname(
     })
   })
   return movementId
-}
+})

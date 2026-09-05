@@ -1,4 +1,5 @@
 import {
+  persistentOperation,
   addRow,
   cellNum,
   cellStr,
@@ -41,7 +42,7 @@ export type KitchenOrder = {
   items: KitchenOrderItem[]
 }
 
-export async function syncPaidOrdersToKitchen(
+export const syncPaidOrdersToKitchen = persistentOperation(async function (
   database: Database
 ): Promise<void> {
   await database.ready
@@ -67,7 +68,7 @@ export async function syncPaidOrdersToKitchen(
       }
     }
   })
-}
+})
 
 /** Dipanggil di dalam transaksi pembayaran agar PAID dan antrean bersifat atomik. */
 export function enqueuePaidOrder(
@@ -204,7 +205,7 @@ function parseModifierSnapshot(
   }
 }
 
-export async function startKitchenItem(
+export const startKitchenItem = persistentOperation(async function (
   database: Database,
   itemId: string
 ): Promise<void> {
@@ -361,7 +362,7 @@ export async function startKitchenItem(
       updatedAt: now,
     })
   })
-}
+})
 
 function convertQuantity(quantity: number, from: string, to: string): number {
   if (from === to) return quantity

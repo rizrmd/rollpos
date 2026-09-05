@@ -1,4 +1,5 @@
 import {
+  persistentOperation,
   addRow,
   cellFlag,
   cellNum,
@@ -44,7 +45,7 @@ export type RecordWasteInput = {
   actorStaffId: string
 }
 
-export async function seedInventoryIfEmpty(database: Database): Promise<void> {
+export const seedInventoryIfEmpty = persistentOperation(async function (database: Database): Promise<void> {
   await database.ready
   if (listRows(database, TABLES.inventoryItems).length > 0) return
   const now = Date.now()
@@ -61,7 +62,7 @@ export async function seedInventoryIfEmpty(database: Database): Promise<void> {
       })
     }
   })
-}
+})
 
 export function loadInventory(database: Database): InventoryItem[] {
   const balances = new Map<string, number>()
@@ -110,10 +111,10 @@ function validDate(value: string): boolean {
   )
 }
 
-export function receiveInventory(
+export const receiveInventory = persistentOperation(async function (
   database: Database,
   input: ReceiveInventoryInput
-): string {
+): Promise<string> {
   const itemRow = database.store.getRow(
     TABLES.inventoryItems,
     input.inventoryItemId
@@ -167,12 +168,12 @@ export function receiveInventory(
     })
   })
   return lotId
-}
+})
 
-export function recordInventoryWaste(
+export const recordInventoryWaste = persistentOperation(async function (
   database: Database,
   input: RecordWasteInput
-): string {
+): Promise<string> {
   const lot = database.store.getRow(TABLES.inventoryLots, input.inventoryLotId)
   if (!database.store.hasRow(TABLES.inventoryLots, input.inventoryLotId))
     throw new Error("Lot inventory tidak ditemukan.")
@@ -209,4 +210,4 @@ export function recordInventoryWaste(
     })
   })
   return movementId
-}
+})

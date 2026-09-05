@@ -38,13 +38,13 @@ export function StockOpnamePage({
   const difference =
     physical.trim() && lot ? Number(physical) - lot.remainingQuantity : null
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (saving.current) return
     saving.current = true
     setError(null)
     try {
-      recordStockOpname(database, {
+      await recordStockOpname(database, {
         inventoryLotId: lot?.id ?? "",
         systemQuantity: lot?.remainingQuantity ?? NaN,
         physicalQuantity: physical.trim() ? Number(physical) : NaN,

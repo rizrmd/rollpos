@@ -1,4 +1,5 @@
 import {
+  persistentOperation,
   addRow,
   cellStr,
   cellNum,
@@ -78,7 +79,7 @@ export function hasOpenSession(events: { type: AttendanceType }[]): boolean {
   return punches.at(-1)?.type === "clock_in"
 }
 
-export async function saveOutletSettings(
+export const saveOutletSettings = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   patch: Partial<OutletSettingsRecord>
@@ -149,9 +150,9 @@ export async function saveOutletSettings(
     })
   })
   await rebuildOpenSystemWeeks(database)
-}
+})
 
-export async function saveSlot(
+export const saveSlot = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: {
@@ -193,9 +194,9 @@ export async function saveSlot(
     createdAt: now,
     updatedAt: now,
   })
-}
+})
 
-export async function saveRoleRequirements(
+export const saveRoleRequirements = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   templateId: string,
@@ -222,9 +223,9 @@ export async function saveRoleRequirements(
       })
     }
   })
-}
+})
 
-export async function upsertStaff(
+export const upsertStaff = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: {
@@ -369,9 +370,9 @@ export async function upsertStaff(
     await rebuildOpenSystemWeeks(database)
   }
   return staffId
-}
+})
 
-export async function softDeleteStaff(
+export const softDeleteStaff = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   staffId: string
@@ -390,7 +391,7 @@ export async function softDeleteStaff(
     updatedAt: now,
   })
   await rebuildOpenSystemWeeks(database)
-}
+})
 
 function sameTemplateIds(left: string[] = [], right: string[] = []): boolean {
   if (left.length !== right.length) return false
@@ -461,7 +462,7 @@ export async function authenticateStaff(
   return member
 }
 
-export async function changeStaffPin(
+export const changeStaffPin = persistentOperation(async function (
   database: Database,
   staffId: string,
   currentPin: string,
@@ -496,15 +497,15 @@ export async function changeStaffPin(
     pinHash: await hashPin(newPin, salt),
     updatedAt: Date.now(),
   })
-}
+})
 
-export async function clockPunch(
+export const clockPunch = persistentOperation(async function (
   database: Database,
   staffId: string,
   pin: string,
   type: "clock_in" | "clock_out",
   deviceId: string,
-  at = Date.now()
+  at: number = Date.now()
 ): Promise<void> {
   const member = await authenticateStaff(database, staffId, pin)
   if (type === "clock_in" && !isIncludedInAttendance(member)) {
@@ -531,9 +532,9 @@ export async function clockPunch(
     actorStaffId: staffId,
     correctsEventId: "",
   })
-}
+})
 
-export async function clearAttendanceForDate(
+export const clearAttendanceForDate = persistentOperation(async function (
   database: Database,
   workDate: string
 ): Promise<number> {
@@ -547,9 +548,9 @@ export async function clearAttendanceForDate(
     }
   })
   return matching.length
-}
+})
 
-export async function correctAttendance(
+export const correctAttendance = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: {
@@ -579,9 +580,9 @@ export async function correctAttendance(
     actorStaffId: actor.id,
     correctsEventId: input.correctsEventId ?? "",
   })
-}
+})
 
-export async function upsertAssignment(
+export const upsertAssignment = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: {
@@ -639,9 +640,9 @@ export async function upsertAssignment(
     createdAt: now,
     updatedAt: now,
   })
-}
+})
 
-export async function cancelAssignment(
+export const cancelAssignment = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   assignmentId: string
@@ -654,7 +655,7 @@ export async function cancelAssignment(
     status: "cancelled",
     updatedAt: Date.now(),
   })
-}
+})
 
 export type RosterKeepRow = {
   staffId: string
@@ -665,7 +666,7 @@ export type RosterKeepRow = {
 }
 
 /** Ganti satu orang di satu slot; persist roster tanggal itu supaya usulan tidak hilang. */
-export async function replaceAssignment(
+export const replaceAssignment = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: {
@@ -776,16 +777,16 @@ export async function replaceAssignment(
       })
     }
   })
-}
+})
 
-export async function submitPreferences(
+export const submitPreferences = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   staffId: string,
   weekStart: string,
   slots: { templateId: string; rank: number }[],
   suggestions: { workDate: string; rank: number; note: string }[],
-  note = ""
+  note: string = ""
 ): Promise<void> {
   if (!canManage(actor.roles)) {
     throw new Error(
@@ -855,15 +856,15 @@ export async function submitPreferences(
     }
   })
   await rebuildOpenSystemWeeks(database)
-}
+})
 
-export async function requestDayOff(
+export const requestDayOff = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   staffId: string,
   workDate: string,
   weekStartsOn: number,
-  note = ""
+  note: string = ""
 ): Promise<string> {
   if (!canManage(actor.roles)) {
     throw new Error(
@@ -912,9 +913,9 @@ export async function requestDayOff(
     createdAt: now,
     updatedAt: now,
   })
-}
+})
 
-export async function withdrawDayOffRequest(
+export const withdrawDayOffRequest = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   suggestionId: string
@@ -935,9 +936,9 @@ export async function withdrawDayOffRequest(
     throw new Error("Permintaan sudah diputuskan manager.")
   }
   deleteRow(database, TABLES.dayOffSuggestions, suggestionId)
-}
+})
 
-export async function acceptSuggestion(
+export const acceptSuggestion = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   suggestionId: string
@@ -984,13 +985,13 @@ export async function acceptSuggestion(
       createdAt: now,
     })
   })
-}
+})
 
-export async function declineSuggestion(
+export const declineSuggestion = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   suggestionId: string,
-  alternativeDate = ""
+  alternativeDate: string = ""
 ): Promise<void> {
   if (!canAcceptSuggestions(actor.roles)) {
     throw new Error(
@@ -1004,9 +1005,9 @@ export async function declineSuggestion(
     actorStaffId: actor.id,
     updatedAt: Date.now(),
   })
-}
+})
 
-export async function addOfficialOff(
+export const addOfficialOff = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: {
@@ -1044,9 +1045,9 @@ export async function addOfficialOff(
       createdAt: now,
     })
   })
-}
+})
 
-export async function removeOfficialOff(
+export const removeOfficialOff = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   offId: string
@@ -1056,10 +1057,10 @@ export async function removeOfficialOff(
   }
   await database.ready
   deleteRow(database, TABLES.scheduledDaysOff, offId)
-}
+})
 
 /** Tulis usulan kerja sistem dan langsung terbitkan. Tidak menimpa minggu yang sudah diisi, tidak menulis libur resmi. */
-export async function writeFairDefaultDraft(
+export const writeFairDefaultDraft = persistentOperation(async function (
   database: Database,
   weekStart: string,
   assignments: {
@@ -1110,7 +1111,7 @@ export async function writeFairDefaultDraft(
     }
   })
   return true
-}
+})
 
 function slotsForAssignedStaff(
   member: StaffRecord,
@@ -1130,7 +1131,7 @@ function slotsForAssignedStaff(
 }
 
 /** Owner/manager menetapkan siapa kerja dan shift-nya di tanggal yang dipilih. */
-export async function assignStaffToDates(
+export const assignStaffToDates = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: {
@@ -1260,10 +1261,10 @@ export async function assignStaffToDates(
       }
     }
   })
-}
+})
 
 /** Lepas penetapan manager pada tanggal ini, lalu isi ulang tanggal itu secara adil. */
-export async function clearManagerAssignedDates(
+export const clearManagerAssignedDates = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: {
@@ -1352,7 +1353,7 @@ export async function clearManagerAssignedDates(
   // tertinggal kosong.
   await ensureFairDefaultWeeks(database, weekStarts, { rebuildSystem: true })
   return cleared
-}
+})
 
 export type ClearManagerRestore = {
   dates?: string[]
@@ -1368,7 +1369,7 @@ export type ClearManagerRestore = {
 }
 
 /** Pulihkan hasil clear penetapan manager dan kembalikan usulan sistem menjadi batal. */
-export async function undoClearManagerAssignedDates(
+export const undoClearManagerAssignedDates = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   restore: ClearManagerRestore,
@@ -1418,10 +1419,10 @@ export async function undoClearManagerAssignedDates(
     }
   })
   return restored
-}
+})
 
 /** Tulis usulan sistem hanya di tanggal yang belum dikunci manager. */
-export async function writeFairRemaining(
+export const writeFairRemaining = persistentOperation(async function (
   database: Database,
   weekStart: string,
   assignments: {
@@ -1479,7 +1480,7 @@ export async function writeFairRemaining(
     }
   })
   return changed
-}
+})
 
 function syncDefaultDaysOff(
   database: Database,
@@ -1524,7 +1525,7 @@ function syncDefaultDaysOff(
 }
 
 /** Isi tanggal yang belum ditetapkan manager, paling adil menurut beban yang sudah dikunci. */
-export async function generateFairRemainingWeeks(
+export const generateFairRemainingWeeks = persistentOperation(async function (
   database: Database,
   weekStarts: string[]
 ): Promise<number> {
@@ -1604,10 +1605,10 @@ export async function generateFairRemainingWeeks(
   }
   await promoteDraftsToPublished(database, weekStarts)
   return wrote
-}
+})
 
 /** Isi kerja minggu ini + depan jika masih kosong, lalu langsung terbitkan. Libur resmi tidak ditulis. */
-export async function ensureFairDefaultWeeks(
+export const ensureFairDefaultWeeks = persistentOperation(async function (
   database: Database,
   weekStarts: string[],
   options?: { rebuildSystem?: boolean }
@@ -1728,10 +1729,10 @@ export async function ensureFairDefaultWeeks(
   }
   await promoteDraftsToPublished(database, weekStarts)
   return wrote
-}
+})
 
 /** Hitung ulang minggu berjalan + depan jika masih murni usulan sistem. */
-export async function rebuildOpenSystemWeeks(
+export const rebuildOpenSystemWeeks = persistentOperation(async function (
   database: Database
 ): Promise<number> {
   const settings = await loadSettings(database, DEFAULT_OUTLET_ID)
@@ -1739,7 +1740,7 @@ export async function rebuildOpenSystemWeeks(
   return ensureFairDefaultWeeks(database, defaultScheduleWeeks(weekStartsOn), {
     rebuildSystem: true,
   })
-}
+})
 
 /** Jadwal berubah langsung terbit — draft lama di minggu yang dibuka ikut dipromosikan. */
 async function promoteDraftsToPublished(
@@ -1835,7 +1836,7 @@ export function defaultScheduleWeeks(weekStartsOn: number): string[] {
   return [weekStartOn(today, weekStartsOn), nextWeekStart(weekStartsOn)]
 }
 
-export async function applyRecommendationDraft(
+export const applyRecommendationDraft = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   weekStart: string,
@@ -1896,7 +1897,7 @@ export async function applyRecommendationDraft(
       })
     }
   })
-}
+})
 
 function addDaysLocal(iso: string, days: number): string {
   const [year, month, day] = iso.split("-").map(Number)
@@ -1904,7 +1905,7 @@ function addDaysLocal(iso: string, days: number): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`
 }
 
-export async function publishWeek(
+export const publishWeek = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   weekStart: string
@@ -1929,7 +1930,7 @@ export async function publishWeek(
       }
     }
   })
-}
+})
 
 export function suggestionStatusOf(value: string): SuggestionStatus {
   if (value === "accepted" || value === "declined") return value

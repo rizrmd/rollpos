@@ -1,4 +1,5 @@
 import {
+  persistentOperation,
   addRow,
   cellNum,
   cellStr,
@@ -58,7 +59,7 @@ export type PosOrder = {
   payment?: PosPayment
 }
 
-export async function createOpenOrder(
+export const createOpenOrder = persistentOperation(async function (
   database: Database,
   items: readonly OrderItemInput[]
 ): Promise<PosOrder> {
@@ -110,7 +111,7 @@ export async function createOpenOrder(
     createdAt: now,
     items: savedItems,
   }
-}
+})
 
 export async function loadOrders(database: Database): Promise<PosOrder[]> {
   await database.ready
@@ -162,7 +163,7 @@ export async function loadOrders(database: Database): Promise<PosOrder[]> {
 }
 
 /** Pembatalan hanya mengubah order; snapshot, pembayaran, dan stok tetap utuh. */
-export async function cancelOrder(
+export const cancelOrder = persistentOperation(async function (
   database: Database,
   input: { orderId: string; actorStaffId: string }
 ): Promise<void> {
@@ -195,9 +196,9 @@ export async function cancelOrder(
       updatedAt: now,
     })
   })
-}
+})
 
-export async function payOrderCash(
+export const payOrderCash = persistentOperation(async function (
   database: Database,
   input: {
     orderId: string
@@ -283,9 +284,9 @@ export async function payOrderCash(
     actorStaffId,
     paidAt,
   }
-}
+})
 
-export async function payOrderNonCash(
+export const payOrderNonCash = persistentOperation(async function (
   database: Database,
   input: {
     orderId: string
@@ -353,7 +354,7 @@ export async function payOrderNonCash(
     actorStaffId,
     paidAt,
   }
-}
+})
 
 function normalizeItem(item: OrderItemInput): OrderItemInput {
   const menuProductId = item.menuProductId.trim()

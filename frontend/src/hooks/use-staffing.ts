@@ -110,6 +110,9 @@ export function useStaffing() {
       })
       unsubscribe = () => database.store.delListener(listenerId)
       void refresh()
+    }).catch((cause: unknown) => {
+      if (cancelled) return
+      setError(cause instanceof Error ? cause.message : String(cause))
     })
 
     return () => {

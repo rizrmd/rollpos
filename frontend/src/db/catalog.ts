@@ -1,4 +1,5 @@
 import {
+  persistentOperation,
   addRow,
   cellStr,
   deleteMatching,
@@ -345,7 +346,7 @@ function ensureCategoriesFromProducts(database: Database): boolean {
   return changed
 }
 
-export async function createMenuCategory(
+export const createMenuCategory = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: { name: string }
@@ -353,9 +354,9 @@ export async function createMenuCategory(
   assertCanManageProducts(actor)
   await database.ready
   return writeCategory(database, input.name)
-}
+})
 
-export async function deleteMenuCategory(
+export const deleteMenuCategory = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   category: { id: string }
@@ -378,7 +379,7 @@ export async function deleteMenuCategory(
     )
   }
   deleteRow(database, TABLES.menuCategories, existing.id)
-}
+})
 
 function skuTaken(
   database: Database,
@@ -402,7 +403,7 @@ function productById(database: Database, id: string) {
   return listRows(database, TABLES.products).find((row) => row.id === id)
 }
 
-export async function createProduct(
+export const createProduct = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: ProductInput
@@ -420,9 +421,9 @@ export async function createProduct(
   const now = Date.now()
   const id = addRow(database, TABLES.products, cellsOf(normalized, now))
   return toRecord(id, normalized, now, now)
-}
+})
 
-export async function updateProduct(
+export const updateProduct = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   id: string,
@@ -447,9 +448,9 @@ export async function updateProduct(
     typeof existing.createdAt === "number" ? existing.createdAt : now
   updateRow(database, TABLES.products, id, cellsOf(normalized, now, createdAt))
   return toRecord(id, normalized, createdAt, now)
-}
+})
 
-export async function deleteProduct(
+export const deleteProduct = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   product: { id: string }
@@ -488,9 +489,9 @@ export async function deleteProduct(
     )
     deleteRow(database, TABLES.products, product.id)
   })
-}
+})
 
-export async function setRecipe(
+export const setRecipe = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   productId: string,
@@ -542,7 +543,7 @@ export async function setRecipe(
   })
 
   return (await loadRecipeLines(database)).filter((row) => row.productId === productId)
-}
+})
 
 export function seedCatalogIfEmpty(database: Database): Promise<boolean> {
   const key = database.store
@@ -554,7 +555,7 @@ export function seedCatalogIfEmpty(database: Database): Promise<boolean> {
   return pending
 }
 
-async function ensureCatalog(database: Database): Promise<boolean> {
+const ensureCatalog = persistentOperation(async function (database: Database): Promise<boolean> {
   await database.ready
   const existing = listRows(database, TABLES.products)
   if (existing.length === 0) {
@@ -562,7 +563,7 @@ async function ensureCatalog(database: Database): Promise<boolean> {
     return true
   }
   return backfillCatalog(database)
-}
+})
 
 function seedFreshCatalog(database: Database): void {
   const now = Date.now()

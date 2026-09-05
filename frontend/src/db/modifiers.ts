@@ -1,4 +1,5 @@
 import {
+  persistentOperation,
   addRow,
   cellNum,
   cellStr,
@@ -65,7 +66,7 @@ function toRecord(
 
 export { loadMenuModifiers, loadModifiers }
 
-export async function createModifier(
+export const createModifier = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   input: ModifierInput
@@ -81,9 +82,9 @@ export async function createModifier(
     updatedAt: now,
   })
   return toRecord(id, normalized, now, now)
-}
+})
 
-export async function updateModifier(
+export const updateModifier = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   id: string,
@@ -101,9 +102,9 @@ export async function updateModifier(
   const createdAt = cellNum(existing, "createdAt") || now
   updateRow(database, TABLES.modifiers, id, { ...normalized, updatedAt: now })
   return toRecord(id, normalized, createdAt, now)
-}
+})
 
-export async function deleteModifier(
+export const deleteModifier = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   id: string
@@ -121,9 +122,9 @@ export async function deleteModifier(
     )
     deleteRow(database, TABLES.modifiers, id)
   })
-}
+})
 
-export async function setMenuModifiers(
+export const setMenuModifiers = persistentOperation(async function (
   database: Database,
   actor: StaffRecord,
   menuProductId: string,
@@ -159,4 +160,4 @@ export async function setMenuModifiers(
       })
     }
   })
-}
+})
