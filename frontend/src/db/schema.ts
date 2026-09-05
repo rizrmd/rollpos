@@ -198,6 +198,9 @@ export const tablesSchema = {
     createdAt: amount,
   },
   inventoryItems: {
+    price: amount,
+    category: text,
+    note: text,
     name: text,
     sku: text,
     baseUnit: text,

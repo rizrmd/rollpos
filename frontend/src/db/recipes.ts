@@ -1,3 +1,4 @@
+import { convertQuantity } from "@/lib/recipe-units"
 import {
   persistentOperation,
   addRow,
@@ -121,6 +122,14 @@ function validateRecipe(
     duplicate.add(line.inventoryItemId)
     if (!Number.isFinite(line.quantity) || line.quantity <= 0)
       throw new Error("Quantity ingredient harus lebih dari 0.")
+    convertQuantity(
+      line.quantity,
+      line.unit,
+      cellStr(
+        database.store.getRow(TABLES.inventoryItems, line.inventoryItemId),
+        "baseUnit"
+      )
+    )
     if (!isRecipeUnit(line.unit))
       throw new Error("Unit ingredient tidak valid.")
   }

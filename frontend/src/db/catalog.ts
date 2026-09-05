@@ -1,4 +1,12 @@
 import {
+  catalogIngredientId,
+  inventoryIdFromCatalog,
+  migrateCatalogInventory,
+} from "./catalog-inventory-migration"
+import { loadInventory, receiveInventory } from "./inventory"
+import { saveRecipe } from "./recipes"
+import { todayJakarta } from "@/lib/time"
+import {
   persistentOperation,
   addRow,
   cellStr,
@@ -10,7 +18,11 @@ import {
   type Database,
   TABLES,
 } from "@/db/database"
-import { loadMenuCategories, loadProducts, loadRecipeLines } from "@/db/snapshot"
+import {
+  loadMenuCategories,
+  loadProducts,
+  loadRecipeLines,
+} from "@/db/snapshot"
 import {
   inferMenuCategory,
   isReservedCategorySlug,
@@ -242,7 +254,9 @@ function categoryRows(database: Database) {
 function findCategory(
   database: Database,
   nameOrSlug: string
-): (ReturnType<typeof listRows>[number] & { slug: string; name: string }) | undefined {
+):
+  | (ReturnType<typeof listRows>[number] & { slug: string; name: string })
+  | undefined {
   const raw = nameOrSlug.trim()
   if (!raw) return undefined
   const slug = slugifyCategory(raw)
@@ -251,11 +265,11 @@ function findCategory(
     const rowSlug = cellStr(row, "slug")
     const rowName = cellStr(row, "name")
     return (
-      rowSlug === slug ||
-      rowSlug === raw ||
-      rowName.toLowerCase() === lower
+      rowSlug === slug || rowSlug === raw || rowName.toLowerCase() === lower
     )
-  }) as (ReturnType<typeof listRows>[number] & { slug: string; name: string }) | undefined
+  }) as
+    | (ReturnType<typeof listRows>[number] & { slug: string; name: string })
+    | undefined
 }
 
 function nextCategorySort(database: Database): number {
@@ -291,7 +305,8 @@ function writeCategory(
   if (!slug || isReservedCategorySlug(slug)) {
     throw new Error("Nama kategori tidak valid.")
   }
-  const existing = findCategory(database, trimmed) ?? findCategory(database, slug)
+  const existing =
+    findCategory(database, trimmed) ?? findCategory(database, slug)
   if (existing) {
     if (options?.allowExisting) {
       return toCategoryRecord(
@@ -299,7 +314,9 @@ function writeCategory(
         cellStr(existing, "slug"),
         cellStr(existing, "name"),
         typeof existing.sortOrder === "number" ? existing.sortOrder : 0,
-        typeof existing.createdAt === "number" ? existing.createdAt : Date.now(),
+        typeof existing.createdAt === "number"
+          ? existing.createdAt
+          : Date.now(),
         typeof existing.updatedAt === "number" ? existing.updatedAt : Date.now()
       )
     }
@@ -340,7 +357,9 @@ function ensureCategoriesFromProducts(database: Database): boolean {
     const category = cellStr(row, "category").trim()
     if (!category || isReservedCategorySlug(category)) continue
     if (findCategory(database, category)) continue
-    writeCategory(database, prettyCategoryName(category), { allowExisting: true })
+    writeCategory(database, prettyCategoryName(category), {
+      allowExisting: true,
+    })
     changed = true
   }
   return changed
@@ -374,20 +393,20 @@ export const deleteMenuCategory = persistentOperation(async function (
       cellStr(row, "category") === slug
   )
   if (used.length > 0) {
-    throw new Error(
-      `Tidak bisa hapus: masih dipakai ${used.length} menu.`
-    )
+    throw new Error(`Tidak bisa hapus: masih dipakai ${used.length} menu.`)
   }
   deleteRow(database, TABLES.menuCategories, existing.id)
 })
 
-function skuTaken(
-  database: Database,
-  sku: string,
-  exceptId?: string
-): boolean {
+function skuTaken(database: Database, sku: string, exceptId?: string): boolean {
   const want = sku.toUpperCase()
-  return listRows(database, TABLES.products).some(
+  return [
+    ...listRows(database, TABLES.products),
+    ...listRows(database, TABLES.inventoryItems).map((row) => ({
+      ...row,
+      id: catalogIngredientId(row.id),
+    })),
+  ].some(
     (row) => row.id !== exceptId && cellStr(row, "sku").toUpperCase() === want
   )
 }
@@ -415,10 +434,32 @@ export const createProduct = persistentOperation(async function (
     throw new Error("Nama wajib diisi.")
   }
   if (normalized.kind === "menu") {
-    normalized.category = registerMenuCategory(database, normalized.category ?? "")
+    normalized.category = registerMenuCategory(
+      database,
+      normalized.category ?? ""
+    )
   }
   normalized.sku = uniqueSku(database, normalized.sku)
   const now = Date.now()
+  if (normalized.kind === "ingredient") {
+    if (!Number.isFinite(input.stock) || input.stock < 0)
+      throw new Error("Stok awal tidak valid.")
+    const id = addRow(
+      database,
+      TABLES.inventoryItems,
+      inventoryCells(normalized, now)
+    )
+    if (normalized.stock > 0)
+      await receiveInventory(database, {
+        inventoryItemId: id,
+        quantity: normalized.stock,
+        unit: normalized.unit!,
+        receivedDate: todayJakarta(),
+        notes: "Stok awal katalog",
+        actorStaffId: actor.id,
+      })
+    return toRecord(catalogIngredientId(id), normalized, now, now)
+  }
   const id = addRow(database, TABLES.products, cellsOf(normalized, now))
   return toRecord(id, normalized, now, now)
 })
@@ -431,6 +472,40 @@ export const updateProduct = persistentOperation(async function (
 ): Promise<ProductRecord> {
   assertCanManageProducts(actor)
   await database.ready
+  const inventoryId = inventoryIdFromCatalog(id)
+  if (inventoryId) {
+    const existing = loadInventory(database).find(
+      (item) => item.id === inventoryId
+    )
+    if (!existing) throw new Error("Bahan tidak ditemukan.")
+    const normalized = normalizeInput(input)
+    if (!normalized.name) throw new Error("Nama wajib diisi.")
+    if (normalized.kind !== "ingredient")
+      throw new Error("Jenis bahan tidak dapat diubah.")
+    // Stock is edited through lot operations; a stale catalog form cannot overwrite it.
+    normalized.stock = existing.balance
+    const referenced =
+      listRows(database, TABLES.inventoryLots).some(
+        (row) => row.inventoryItemId === inventoryId
+      ) ||
+      listRows(database, TABLES.recipeIngredients).some(
+        (row) => row.inventoryItemId === inventoryId
+      )
+    if (normalized.unit !== existing.baseUnit && referenced)
+      throw new Error("Satuan bahan yang sudah dipakai tidak dapat diubah.")
+    normalized.sku = uniqueSku(database, normalized.sku, id)
+    const now = Date.now()
+    const createdAt = Number(
+      database.store.getCell(TABLES.inventoryItems, inventoryId, "createdAt")
+    )
+    updateRow(
+      database,
+      TABLES.inventoryItems,
+      inventoryId,
+      inventoryCells(normalized, now, createdAt)
+    )
+    return toRecord(id, normalized, createdAt, now)
+  }
   const existing = productById(database, id)
   if (!existing) {
     throw new Error("Produk tidak ditemukan.")
@@ -440,8 +515,13 @@ export const updateProduct = persistentOperation(async function (
     throw new Error("Nama wajib diisi.")
   }
   if (normalized.kind === "menu") {
-    normalized.category = registerMenuCategory(database, normalized.category ?? "")
+    normalized.category = registerMenuCategory(
+      database,
+      normalized.category ?? ""
+    )
   }
+  if (normalized.kind !== "menu")
+    throw new Error("Jenis menu tidak dapat diubah.")
   normalized.sku = uniqueSku(database, normalized.sku, id)
   const now = Date.now()
   const createdAt =
@@ -457,31 +537,47 @@ export const deleteProduct = persistentOperation(async function (
 ): Promise<void> {
   assertCanManageProducts(actor)
   await database.ready
+  const inventoryId = inventoryIdFromCatalog(product.id)
+  if (inventoryId) {
+    if (!database.store.hasRow(TABLES.inventoryItems, inventoryId))
+      throw new Error("Bahan tidak ditemukan.")
+    const used = (await loadRecipeLines(database)).filter(
+      (line) => line.ingredientId === product.id
+    )
+    if (used.length) {
+      const names = used.map((line) =>
+        cellStr(database.store.getRow(TABLES.products, line.productId), "name")
+      )
+      throw new Error(`Tidak bisa hapus: dipakai di ${uniq(names).join(", ")}.`)
+    }
+    if (
+      listRows(database, TABLES.inventoryStockMovements).some(
+        (row) => row.inventoryItemId === inventoryId
+      )
+    ) {
+      throw new Error(
+        "Bahan memiliki riwayat stok. Nonaktifkan bahan untuk menyimpan riwayat lot."
+      )
+    }
+    deleteRow(database, TABLES.inventoryItems, inventoryId)
+    return
+  }
   const existing = productById(database, product.id)
   if (!existing) {
     throw new Error("Produk tidak ditemukan.")
   }
 
-  const kind = productKindOf(cellStr(existing, "kind"))
-  if (kind === "ingredient") {
-    const used = listRows(database, TABLES.recipeLines).filter(
-      (row) => cellStr(row, "ingredientId") === product.id
-    )
-    if (used.length > 0) {
-      const names = used.map((line) => {
-        const menu = productById(database, cellStr(line, "productId"))
-        return menu ? cellStr(menu, "name") : "menu"
-      })
-      throw new Error(`Tidak bisa hapus: dipakai di ${uniq(names).join(", ")}.`)
-    }
-  }
-
   transact(database, () => {
-    deleteMatching(
-      database,
-      TABLES.recipeLines,
-      (row) => cellStr(row, "productId") === product.id
-    )
+    for (const recipe of listRows(database, TABLES.recipes).filter(
+      (row) => row.menuProductId === product.id
+    )) {
+      deleteMatching(
+        database,
+        TABLES.recipeIngredients,
+        (row) => row.recipeId === recipe.id
+      )
+      deleteRow(database, TABLES.recipes, recipe.id)
+    }
     deleteMatching(
       database,
       TABLES.menuModifiers,
@@ -510,39 +606,54 @@ export const setRecipe = persistentOperation(async function (
   const cleaned: RecipeLineInput[] = []
   for (const line of lines) {
     if (!line.ingredientId || !(Number(line.qty) > 0)) continue
-    const ingredient = productById(database, line.ingredientId)
-    if (!ingredient) {
+    const inventoryId = inventoryIdFromCatalog(line.ingredientId)
+    if (!database.store.hasRow(TABLES.inventoryItems, inventoryId))
       throw new Error("Bahan resep tidak ditemukan.")
-    }
-    if (productKindOf(cellStr(ingredient, "kind")) !== "ingredient") {
-      throw new Error("Baris resep harus memakai bahan, bukan menu lain.")
-    }
-    const existing = cleaned.find((item) => item.ingredientId === line.ingredientId)
-    if (existing) {
-      existing.qty += Number(line.qty)
-    } else {
+    const existing = cleaned.find(
+      (item) => item.ingredientId === line.ingredientId
+    )
+    if (existing) existing.qty += Number(line.qty)
+    else
       cleaned.push({ ingredientId: line.ingredientId, qty: Number(line.qty) })
+  }
+  const recipe = listRows(database, TABLES.recipes).find(
+    (row) => row.menuProductId === productId
+  )
+  if (!cleaned.length) {
+    if (recipe) {
+      deleteMatching(
+        database,
+        TABLES.recipeIngredients,
+        (row) => row.recipeId === recipe.id
+      )
+      deleteRow(database, TABLES.recipes, recipe.id)
     }
+  } else {
+    await saveRecipe(
+      database,
+      {
+        menuProductId: productId,
+        version: recipe ? Number(recipe.version) : 1,
+        isActive: recipe ? Boolean(recipe.isActive) : true,
+        ingredients: cleaned.map((line) => {
+          const inventoryItemId = inventoryIdFromCatalog(line.ingredientId)
+          return {
+            inventoryItemId,
+            quantity: line.qty,
+            unit: cellStr(
+              database.store.getRow(TABLES.inventoryItems, inventoryItemId),
+              "baseUnit"
+            ),
+          }
+        }),
+      },
+      recipe?.id
+    )
   }
 
-  const now = Date.now()
-  transact(database, () => {
-    deleteMatching(
-      database,
-      TABLES.recipeLines,
-      (row) => cellStr(row, "productId") === productId
-    )
-    for (const line of cleaned) {
-      addRow(database, TABLES.recipeLines, {
-        productId,
-        ingredientId: line.ingredientId,
-        qty: line.qty,
-        createdAt: now,
-      })
-    }
-  })
-
-  return (await loadRecipeLines(database)).filter((row) => row.productId === productId)
+  return (await loadRecipeLines(database)).filter(
+    (row) => row.productId === productId
+  )
 })
 
 export function seedCatalogIfEmpty(database: Database): Promise<boolean> {
@@ -555,8 +666,11 @@ export function seedCatalogIfEmpty(database: Database): Promise<boolean> {
   return pending
 }
 
-const ensureCatalog = persistentOperation(async function (database: Database): Promise<boolean> {
+const ensureCatalog = persistentOperation(async function (
+  database: Database
+): Promise<boolean> {
   await database.ready
+  migrateCatalogInventory(database.store)
   const existing = listRows(database, TABLES.products)
   if (existing.length === 0) {
     seedFreshCatalog(database)
@@ -572,7 +686,10 @@ function seedFreshCatalog(database: Database): void {
     const bySku = new Map<string, string>()
     for (const item of [...DEMO_PRODUCTS, ...DEMO_INGREDIENTS]) {
       const normalized = normalizeInput(item)
-      const id = addRow(database, TABLES.products, cellsOf(normalized, now))
+      const id =
+        normalized.kind === "ingredient"
+          ? seedIngredient(database, normalized, now)
+          : addRow(database, TABLES.products, cellsOf(normalized, now))
       bySku.set(normalized.sku, id)
     }
     writeDemoRecipes(database, bySku, now)
@@ -593,35 +710,44 @@ function backfillCatalog(database: Database): boolean {
         patch.kind = kind
       }
       if (!cellStr(row, "category")) {
-        patch.category = kind === "ingredient" ? "bahan" : inferMenuCategory(name)
+        patch.category =
+          kind === "ingredient" ? "bahan" : inferMenuCategory(name)
       }
       if (!cellStr(row, "unit")) {
-        patch.unit = kind === "ingredient" ? "g" : name.toLowerCase().includes("croissant")
-          ? "pcs"
-          : "porsi"
+        patch.unit =
+          kind === "ingredient"
+            ? "g"
+            : name.toLowerCase().includes("croissant")
+              ? "pcs"
+              : "porsi"
       }
       if (!("isActive" in row)) {
         patch.isActive = true
       }
       if (Object.keys(patch).length > 0) {
-        updateRow(database, TABLES.products, row.id, { ...patch, updatedAt: now })
+        updateRow(database, TABLES.products, row.id, {
+          ...patch,
+          updatedAt: now,
+        })
         changed = true
       }
     }
 
     const bySku = skuIndex(database)
-    for (const item of DEMO_INGREDIENTS) {
-      const sku = item.sku.toUpperCase()
-      if (bySku.has(sku)) continue
-      const normalized = normalizeInput(item)
-      const id = addRow(database, TABLES.products, cellsOf(normalized, now))
-      bySku.set(sku, id)
-      changed = true
-    }
+    if (listRows(database, TABLES.inventoryItems).length === 0) {
+      for (const item of DEMO_INGREDIENTS) {
+        const sku = item.sku.toUpperCase()
+        if (bySku.has(sku)) continue
+        const normalized = normalizeInput(item)
+        const id = seedIngredient(database, normalized, now)
+        bySku.set(sku, id)
+        changed = true
+      }
 
-    if (listRows(database, TABLES.recipeLines).length === 0) {
-      writeDemoRecipes(database, bySku, now)
-      changed = true
+      if (listRows(database, TABLES.recipes).length === 0) {
+        writeDemoRecipes(database, bySku, now)
+        changed = true
+      }
     }
   })
   return changed
@@ -635,16 +761,35 @@ function writeDemoRecipes(
   for (const [menuSku, lines] of Object.entries(DEMO_RECIPES)) {
     const productId = bySku.get(menuSku)
     if (!productId) continue
-    for (const line of lines) {
-      const ingredientId = bySku.get(line.sku)
-      if (!ingredientId) continue
-      addRow(database, TABLES.recipeLines, {
-        productId,
-        ingredientId,
-        qty: line.qty,
+    if (
+      listRows(database, TABLES.recipes).some(
+        (row) => row.menuProductId === productId
+      )
+    )
+      continue
+    const recipeId = addRow(database, TABLES.recipes, {
+      menuProductId: productId,
+      version: 1,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    lines.forEach((line, sortOrder) => {
+      const inventoryItemId = bySku.get(line.sku)
+      if (!inventoryItemId) return
+      addRow(database, TABLES.recipeIngredients, {
+        recipeId,
+        inventoryItemId,
+        quantity: line.qty,
+        unit: cellStr(
+          database.store.getRow(TABLES.inventoryItems, inventoryItemId),
+          "baseUnit"
+        ),
+        sortOrder,
         createdAt: now,
+        updatedAt: now,
       })
-    }
+    })
   }
 }
 
@@ -662,3 +807,54 @@ function uniq(values: string[]): string[] {
 }
 
 export { loadMenuCategories, loadProducts, loadRecipeLines }
+
+function inventoryCells(input: ProductInput, now: number, createdAt = now) {
+  return {
+    name: input.name,
+    sku: input.sku,
+    baseUnit: input.unit ?? "g",
+    minimumStock: input.lowStock ?? 0,
+    isActive: input.isActive ?? true,
+    price: input.price,
+    note: input.note ?? "",
+    category: input.category ?? "bahan",
+    createdAt,
+    updatedAt: now,
+  }
+}
+
+function seedIngredient(
+  database: Database,
+  input: ProductInput,
+  now: number
+): string {
+  const existing = listRows(database, TABLES.inventoryItems).find(
+    (row) => row.sku === input.sku
+  )
+  if (existing) return existing.id
+  const id = addRow(database, TABLES.inventoryItems, inventoryCells(input, now))
+  if (input.stock > 0) {
+    const lotId = addRow(database, TABLES.inventoryLots, {
+      inventoryItemId: id,
+      receivedQuantity: input.stock,
+      remainingQuantity: input.stock,
+      baseUnit: input.unit!,
+      receivedAt: todayJakarta(),
+      notes: "Stok awal katalog",
+      createdAt: now,
+      updatedAt: now,
+    })
+    addRow(database, TABLES.inventoryStockMovements, {
+      inventoryItemId: id,
+      inventoryLotId: lotId,
+      movementType: "ADJUSTMENT",
+      quantity: input.stock,
+      unit: input.unit!,
+      referenceType: "CATALOG_SEED",
+      referenceId: id,
+      reason: "Stok awal katalog",
+      createdAt: now,
+    })
+  }
+  return id
+}

@@ -1,5 +1,7 @@
 import { createStore, type Row, type Store } from "tinybase"
 
+import { migrateCatalogInventory } from "./catalog-inventory-migration"
+
 import { openStorage, readStorage, writeStorage } from "./indexed-db"
 
 import { TABLES, tablesSchema, type TableName } from "./schema"
@@ -34,7 +36,17 @@ export function createRollposDatabase(options?: {
     : (async () => {
         const storage = await openStorage(options?.dbName ?? "rollpos")
         try {
-          store.setContent(await readStorage(storage))
+          const content = await readStorage(storage)
+          const restored = createStore()
+            .setTablesSchema(tablesSchema)
+            .setContent(content)
+          migrateCatalogInventory(restored)
+          if (
+            JSON.stringify(content) !== JSON.stringify(restored.getContent())
+          ) {
+            await writeStorage(storage, restored.getContent())
+          }
+          store.setContent(restored.getContent())
           state.storage = storage
         } catch (error) {
           storage.close()

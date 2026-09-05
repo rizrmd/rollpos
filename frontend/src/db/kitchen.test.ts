@@ -26,20 +26,28 @@ import { saveRecipe } from "./recipes"
 
 async function fixture() {
   const database = createRollposDatabase({ inMemory: true })
-  await seedCatalogIfEmpty(database)
   await seedInventoryIfEmpty(database)
+  await seedCatalogIfEmpty(database)
   const menu = listRows(database, TABLES.products).find(
     (row) => row.kind === "menu"
   )!
   const strawberry = loadInventory(database).find(
     (item) => item.name === "Strawberry"
   )!
-  await saveRecipe(database, {
-    menuProductId: menu.id,
-    version: 1,
-    isActive: true,
-    ingredients: [{ inventoryItemId: strawberry.id, quantity: 200, unit: "g" }],
-  })
+  await saveRecipe(
+    database,
+    {
+      menuProductId: menu.id,
+      version: 1,
+      isActive: true,
+      ingredients: [
+        { inventoryItemId: strawberry.id, quantity: 200, unit: "g" },
+      ],
+    },
+    listRows(database, TABLES.recipes).find(
+      (row) => row.menuProductId === menu.id
+    )?.id
+  )
   const order = await createOpenOrder(database, [
     {
       menuProductId: menu.id,
@@ -205,7 +213,11 @@ describe("integrasi Kasir ke Kitchen", () => {
         ],
       }),
     ])
-    expect(listRows(database, TABLES.inventoryStockMovements)).toHaveLength(0)
+    expect(
+      listRows(database, TABLES.inventoryStockMovements).filter(
+        (row) => row.movementType === "CONSUMPTION"
+      )
+    ).toHaveLength(0)
   })
 
   test("Kitchen mempertahankan snapshot modifier saat master berubah", async () => {

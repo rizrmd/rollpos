@@ -10,9 +10,17 @@ import {
   updateProduct,
 } from "@/db/catalog"
 import { createRollposDatabase } from "@/db/database"
-import { loadMenuCategories, loadProducts, loadRecipeLines } from "@/db/snapshot"
+import {
+  loadMenuCategories,
+  loadProducts,
+  loadRecipeLines,
+} from "@/db/snapshot"
 import { canManageProducts } from "@/lib/permissions"
-import { DEFAULT_OUTLET_ID, type StaffRecord, type StaffRole } from "@/lib/types"
+import {
+  DEFAULT_OUTLET_ID,
+  type StaffRecord,
+  type StaffRole,
+} from "@/lib/types"
 
 let dbSeq = 0
 
@@ -166,9 +174,14 @@ describe("catalog product writes", () => {
     await deleteProduct(database, actor, latte)
     const leftover = await loadRecipeLines(database)
     expect(leftover).toHaveLength(0)
-    await deleteProduct(database, actor, milk)
+    await expect(deleteProduct(database, actor, milk)).rejects.toThrow(
+      "Bahan memiliki riwayat stok"
+    )
+    await updateProduct(database, actor, milk.id, { ...milk, isActive: false })
     const remaining = await loadProducts(database)
-    expect(remaining.map((row) => row.id)).toEqual([beans.id])
+    expect(
+      remaining.filter((row) => row.isActive).map((row) => row.id)
+    ).toEqual([beans.id])
   })
 
   test("SKU bentrok ditambahkan nomor", async () => {
@@ -190,7 +203,9 @@ describe("catalog product writes", () => {
     expect(recipes.length).toBeGreaterThan(0)
     const latte = products.find((row) => row.sku === "RNB-LAT")
     expect(latte?.category).toBe("minuman")
-    expect(recipes.filter((line) => line.productId === latte?.id)).toHaveLength(2)
+    expect(recipes.filter((line) => line.productId === latte?.id)).toHaveLength(
+      2
+    )
   })
 
   test("backfill menambahkan bahan ke katalog lama", async () => {
@@ -206,7 +221,9 @@ describe("catalog product writes", () => {
     expect(first).toBe(true)
     const products = await loadProducts(database)
     expect(products.some((row) => row.sku === "BHN-ESP")).toBe(true)
-    expect(products.find((row) => row.sku === "RNB-ESP")?.category).toBe("minuman")
+    expect(products.find((row) => row.sku === "RNB-ESP")?.category).toBe(
+      "minuman"
+    )
     const recipes = await loadRecipeLines(database)
     expect(recipes.length).toBeGreaterThan(0)
   })
@@ -218,12 +235,12 @@ describe("catalog product writes", () => {
     expect(snack.slug).toBe("snack")
     expect(snack.name).toBe("Snack")
 
-    await expect(createMenuCategory(database, actor, { name: "snack" })).rejects.toThrow(
-      "Kategori sudah ada."
-    )
-    await expect(createMenuCategory(database, actor, { name: "  " })).rejects.toThrow(
-      "Nama kategori wajib diisi."
-    )
+    await expect(
+      createMenuCategory(database, actor, { name: "snack" })
+    ).rejects.toThrow("Kategori sudah ada.")
+    await expect(
+      createMenuCategory(database, actor, { name: "  " })
+    ).rejects.toThrow("Nama kategori wajib diisi.")
 
     const chips = await createProduct(database, actor, {
       name: "Keripik singkong",
@@ -256,7 +273,9 @@ describe("catalog product writes", () => {
     })
     expect(created.category).toBe("paket")
     const cats = await loadMenuCategories(database)
-    expect(cats.some((row) => row.slug === "paket" && row.name === "Paket")).toBe(true)
+    expect(
+      cats.some((row) => row.slug === "paket" && row.name === "Paket")
+    ).toBe(true)
   })
 
   test("seed mengisi kategori default minuman dan makanan", async () => {

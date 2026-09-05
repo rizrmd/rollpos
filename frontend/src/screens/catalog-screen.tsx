@@ -690,13 +690,20 @@ function CatalogDialog({
             />
           ) : (
             <div className="grid gap-3 sm:grid-cols-3">
-              <Field
-                id="catalog-stock"
-                label="Stok"
-                value={stock}
-                onChange={setStock}
-                inputMode="decimal"
-              />
+              {item ? (
+                <div className="flex flex-col gap-1 text-sm">
+                  <span>Stok</span>
+                  <span>{formatQty(item.stock, item.unit)}</span>
+                </div>
+              ) : (
+                <Field
+                  id="catalog-stock"
+                  label="Stok"
+                  value={stock}
+                  onChange={setStock}
+                  inputMode="decimal"
+                />
+              )}
               <label className="flex flex-col gap-1" htmlFor="catalog-unit">
                 <span className="text-sm font-medium">Satuan</span>
                 <select

@@ -1,3 +1,7 @@
+import { loadInventory } from "./inventory"
+import { loadRecipes } from "./recipes"
+import { catalogIngredientId } from "./catalog-inventory-migration"
+import { convertQuantity } from "@/lib/recipe-units"
 import {
   cellFlag,
   cellNum,
@@ -346,7 +350,22 @@ export async function loadProducts(
   database: Database
 ): Promise<ProductRecord[]> {
   await database.ready
-  return listRows(database, TABLES.products).map(toProduct)
+  return [
+    ...listRows(database, TABLES.products)
+      .filter((row) => row.kind !== "ingredient")
+      .map(toProduct),
+    ...loadInventory(database).map((item) =>
+      toProduct({
+        ...database.store.getRow(TABLES.inventoryItems, item.id),
+        id: catalogIngredientId(item.id),
+        kind: "ingredient",
+        stock: item.balance,
+        unit: item.baseUnit,
+        lowStock: item.minimumStock,
+        category: "bahan",
+      })
+    ),
+  ]
 }
 
 export async function loadMenuCategories(
@@ -364,7 +383,22 @@ export async function loadRecipeLines(
   database: Database
 ): Promise<RecipeLineRecord[]> {
   await database.ready
-  return listRows(database, TABLES.recipeLines).map(toRecipeLine)
+  return (await loadRecipes(database)).flatMap((recipe) =>
+    recipe.ingredients.map((line) => ({
+      id: line.id,
+      productId: recipe.menuProductId,
+      ingredientId: catalogIngredientId(line.inventoryItemId),
+      qty: convertQuantity(
+        line.quantity,
+        line.unit,
+        cellStr(
+          database.store.getRow(TABLES.inventoryItems, line.inventoryItemId),
+          "baseUnit"
+        )
+      ),
+      createdAt: recipe.createdAt,
+    }))
+  )
 }
 
 export async function loadModifiers(
