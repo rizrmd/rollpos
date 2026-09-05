@@ -226,6 +226,8 @@ export const tablesSchema = {
     containerCode: text,
     movementType: text,
     quantity: amount,
+    systemQuantity: { type: "number" },
+    physicalQuantity: { type: "number" },
     unit: text,
     referenceType: text,
     referenceId: text,

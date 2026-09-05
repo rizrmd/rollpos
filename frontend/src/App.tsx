@@ -361,7 +361,7 @@ export function App() {
           >
             <div
               className={
-                page === "kasir" || page === "orders"
+                page === "kasir" || page === "orders" || page === "stock"
                   ? "h-full w-full p-3 pt-16"
                   : "mx-auto w-full max-w-5xl px-4 py-4"
               }
@@ -435,7 +435,7 @@ export function App() {
         ) : (
           <div
             className={
-              page === "kasir" || page === "orders"
+              page === "kasir" || page === "orders" || page === "stock"
                 ? "h-full w-full p-3"
                 : "mx-auto w-full max-w-5xl px-4 py-4"
             }

@@ -40,6 +40,7 @@ import {
   type InventoryLot,
 } from "@/lib/inventory"
 import type { StaffRecord } from "@/lib/types"
+import { StockOpnamePage } from "./stock-opname-page"
 
 function todayJakarta() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -73,6 +74,7 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [receiving, setReceiving] = useState(false)
+  const [opname, setOpname] = useState(false)
   const [selected, setSelected] = useState<InventoryItem | null>(null)
   const [wasteLot, setWasteLot] = useState<InventoryLot | null>(null)
   const [page, setPage] = useState(1)
@@ -107,6 +109,22 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
     }
   }, [load, store])
 
+  if (opname) {
+    return (
+      <StockOpnamePage
+        database={database}
+        actor={actor}
+        items={items}
+        onBack={() => setOpname(false)}
+        onSaved={(name) => {
+          setOpname(false)
+          setNotice(`Opname ${name} berhasil disimpan dan saldo diperbarui.`)
+          void load()
+        }}
+      />
+    )
+  }
+
   if (wasteLot) {
     const wasteItem = items.find((item) => item.id === wasteLot.inventoryItemId)
     return (
@@ -128,7 +146,15 @@ export function StockScreen({ actor }: { actor: StaffRecord }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="outline"
+            size="touch"
+            onClick={() => setOpname(true)}
+            disabled={loading || !items.length}
+          >
+            Stock opname
+          </Button>
           <Button
             variant="outline"
             size="touch"
