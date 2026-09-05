@@ -101,16 +101,12 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         id: "orders",
-        label: "Pesanan",
-        hint: "Antrian dapur dan riwayat transaksi",
+        label: "Riwayat Transaksi",
+        hint: "Transaksi lunas dan detail order",
         icon: Receipt,
-        ready: false,
+        ready: true,
         access: "public",
-        plan: [
-          "Lihat pesanan terbuka dan yang sudah bayar",
-          "Ulangi atau batalkan transaksi",
-          "Tiket dapur terpisah dari struk kasir",
-        ],
+        plan: [],
       },
       {
         id: "kitchen",

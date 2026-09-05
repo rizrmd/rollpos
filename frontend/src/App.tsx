@@ -30,6 +30,7 @@ import { CashierScreen } from "@/screens/cashier-screen"
 import { ClockScreen } from "@/screens/clock-screen"
 import { ComingSoonScreen } from "@/screens/coming-soon-screen"
 import { MenuScreen } from "@/screens/menu-screen"
+import { OrderHistoryScreen } from "@/screens/order-history-screen"
 import { KitchenScreen } from "@/screens/kitchen-screen"
 import { PinScreen } from "@/screens/pin-screen"
 import { PrefsScreen } from "@/screens/prefs-screen"
@@ -168,6 +169,8 @@ export function App() {
     <p className="text-sm text-muted-foreground">Membuka database lokal…</p>
   ) : page === "kasir" ? (
     <CashierScreen actor={actor} />
+  ) : page === "orders" ? (
+    <OrderHistoryScreen />
   ) : page === "clock" ? (
     <ClockScreen
       database={staffing.database}
@@ -351,14 +354,14 @@ export function App() {
             id="konten"
             tabIndex={-1}
             className={
-              page === "kasir"
+              page === "kasir" || page === "orders"
                 ? "min-h-0 flex-1 overflow-hidden"
                 : "min-h-0 flex-1 overflow-auto"
             }
           >
             <div
               className={
-                page === "kasir"
+                page === "kasir" || page === "orders"
                   ? "h-full w-full p-3 pt-16"
                   : "mx-auto w-full max-w-5xl px-4 py-4"
               }
@@ -417,7 +420,7 @@ export function App() {
         id="konten"
         tabIndex={-1}
         className={
-          page === "kasir"
+          page === "kasir" || page === "orders"
             ? "min-h-0 flex-1 overflow-hidden"
             : "min-h-0 flex-1 overflow-auto"
         }
@@ -432,7 +435,7 @@ export function App() {
         ) : (
           <div
             className={
-              page === "kasir"
+              page === "kasir" || page === "orders"
                 ? "h-full w-full p-3"
                 : "mx-auto w-full max-w-5xl px-4 py-4"
             }
