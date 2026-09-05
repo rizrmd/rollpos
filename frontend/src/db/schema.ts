@@ -277,6 +277,8 @@ export const tablesSchema = {
     updatedAt: amount,
   },
   orders: {
+    cancelledAt: { type: "number" },
+    cancelledByStaffId: { type: "string" },
     orderNumber: text,
     status: { type: "string", default: "OPEN" },
     subtotal: amount,

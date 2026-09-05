@@ -16,6 +16,7 @@ import { Pagination } from "@/components/pagination"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
+  cancelOrder,
   createOpenOrder,
   loadOrders,
   payOrderCash,
@@ -493,6 +494,7 @@ function CashPayment({
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [paying, setPaying] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [drawer, setDrawer] = useState<DrawerSession | undefined>()
@@ -562,7 +564,7 @@ function CashPayment({
   }
 
   async function confirmPayment() {
-    if (!selected || !actor || !enough || paying) return
+    if (!selected || !actor || !enough || paying || cancelling) return
     setPaying(true)
     setError(null)
     setNotice(null)
@@ -591,6 +593,27 @@ function CashPayment({
       await refresh()
     } finally {
       setPaying(false)
+    }
+  }
+
+  async function cancelSelectedOrder() {
+    if (!selected || !actor || paying || cancelling) return
+    setCancelling(true)
+    setError(null)
+    setNotice(null)
+    try {
+      await cancelOrder(database, {
+        orderId: selected.id,
+        actorStaffId: actor.id,
+      })
+      setNotice(`${selected.orderNumber} dibatalkan.`)
+      setAmountText("")
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Pembatalan gagal.")
+      await refresh()
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -892,9 +915,22 @@ function CashPayment({
               ) : null}
               <Button
                 type="button"
+                variant="destructive"
+                className="w-full"
+                disabled={!actor || paying || cancelling || loading}
+                onClick={() => void cancelSelectedOrder()}
+              >
+                {cancelling ? "Membatalkan…" : "Batalkan order"}
+              </Button>
+              <Button
+                type="button"
                 className="w-full"
                 disabled={
-                  !enough || !actor || paying || (method === "CASH" && !drawer)
+                  !enough ||
+                  !actor ||
+                  paying ||
+                  cancelling ||
+                  (method === "CASH" && !drawer)
                 }
                 onClick={() => void confirmPayment()}
               >
@@ -906,7 +942,11 @@ function CashPayment({
           </div>
         ) : (
           <div className="grid h-full place-items-center text-sm text-muted-foreground">
-            Pilih order OPEN.
+            <div>
+              <LiveNotice message={error} tone="error" />
+              <LiveNotice message={notice} />
+              Pilih order OPEN.
+            </div>
           </div>
         )}
       </section>

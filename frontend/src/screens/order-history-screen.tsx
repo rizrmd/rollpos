@@ -120,7 +120,7 @@ export function OrderHistoryScreen() {
       aria-label="Riwayat transaksi kasir"
       className="flex h-full min-h-0 flex-col gap-3 overflow-hidden"
     >
-      {selected
+      {selected?.status === "PAID"
         ? createPortal(<ReceiptPrint order={selected} />, document.body)
         : null}
       {orderId ? (
@@ -136,7 +136,7 @@ export function OrderHistoryScreen() {
           <span className="min-w-0 truncate font-mono text-sm">
             {selected?.orderNumber ?? "Order tidak ditemukan"}
           </span>
-          {selected ? (
+          {selected?.status === "PAID" ? (
             <Button
               variant="outline"
               className="ml-auto shrink-0"
@@ -146,8 +146,8 @@ export function OrderHistoryScreen() {
             </Button>
           ) : null}
           {selected ? (
-            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-              PAID
+            <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
+              {selected.status}
             </span>
           ) : null}
         </div>
@@ -155,11 +155,17 @@ export function OrderHistoryScreen() {
       {selected ? (
         <div className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-2 rounded-xl border bg-card p-3 text-sm sm:grid-cols-4">
           <Field
-            label="Waktu bayar (WIB)"
+            label={
+              selected.status === "CANCELLED"
+                ? "Waktu batal (WIB)"
+                : "Waktu bayar (WIB)"
+            }
             value={
-              selected.payment
-                ? time.format(selected.payment.paidAt)
-                : "Tidak tercatat"
+              selected.cancelledAt
+                ? time.format(selected.cancelledAt)
+                : selected.payment
+                  ? time.format(selected.payment.paidAt)
+                  : "Tidak tercatat"
             }
           />
           <Field label="Staff" value={selected.staffName} />
@@ -226,15 +232,15 @@ export function OrderHistoryScreen() {
             </ul>
           ) : (
             <p className="p-4 text-sm text-muted-foreground">
-              Order PAID ini tidak tersedia di perangkat ini.
+              Order ini tidak tersedia di perangkat ini.
             </p>
           )
         ) : orders.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Belum ada transaksi lunas.
+            Belum ada riwayat order.
           </div>
         ) : (
-          <ul aria-label="Transaksi lunas">
+          <ul aria-label="Riwayat order">
             {list.rows.map((order) => (
               <li key={order.id} className="h-[132px] pb-2">
                 <a
@@ -255,6 +261,7 @@ export function OrderHistoryScreen() {
                     <span className="shrink-0 font-semibold tabular-nums">
                       {formatRupiah(order.total)}
                     </span>
+                    <span className="shrink-0 text-xs">{order.status}</span>
                     <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                   </div>
                   <p className="truncate text-sm">
@@ -264,9 +271,11 @@ export function OrderHistoryScreen() {
                   </p>
                   <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                     <span className="shrink-0">
-                      {order.payment
-                        ? `${time.format(order.payment.paidAt)} WIB`
-                        : "Waktu tidak tercatat"}
+                      {order.cancelledAt
+                        ? `${time.format(order.cancelledAt)} WIB`
+                        : order.payment
+                          ? `${time.format(order.payment.paidAt)} WIB`
+                          : "Waktu tidak tercatat"}
                     </span>
                     <span>·</span>
                     <span>

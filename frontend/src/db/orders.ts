@@ -11,7 +11,7 @@ import {
 import { enqueuePaidOrder } from "./kitchen"
 import { loadOpenDrawerSession } from "./drawers"
 
-export type OrderStatus = "OPEN" | "PAID"
+export type OrderStatus = "OPEN" | "PAID" | "CANCELLED"
 export type PaymentMethod = "CASH" | "QRIS" | "CARD"
 export type NonCashPaymentMethod = Exclude<PaymentMethod, "CASH">
 
@@ -53,6 +53,8 @@ export type PosOrder = {
   total: number
   createdAt: number
   items: PosOrderItem[]
+  cancelledAt?: number
+  cancelledByStaffId?: string
   payment?: PosPayment
 }
 
@@ -126,6 +128,8 @@ export async function loadOrders(database: Database): Promise<PosOrder[]> {
         subtotal: cellNum(order, "subtotal"),
         total: cellNum(order, "total"),
         createdAt: cellNum(order, "createdAt"),
+        cancelledAt: cellNum(order, "cancelledAt") || undefined,
+        cancelledByStaffId: cellStr(order, "cancelledByStaffId") || undefined,
         items: lines
           .filter((line) => cellStr(line, "orderId") === order.id)
           .sort((a, b) => cellNum(a, "sortOrder") - cellNum(b, "sortOrder"))
@@ -155,6 +159,42 @@ export async function loadOrders(database: Database): Promise<PosOrder[]> {
       }
     })
     .sort((a, b) => b.createdAt - a.createdAt)
+}
+
+/** Pembatalan hanya mengubah order; snapshot, pembayaran, dan stok tetap utuh. */
+export async function cancelOrder(
+  database: Database,
+  input: { orderId: string; actorStaffId: string }
+): Promise<void> {
+  await database.ready
+  const orderId = input.orderId.trim()
+  const actorStaffId = input.actorStaffId.trim()
+  if (!orderId) throw new Error("Order wajib dipilih.")
+  if (!actorStaffId) throw new Error("Actor staff wajib tercatat.")
+
+  transact(database, () => {
+    if (!database.store.hasRow(TABLES.orders, orderId)) {
+      throw new Error("Order tidak ditemukan.")
+    }
+    const order = database.store.getRow(TABLES.orders, orderId)
+    if (cellStr(order, "status") !== "OPEN") {
+      throw new Error("Hanya order OPEN yang dapat dibatalkan.")
+    }
+    if (
+      listRows(database, TABLES.payments).some(
+        (payment) => cellStr(payment, "orderId") === orderId
+      )
+    ) {
+      throw new Error("Order ini sudah memiliki pembayaran.")
+    }
+    const now = Date.now()
+    updateRow(database, TABLES.orders, orderId, {
+      status: "CANCELLED",
+      cancelledAt: now,
+      cancelledByStaffId: actorStaffId,
+      updatedAt: now,
+    })
+  })
 }
 
 export async function payOrderCash(
@@ -200,7 +240,11 @@ export async function payOrderCash(
       throw new Error("Order tidak ditemukan.")
     }
     if (cellStr(order, "status") !== "OPEN") {
-      throw new Error("Order ini sudah dibayar.")
+      throw new Error(
+        cellStr(order, "status") === "CANCELLED"
+          ? "Order ini sudah dibatalkan."
+          : "Order ini sudah dibayar."
+      )
     }
     if (
       listRows(database, TABLES.payments).some(
@@ -269,7 +313,11 @@ export async function payOrderNonCash(
       throw new Error("Order tidak ditemukan.")
     }
     if (cellStr(order, "status") !== "OPEN") {
-      throw new Error("Order ini sudah dibayar.")
+      throw new Error(
+        cellStr(order, "status") === "CANCELLED"
+          ? "Order ini sudah dibatalkan."
+          : "Order ini sudah dibayar."
+      )
     }
     if (
       listRows(database, TABLES.payments).some(

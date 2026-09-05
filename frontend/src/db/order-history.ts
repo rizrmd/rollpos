@@ -15,19 +15,22 @@ export async function loadOrderHistory(
     ])
   )
   return orders
-    .filter((order) => order.status === "PAID")
+    .filter((order) => order.status === "PAID" || order.status === "CANCELLED")
     .map((order) => ({
       ...order,
       staffName:
-        staff.get(order.payment?.actorStaffId ?? "") ||
-        (order.payment?.actorStaffId
-          ? `Staff ${order.payment.actorStaffId}`
+        staff.get(
+          order.cancelledByStaffId ?? order.payment?.actorStaffId ?? ""
+        ) ||
+        ((order.cancelledByStaffId ?? order.payment?.actorStaffId)
+          ? `Staff ${order.cancelledByStaffId ?? order.payment?.actorStaffId}`
           : "Tidak tercatat"),
     }))
     .sort(
       (a, b) =>
-        (b.payment?.paidAt ?? b.createdAt) -
-          (a.payment?.paidAt ?? a.createdAt) || a.id.localeCompare(b.id)
+        (b.cancelledAt ?? b.payment?.paidAt ?? b.createdAt) -
+          (a.cancelledAt ?? a.payment?.paidAt ?? a.createdAt) ||
+        a.id.localeCompare(b.id)
     )
 }
 
