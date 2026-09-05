@@ -739,7 +739,7 @@ describe("staffing persist + schedule", () => {
     expect(after.filter((row) => row.name === "Ayu")).toHaveLength(1)
   })
 
-  test("seed staff PIN is 000000 and existing staff get PIN backfill", async () => {
+  test("seed staff PIN is 000000 and existing staff keep their PIN", async () => {
     expect(SEED_DEFAULTS.staff.every((person) => person.pin === "000000")).toBe(
       true
     )
@@ -766,9 +766,19 @@ describe("staffing persist + schedule", () => {
     })
 
     await seedStaffingIfEmpty(database)
+    expect(
+      (await loadStaff(database)).find((row) => row.id === ayuBefore.id)
+    ).toEqual(ayuBefore)
+    await expect(
+      authenticateStaff(database, ayuBefore.id, "000000")
+    ).rejects.toThrow("PIN salah")
     for (const person of await loadStaff(database)) {
       await expect(
-        authenticateStaff(database, person.id, "000000")
+        authenticateStaff(
+          database,
+          person.id,
+          person.id === ayuBefore.id ? "1234" : "000000"
+        )
       ).resolves.toMatchObject({
         id: person.id,
       })
